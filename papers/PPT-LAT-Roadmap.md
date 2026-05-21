@@ -850,8 +850,15 @@ and so on.
     and 8-wide accumulation reassociate the dot, and QK-RMSNorm amplifies
     that over 28 layers exactly as in §8.6.1 (1e-6 would only hold per single
     matmul output). AVX512 shares the gate when built.
-  - E_CPU_5 — NTT-attention end-to-end PPL within T_PR_2 of softmax
-    baseline. Sieve OFF.
+  - E_CPU_5 — NTT-attention (`SP_ENGINE_NTT_ATTN=1`, sieve OFF): each
+    attention score `<q,k>` is recovered EXACTLY as coefficient 0 of the
+    negacyclic poly-ring product (`sp_pr_inner`, head_dim=128=ring N) after
+    int32 quantization (scale 2^16) of the post-norm/post-RoPE head vectors;
+    softmax + V-sum stay f32. Gate: argmax agreement + mean end-to-end
+    `KL(softmax-baseline‖ntt) ≤ 1e-7` (the literal T_PR_2). Measured ~2.7e-10
+    mean — because the inner product is *exact* (only int32 quant deviates),
+    this meets the tight T_PR_2 bound end-to-end, unlike the F16/FMA gaps of
+    E_CPU_2/E_CPU_4.
   - E_CPU_6 — KSTE KV-cache encode/decode round-trip identical bytes.
     Sieve OFF; this only exercises the encoder.
 - **Notes for picking up.** CPU is the canonical track because it has
