@@ -819,6 +819,15 @@ For each backend B ∈ {CPU, CU, VK, HX}:
 the subphase letter: E_CPU_1 covers 2-CPU.A, E_CPU_2 covers 2-CPU.B,
 and so on.
 
+**Amended 2026-05-22:** the per-backend template is extended with the
+foundational-compression items first specified for CPU in §8.2.1 — **G:
+Q4 inline weight compression** (E_B_7), **H: inline VHT2+Spinor KV codec**
+(E_B_8), and the **persistent-KV O(n) decode loop** (GEN_B). Each later
+backend (2-CU/VK/HX) mirrors E_B_7/E_B_8/GEN_B alongside E_B_1..E_B_6, with
+the same gates (`SP_ENGINE_FROB=3`, `SP_KV_SPINOR=1`, `qwen3_generate_kv`)
+defaulting OFF and the cross-backend tolerance (output vs CPU within 1e-3).
+Do not silently drop them. See §8.2.1 for the CPU definitions and gates.
+
 ### 8.2 Phase 2-CPU (the canonical track)
 
 - **Build env.** `scripts/env/env-cpu-msvc.bat` (Windows) and
