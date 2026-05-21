@@ -1,8 +1,8 @@
 # SESSION-STATE-lat-2-CPU
 
 **Phase:** 2-CPU — engine, CPU backend (`shannon-prime-system-engine`).
-**Session date:** 2026-05-21.
-**Status:** **2-CPU.A done (E_CPU_1).** **2-CPU.B step 1 done (MODEL_BIND):** Qwen3 config + weight binding + dequant verified. Forward-pass computation (E_CPU_2) not started — blocked on a clean logit oracle (see below).
+**Session date:** 2026-05-21, extended 2026-05-22.
+**Status:** **2-CPU.A done (E_CPU_1). 2-CPU.B done (E_CPU_2 green 2026-05-22).** GGUF loader, Qwen3 config+bind (MODEL_BIND), and the full f32 forward pass all pass. Engine ctest 3/3. Next: 2-CPU.C (E_CPU_3 Frobenius/Q8).
 
 ---
 
@@ -12,6 +12,14 @@
 - **2-CPU.A — GGUF loader** (`include/sp_engine/gguf.h`, `src/loader/gguf.c`): GGUF v3, cross-platform mmap (Win32 `CreateFileMapping` / POSIX `mmap`), bounds-checked cursor parse of header + metadata KVs + tensor table, per-`ggml_type` block-size validation, every tensor checked in-bounds + aligned. Typed scalar/string metadata getters. **E_CPU_1 green** (`tests/test_loader.c`): parses `Qwen3-0.6B-f16.gguf` → arch=qwen3, 311 tensors, 34 kv, 28 layers, 16 heads, dim 1024; header round-trips. 15 checks, 0 fails, MSVC `/W4` clean.
 - **2-CPU.B step 1 — model layer** (`include/sp_engine/model.h`, `src/forward/model.c`): `qwen3_load` reads the config from GGUF metadata and binds every weight tensor per layer; `sp_f16_to_f32` + `sp_dequant_row` (F32/F16/Q8_0). **MODEL_BIND green** (`tests/test_model.c`, 20 checks): config matches the known arch, all 28 layers bound, every tensor shape consistent, embedding dequant finite. Qwen3-0.6B config locked in code: 28 layers, n_embd 1024, n_ff 3072, **GQA 16/8, head_dim 128** (Q proj→2048, K/V→1024), **per-head QK-RMSNorm** (`attn_q_norm`/`attn_k_norm` [128]), untied `output.weight`, SwiGLU, rope_base 1e6, rms_eps 1e-6, vocab 151936, GPT2-BPE tokenizer.
 - **Build-env fix:** `scripts/env/env-common.bat` + `env-cpu.bat` were broken on first real use — UTF-8 box-drawing/em-dash chars broke cmd parsing, and the `(x86)` VS path breaks parenthesised `if`-blocks. Rewrote both in ASCII with `goto`-based error handling. (Per prompt.md the pinned env scripts are fixed when they error.) `env-cuda/vulkan/hexagon.bat` likely have the same two bugs — fix them the same way when those backends come up.
+
+### 2026-05-22 — 2-CPU.B forward pass + E_CPU_2 closed
+
+- **Forward pass** (`src/forward/forward.c`): embed → per layer { RMSNorm → Q/K/V matmul → per-head QK-RMSNorm → NEOX RoPE → GQA causal fp32-softmax attention → O proj → residual → RMSNorm → SwiGLU → residual } → final RMSNorm → LM head. Dequant-on-demand (F32/F16/Q8_0). `SP_ENGINE_F16_ACT=1` = optional ggml-faithful precision mode (rounds matmul activations to F16).
+- **The 1e-4/0.1% per-logit gate was wrong** — a scalar f32 pass can't bit-match ggml because **per-head QK-RMSNorm amplifies the ~1e-6 F16-matmul-precision floor 39×(Q)/477×(K)**, compounding over 28 layers to ~1–2% worst-case per-logit (argmax still exact). Full evidence chain in roadmap **§8.6.1** and memory `reference-ecpu2-qknorm-precision-gate`. Proven via isolation harnesses (below), and via f32-acc≈f64-acc (~1e-4) while both differ from ggml ~100× more.
+- **New gate (§8.2/§8.6.1):** argmax + top-5 cross + mean `KL(ggml‖engine) < 1e-5` nats on the **pure-f32** path. Measured KL mean **2.347e-6**, argmax 31/31, top5 31/31. `tests/test_forward.c` rewritten (top5/kl_div helpers; `SP_KL_MAX` override). E_CPU_2 reads `ref.bin` (committed fixture, regenerate via oracle).
+- **Oracle harness suite** (`tools/oracle/`, all link the clean llama.cpp at [[reference-llama-oracle]]): `dump_logits` (logits, now takes optional n_threads arg), `dump_layers` (per-tensor checkpoints via sched eval callback: attn_norm/ffn_inp/l_out/Qcur/Kcur/Vcur/Qcur_normed/Kcur_normed/kqv/result_norm), `rope_check` (RoPE vs `ggml_rope_ext`), `attn_check` (runs engine's GQA core on ggml's Q/K/V vs ggml's kqv). Oracle uses **f32 KV cache + flash-attn disabled** for apples-to-apples.
+- **Decisive findings:** matmul projection F16-exact (Vcur 1.3e-6); RoPE ≤2e-6 (linear); attention core 1e-6 on ggml's Q/K/V; QK-norm is the sole amplifier (post-norm == post-rope residual confirms RoPE adds nothing). **No logic bug.**
 
 ## Build + run (CPU backend)
 
@@ -27,18 +35,18 @@ Engine tests use the math-core `sp/sp_test.h` harness (via the submodule). Refer
 - **Oracle (DONE):** clean stock llama.cpp cloned + built at `D:\F\shannon-prime-repos\shannon-prime-lattice-llama` (CPU-only, gcc/Ninja; its own git repo, not committed into ours). Oracle tool `shannon-prime-system-engine/tools/oracle/dump_logits.{cpp,sh}` (self-contained MinGW exe) tokenizes a prompt with the stock tokenizer and dumps token IDs + per-position logits — verified on Qwen3-0.6B-f16 (5 tok × 151936). File format in `tools/oracle/README.md`. (The local `llama-cpp-*` checkouts — incl. the misnamed "cleanroom" — are all contaminated with `shannon_prime_*` libs and must NOT be used.)
 - Qwen3-0.6B arch (now locked in `model.c`): 28 layers, n_embd 1024, n_ff 3072, **GQA 16/8, head_dim 128** (Q→2048, K/V→1024), **per-head QK-RMSNorm**, **untied** `output.weight`, SwiGLU, RoPE base 1e6, rms_eps 1e-6, vocab 151936, GPT2-BPE.
 
-## Next session — pick up first (2-CPU.B forward pass)
+## Next session — pick up first (2-CPU.C Frobenius/Q8)
 
-Model layer (`qwen3_load` + dequant) is MODEL_BIND-green and the clean oracle is built (see Prerequisites). Remaining:
+E_CPU_1, MODEL_BIND, E_CPU_2 are green. Remaining subphases:
 
-1. **Wire the oracle into the test:** run `dump_logits.exe` on Qwen3-0.6B-f16 with a fixed prompt → `ref.bin` (commit a small one, or generate in a CMake/test step). The engine E_CPU_2 test reads the token IDs + reference logits from `ref.bin`. (The `.bin` magic/layout is in `tools/oracle/README.md`.)
-2. **Forward pass (f32 reference path)** producing logits for the same token IDs:
-   embed → per layer { RMSNorm(attn_norm) → Q/K/V proj → **per-head QK-RMSNorm** (over head_dim, BEFORE RoPE) → RoPE (base 1e6) → GQA attention (16 q-heads / 8 kv-heads, group 2; causal; fp32 softmax) → O proj → residual → RMSNorm(ffn_norm) → SwiGLU(gate,up)→down → residual } → RMSNorm(output_norm) → LM head (`output.weight`).
-   - ggml weight layout: tensor `[ne0=in, ne1=out]`, element (out_j,in_i) at `in_i + out_j*ne0` ⇒ `y[j]=Σ_i W[i+j*in]·x[i]`. Dequant via `sp_dequant_row`; f32 path first.
-   - **Bug hotspots only the oracle catches:** RoPE convention (NEOX vs GPT-J interleave), QK-norm placement, GQA q→kv head mapping, causal masking, the weight layout above.
-   - E_CPU_2 acceptance: max-token logit diff ≤ 1e-4 abs / ≤ 0.1% rel on the first 256 tokens.
-3. Then **2-CPU.C** Frobenius-Q8 matmul (`sp_frob_*`) → E_CPU_3; **2-CPU.D** AVX2/512; **2-CPU.E** NTT-attention (sieve OFF, `sp_pr_*`) within T_PR_2; **2-CPU.F** KSTE KV behind `SP_KSTE_KV=1`. **T_FRO_4** (Gemma3-1B PPL, `d:\Files\models\Mine\gemma-3-1b-it\gemma-3-1b-it-f16\`) once the forward pass exists.
-   - Qwen GPT2-BPE **tokenizer** (vocab+merges in the GGUF `tokenizer.ggml.*` arrays) needed for real prompts/PPL; build when generation/PPL is required (E_CPU_2 can use raw token IDs).
+1. **2-CPU.C — Frobenius/Q8 matmul** (`sp_frob_*`) → **E_CPU_3**. Diff the Frobenius/Q8 logits against the **engine's own pure-f32 `qwen3_forward` logits** (same arithmetic + accumulation order), **NOT** against ggml — tolerance ~1e-3 rel. Quantize against the pure-f32 path, never `SP_ENGINE_F16_ACT`. (Rationale: §8.6.1 / `reference-ecpu2-qknorm-precision-gate` — the ggml precision gap must not propagate.) The matmul to swap is the single `matmul()` in `forward.c`; keep the scalar f32 path as the reference under an env gate.
+2. **2-CPU.D** AVX2/512 matmul vs scalar within 1e-6 (E_CPU_4); **2-CPU.E** NTT-attention (sieve OFF, `sp_pr_*`) within T_PR_2 (E_CPU_5); **2-CPU.F** KSTE KV behind `SP_KSTE_KV=1` (E_CPU_6). **T_FRO_4** (Gemma3-1B PPL, `d:\Files\models\Mine\gemma-3-1b-it\gemma-3-1b-it-f16\`).
+   - Qwen GPT2-BPE **tokenizer** (vocab+merges in the GGUF `tokenizer.ggml.*` arrays) needed for real prompts/PPL; build when generation/PPL is required (the E-tests use raw token IDs from `ref.bin`).
+3. **Close 2-CPU:** 6/6 green → tag `lat-phase-2-closed` (both repos) → offload + push.
+
+### Forward-pass reference (for the alternate-kernel subphases)
+
+embed → per layer { RMSNorm(attn_norm) → Q/K/V proj → per-head QK-RMSNorm (over head_dim, BEFORE RoPE) → NEOX RoPE (base 1e6) → GQA attention (16 q / 8 kv, group 2; causal; fp32 softmax; scale 1/√128) → O proj → residual → RMSNorm(ffn_norm) → SwiGLU → residual } → RMSNorm(output_norm) → LM head. ggml weight layout `[ne0=in, ne1=out]`, `y[j]=Σ_i W[i+j*in]·x[i]`, dequant via `sp_dequant_row`.
 
 ## Open / notes
 

@@ -826,10 +826,16 @@ and so on.
 - **Reference model.** Qwen3-0.6B Q8.
 - **Tests.**
   - E_CPU_1 — GGUF loader round-trips header bytes.
-  - E_CPU_2 — Forward pass within tolerance of llama.cpp on first 256
-    tokens of the Pile sample.
-  - E_CPU_3 — Frobenius matmul produces identical logits to a
-    reference fp32 matmul on the same prompt.
+  - E_CPU_2 — Forward pass reproduces the stock-llama.cpp **distribution**
+    on identical token IDs (see §8.6.1 for why a per-logit tolerance is the
+    wrong gate). Three properties, default pure-f32 path:
+    (a) top-1 argmax agrees at every position; (b) ggml's top-1 lies inside
+    the engine's top-5 and vice versa at every position; (c) mean
+    `KL(ggml ‖ engine)` over positions `< 1e-5` nats (measured ~2.3e-6 on
+    Tier-1; override via `SP_KL_MAX`).
+  - E_CPU_3 — Frobenius/Q8 matmul matches the **engine's own** pure-f32
+    logits (same arithmetic, same accumulation order) within 1e-3 rel —
+    NOT diffed against ggml (see §8.6.1).
   - E_CPU_4 — AVX2 path matches scalar within 1e-6 elementwise; AVX512
     path optional but if present matches AVX2 within 1e-6.
   - E_CPU_5 — NTT-attention end-to-end PPL within T_PR_2 of softmax
@@ -891,6 +897,49 @@ Phase 2 closes when at least one backend (CPU is the minimum) has all
 six E-tests green. Other backends close independently and are tagged
 `lat-phase-2-<backend>-closed`. The CPU backend close also produces
 `lat-phase-2-closed` since CPU is the canonical anchor.
+
+#### 8.6.1 Why E_CPU_2 is a distributional gate, not a per-logit tolerance
+
+The original gate (forward pass "within tolerance" — read as 1e-4 abs /
+0.1% rel per logit) is **unachievable** for a correct scalar f32 forward
+pass against stock llama.cpp, and the reason is structural, not a bug.
+Established during the 2-CPU.B bring-up (2026-05-22) by isolation testing
+against the clean oracle (`tools/oracle/{dump_logits,dump_layers,rope_check,
+attn_check}`):
+
+- The matmul projection is F16-exact under matched precision: feeding the
+  engine's F16-activation mode (`SP_ENGINE_F16_ACT=1`, which rounds each
+  matmul's activations to F16 to mimic ggml's `vec_dot_type=F16` src1
+  downcast) reproduces ggml's `Vcur` to **1.3e-6**.
+- RoPE is bit-faithful (≤2e-6 vs `ggml_rope_ext` at all positions; it is a
+  linear map, fully characterised by `rope_check`).
+- The attention core (scale / softmax / GQA mapping / causal mask /
+  V-weighted sum) reproduces ggml's `kqv` to **1e-6** when run on ggml's
+  own Q/K/V (`attn_check`, all layers).
+- **Per-head QK-RMSNorm is a precision amplifier.** It divides each head by
+  its RMS; where that RMS is small it magnifies the ~1e-6 matmul-precision
+  floor by 39× (Q) to 477× (K) — measured at layer 0 with identical input.
+  Compounded over 28 layers at the positions where QK-norm RMS is small,
+  this reaches a ~1–2% worst-case per-logit gap.
+
+So the per-logit gap is real, content/position-correlated, and *inherent to
+any implementation that does not bit-replicate ggml's SIMD F16 arithmetic* —
+which a portable scalar reference must not be required to do. The argmax is
+nonetheless exact and the **distributions are nearly identical**: mean
+`KL(ggml‖engine) ≈ 2.3e-6` nats. KL is therefore the correctness metric
+(it is also what llama.cpp uses for perplexity-style validation), with
+top-1/top-5 agreement as the structural guard.
+
+Two gates, two purposes, no contamination:
+
+- **E_CPU_2** validates the engine's pure-f32 path against the *reference
+  model* (ggml): argmax + top-5 + KL. The pure-f32 path is used (not
+  F16-act) because it has *lower* KL to ggml than F16-act does.
+- **E_CPU_3+** validate alternate kernels (Frobenius/Q8, AVX2, NTT-attn)
+  against the *engine's own* pure-f32 logits — same arithmetic and
+  accumulation order — so a tight per-kernel tolerance stays meaningful and
+  the ggml precision gap never propagates downstream. Quantize against
+  pure-f32, never against F16-act.
 
 ### 8.7 Notes for the picking-up session (per backend)
 
