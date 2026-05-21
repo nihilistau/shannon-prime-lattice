@@ -1028,4 +1028,34 @@ defer this row.
 
 **Gemma 3 (and 2.5 / 4).** Different RoPE shape, different RMSNorm
 placement (pre + post on some sublayers), attention sliding window.
-Gemma 3 is the canonical research tar
+Gemma 3 is the canonical research target.
+
+<!-- NOTE (2026-05-21): the Gemma 3 paragraph above was truncated mid-word
+in the Phase-0 bootstrap commit; only the obvious word "target." was
+restored. The rest of the §9.6 Gemma discussion remains to be written. -->
+
+---
+
+## Phase log
+
+One paragraph per closed phase (§3.3). Most recent last.
+
+### Phase 1 — Math core foundations — closed Tier-1+Tier-2 (2026-05-21)
+
+All six subphases green. **1A** O_K arithmetic over Q(√-163)
+(`core/ok_arith`, T_OK_1..6). **1B** dual-prime CRT negacyclic NTT
+(`core/ntt_crt`, T_NTT_1/2/4/5; N∈{128,256,512} on the frozen primes;
+no `__int128` in the production path, configure-time guard). **1C** R_q
+polynomial-ring attention (`core/poly_ring`, T_PR_1..4; ⟨q,k⟩ recovered
+exactly via the negacyclic involution, T_PR_2 KL=0). **1D** VHT2 +
+Möbius + frozen 63-byte Spinor block (`core/vht2`, T_VHT_1..6). **1E**
+Frobenius Q8 lift (`core/frobenius`, T_FRO_1..3; T_FRO_4 → Phase 2).
+**1F** KSTE encoder + Tier-0/Tier-1 dominance (`core/kste`,
+T_KSTE_1..5; frozen 64-byte T_{60,3} tree). Built scaffold-first
+(`cmake/sp_module.cmake`, `sp_test.h`, EXISTS-guarded root) and executed
+by parallel agent dispatch. Integrated `ctest` 6/6, UBSan-clean on
+Windows MinGW-gcc (Tier-1); Linux gcc CI green (Tier-2). **Open:** Tier-3
+MSVC parity wave (T_NTT_3 + MSVC runs of T_VHT_5/T_KSTE_4 via a checked-in
+`__int128`-oracle fixture); T_FRO_4 in Phase 2; `sp_add_module` `DEPENDS`
+arg for inter-module links. Tag: `lat-phase-1-closed`. Offload:
+`SESSION-CLOSED-lat-1.md`.

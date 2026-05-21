@@ -2,7 +2,7 @@
 
 **Phase:** 1 — Math core foundations (`shannon-prime-system`).
 **Session date:** 2026-05-21.
-**Status at write time:** **Tier-1 (Windows MinGW-gcc) green for all six subphases (1A–1F).** Integrated root `ctest` = **6/6** (T_OK, T_NTT, T_PR, T_VHT, T_FRO, T_KSTE); whole-build UBSan sweep clean. Tier-2 (Linux CI) pending push; Tier-3 (MSVC) deferred wave.
+**Status:** **Phase 1 CLOSED at Tier-1 + Tier-2.** All six subphases (1A–1F) green under Windows MinGW-gcc (Tier-1); integrated root `ctest` = **6/6** (T_OK, T_NTT, T_PR, T_VHT, T_FRO, T_KSTE), whole-build UBSan sweep clean. Linux gcc CI green (Tier-2, run 26235084222). Tag `lat-phase-1-closed` cut on both repos. Tier-3 (MSVC) is a separately-tracked follow-up wave, not a close blocker (§3.7).
 
 ---
 
@@ -75,7 +75,11 @@ Integrated root `ctest` at last full run (1A,1B,1D,1E,1F): **5/5 green** (T_OK, 
 ---
 
 ## Next session — pick up first
-1. Confirm 1C green + committed; run `ctest` → 6/6.
-2. `git push` all touched repos; watch the CI run (`gh run watch` / `gh run list`) → Tier-2 green.
-3. When CI green: rename this file to `SESSION-CLOSED-lat-1.md`, add a Phase-log paragraph to the roadmap, tag `lat-phase-1-closed` (Tier-1+Tier-2). MSVC (Tier-3) tracked as its own wave.
-4. Then either the **MSVC parity wave** or advance to **Phase 2-CPU** (engine: GGUF loader → Qwen3-0.6B Q8 forward pass; reference anchor for all backends).
+
+Phase 1 close is done (6/6 Tier-1, Tier-2 CI green, tagged `lat-phase-1-closed`, this file renamed to `SESSION-CLOSED-lat-1.md`). The fork:
+
+1. **MSVC parity wave (Tier-3)** — close the deferred T_NTT_3 + MSVC runs of T_VHT_5 / T_KSTE_4. Configure each module via `vcvarsall x64` in a second build dir; the `__int128` oracle won't compile under MSVC, so generate a checked-in reference fixture from the gcc build (`.h` C array, not `.bin` — gitignored). Add `.gitattributes` (`*.bin binary`) while there. Then tag the full `lat-phase-1-closed` (all three tiers).
+2. **Phase 2-CPU (engine)** — GGUF loader → Qwen3-0.6B Q8 forward pass, the reference anchor all other backends verify against (E_CPU_1..6). This is the project's centre of mass; the math core is now ready to consume.
+3. **Scaffold polish** — add `sp_add_module(... DEPENDS ...)` before Phase 2 multiplies inter-module links.
+
+Recommend 2 (Phase 2-CPU) as the higher-leverage path; the MSVC wave can run opportunistically since nothing downstream needs MSVC yet.
