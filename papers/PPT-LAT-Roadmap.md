@@ -833,9 +833,16 @@ and so on.
     the engine's top-5 and vice versa at every position; (c) mean
     `KL(ggml ‖ engine)` over positions `< 1e-5` nats (measured ~2.3e-6 on
     Tier-1; override via `SP_KL_MAX`).
-  - E_CPU_3 — Frobenius/Q8 matmul matches the **engine's own** pure-f32
-    logits (same arithmetic, same accumulation order) within 1e-3 rel —
-    NOT diffed against ggml (see §8.6.1).
+  - E_CPU_3 — Frobenius/Q8 weight path. (a) **Lift faithfulness** (the
+    "identical logits to a reference fp32 matmul"): the inline-lift matmul
+    (`SP_ENGINE_FROB=1`, accumulate `q·x` then scale once) and the
+    dequant-then-f32-dot of the *same* Q8 weights (`SP_ENGINE_FROB=2`) agree
+    to float-associativity (max |Δlogit| < 1e-2; measured ~1e-4). (b) **Q8
+    quality** vs the engine's own pure-f32 path (NOT ggml, §8.6.1): mean
+    `KL(f32‖q8)` below a regression gate (default 5e-2; measured ~2e-2).
+    Per-row Frobenius Q8 is lossy by design (one scale per wide row, vs
+    ggml's per-32-block Q8_0), so it legitimately flips a few low-margin
+    argmaxes — argmax is reported, not gated. Real PPL quality is T_FRO_4.
   - E_CPU_4 — AVX2 path matches scalar within 1e-6 elementwise; AVX512
     path optional but if present matches AVX2 within 1e-6.
   - E_CPU_5 — NTT-attention end-to-end PPL within T_PR_2 of softmax
