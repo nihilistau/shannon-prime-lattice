@@ -874,6 +874,47 @@ and so on.
   backend is blocked; using CPU outputs as the ground truth for the
   other backends is built into the test harness.
 
+#### 8.2.1 Foundational-compression extension (amended 2026-05-22)
+
+The original six E_CPU items closed 2026-05-22 (`lat-phase-2-closed`). The
+inline weight + KV compression that §1/§4.8/§4.9 call **foundational** is only
+partly covered by them: E_CPU_3 is Q8 weights, E_CPU_6 is the *KSTE* KV overlay
+(a Lattice-sieve signature encoder, one-way) — neither is **Q4 weight storage**
+nor the **VHT2+Spinor KV codec** that §4.5/§4.9 freeze as the production KV
+layout. This amendment adds the missing foundational items as explicit Phase-2-CPU
+contract gates, plus the persistent-KV decode loop. All are gated OFF by default
+(regression invariant: gates off ⇒ bit-identical to the E_CPU_2 f32 path). Per
+§8.6.1 every quality gate is measured against the engine's own pure-f32 logits,
+never ggml and never the F16-act path.
+
+  - **E_CPU_7 — Q4 inline weight compression.** Frobenius Q4: per-row scale,
+    symmetric 4-bit codes in `[-7,+7]` (the Q8 `[-127,127]` rule at 4 bits; two
+    codes per byte), dequant `w_hat = q·s/7`. **Mixed-precision / calibration:**
+    a per-tensor pass promotes high-error ("outlier") rows to Q8. v1 calibration
+    is **weight-only per-row sensitivity** (promote rows whose Q4 round-trip
+    error / row-L2 exceeds a threshold) — the **activation-based** calibration
+    of §4.4 stays a **Phase-4** refinement (§7.5), with the promotion-mask hook
+    left in place. Gate `SP_ENGINE_FROB=3`. Validated on Qwen3-0.6B: lift
+    faithfulness (inline-Q4 matmul == dequant-then-f32-dot of the same Q4 weights,
+    float-assoc) + Q4 quality vs pure-f32 (mean KL under a regression gate, looser
+    than Q8 since Q4 is lossier by design; argmax reported, not gated).
+  - **E_CPU_8 — Inline VHT2+Spinor KV-cache compression.** The §4.5 frozen
+    63-byte Spinor block carries 55 int8 anchors; a Qwen3 head vector is
+    head_dim=128, so each post-norm/post-RoPE K and V head vector is stored as
+    ⌈128/55⌉ = **3 Spinor blocks** (balanced 43/43/42 split; the frozen layout is
+    NOT modified). Gate `SP_KV_SPINOR=1`; attention reads the decoded (lossy)
+    K'/V'. Gate OFF ⇒ bit-identical to E_CPU_2. ON: mean KL(f32-KV ‖ spinor-KV)
+    under a regression gate, argmax reported. (Distinct from E_CPU_6's KSTE
+    overlay — this is the foundational lossy KV codec, KSTE is the sieve signature.)
+  - **GEN_KV — persistent-KV O(n) decode loop.** A KV cache stores
+    position-finalized (post-RoPE) K/V so decode steps append one token without
+    re-rotating. Gate: **argmax-identity** with the O(n²) `qwen3_generate`
+    (greedy sequence equals greedy sequence) under `SP_CPU_SCALAR=1` — NOT
+    bit-equal logits, because the incremental and re-prefill paths reduce
+    different-length softmax sums and so legitimately differ by the
+    float-reassociation floor (§8.6.1). Composes with `SP_KV_SPINOR` (the cache
+    may hold Spinor blocks).
+
 ### 8.3 Phase 2-CU (CUDA backend)
 
 - **Build env.** `scripts/env/env-cuda.bat`. Pinned to CUDA 12.4 + VS2019

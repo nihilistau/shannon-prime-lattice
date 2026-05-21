@@ -49,11 +49,21 @@ The CPU engine now generates readable text end-to-end (Qwen3-0.6B):
 - **Validation = byte-for-byte parity with stock llama.cpp.** Algorithm first proven in `tools/oracle/bpe_proto.py` (committed parity oracle), then ported. **TOK_ENCODE** (`tests/test_tokenizer.c`): (a) `encode(REF_PROMPT)` == ref.bin's exact **31 IDs**; (b) `decode(encode())` round-trips; (c) 4 parity cases dumped from the oracle — **ml** (CJK + accented Latin + Devanagari combining marks, 23 IDs), **digits** (Qwen2 single-digit split), **ws** (whitespace backtrack), **specials** (`<|im_start|>`…). 22 checks, 0 fails. Full CPU suite **10/10 green** (MSVC/Ninja).
 - **Oracle fix:** `tools/oracle/dump_logits.cpp` now accepts `@file` to read the prompt from a UTF-8 file — Windows `argv` mangles multibyte UTF-8 into mojibake (this corrupted the first multilingual probe). New helpers: `gguf_peek.py`, `gen_encode_fixture.py` (see `tools/oracle/README.md`).
 
+### 2026-05-22 — Foundational compression stack: Q4 weights, VHT2 KV, O(n) decode
+
+Contract amended first (roadmap **§8.2.1**, dated block): added E_CPU_7/E_CPU_8/GEN_KV as explicit Phase-2-CPU gates (the §4.8/§4.9 "foundational" compression that the original six items only partly covered — E_CPU_3 was Q8 weights, E_CPU_6 was the *KSTE sieve* overlay, neither is Q4 nor the VHT2 KV codec). All gates default OFF (regression invariant holds). All quality measured vs the engine's **pure-f32** path (§8.6.1), on Qwen3-0.6B.
+
+- **E_CPU_7 — Q4 inline weight compression** (`SP_ENGINE_FROB=3` inline / `=4` dequant-ref; `src/forward/forward.c` `matmul`). Symmetric 4-bit codes `[-7,7]` packed two-per-byte (`q4_pack`/`q4_unpack`), per-row scale, dequant `q·s/7`. **Mixed precision:** per-row weight-only sensitivity (rel-L2 of the Q4 round-trip) promotes high-error rows to Q8 — threshold `SP_Q4_PROMOTE` (default 0.25). **v1 calibration is weight-only; activation-based calibration is the Phase-4 refinement** (roadmap §4.4/§7.5), promotion-mask hook left in place. **Measured:** lift |Δ|max 1.37e-4 (inline==dequant), 2.9% rows promoted, Q4-vs-f32 KL mean 0.72 / argmax 17/31 (lossy by design — real quality is T_FRO_4). `qwen3_q4_stats()` reports the promotion rate. **NOTE:** the Q4 quant/pack primitive should migrate into `core/frobenius` next to Q8 so CUDA/VK/HX share it (kept engine-local this push to stay in one repo).
+- **E_CPU_8 — Inline VHT2+Spinor KV compression** (`SP_KV_SPINOR=1`; `kv_spinor_roundtrip`). Each post-norm/post-RoPE K and post-proj V head vector (head_dim=128) → ⌈128/55⌉=3 frozen 63-byte Spinor blocks (balanced 43/43/42; **frozen layout untouched**), decoded back lossily before attention reads it. Gate OFF ⇒ bit-identical. **Measured:** KL mean 2.18e-2 / argmax 29/31 (much gentler than Q4). Distinct from E_CPU_6 KSTE.
+- **GEN_KV — persistent-KV O(n) decode** (`qwen3_generate_kv`, `src/forward/forward.c`). Position-indexed K/V cache, stores K/V **post-RoPE**, weight matmuls run once per token (O(n)) vs `qwen3_generate`'s re-prefill (O(n²)). Honors FROB/SCALAR/KV_SPINOR. Gate = **sequence (argmax) identity** vs the O(n²) ref under `SP_CPU_SCALAR=1` (not bit-equal logits — different softmax-sum lengths hit the reassoc floor). **24/24 generated tokens identical.**
+
+Env reads factored into `read_env_knobs()` (shared by prefill + decode). Engine knobs still all default OFF.
+
 **Next pickup (in order, per user 2026-05-22):**
 
-1. **KV-cache decode loop** (O(n) generation) — `qwen3_generate` is currently recompute-the-prefix O(n²). Add a persistent-KV decode path, validated for token-identity against the existing loop. (Tokenizer encode — prerequisite — is now DONE.)
-2. **T_FRO_4** — Gemma3-1B PPL (`d:\Files\models\Mine\gemma-3-1b-it\gemma-3-1b-it-f16\`). Needs a **second architecture** (Gemma3: different norms/attention, SentencePiece tokenizer — not GPT2-BPE) + a PPL loop. Substantial.
-3. **2-CU CUDA backend** (§8.3) — E_CU_1..6 mirror CPU, output vs CPU within 1e-3. CUDA 12.4 + VS2019 BT (`reference_cuda_build_recipe`); roadmap flags fragility.
+1. **T_FRO_4** — Gemma3-1B PPL (`d:\Files\models\Mine\gemma-3-1b-it\gemma-3-1b-it-f16\`). Deferred this push. Needs a **second architecture** (Gemma3: different norms/attention/softcap, SentencePiece tokenizer — not GPT2-BPE) + a PPL loop. Substantial; its own session.
+2. **Q4 → core/frobenius migration** (so CUDA/VK/HX share the primitive) + **activation-based Q4 calibration** (Phase-4 refinement of the weight-only v1).
+3. **2-CU CUDA backend** (§8.3) — E_CU_1..8 mirror CPU, output vs CPU within 1e-3. CUDA 12.4 + VS2019 BT (`reference_cuda_build_recipe`); roadmap flags fragility.
 
 ## Closed subphases — 2-CPU.C–F (2026-05-22; commits 3e6ebee/1d033b4/9c65af7 + E_CPU_6)
 
