@@ -859,8 +859,16 @@ and so on.
     mean — because the inner product is *exact* (only int32 quant deviates),
     this meets the tight T_PR_2 bound end-to-end, unlike the F16/FMA gaps of
     E_CPU_2/E_CPU_4.
-  - E_CPU_6 — KSTE KV-cache encode/decode round-trip identical bytes.
-    Sieve OFF; this only exercises the encoder.
+  - E_CPU_6 — KSTE KV-cache overlay (`qwen3_forward_ex` with a `kv_trees`
+    sink; production gate `SP_KSTE_KV=1`), sieve OFF, encoder only. KSTE is a
+    one-way deterministic encoder (no decode), so the "round-trip identical
+    bytes" is byte-identical determinism + store/load: each post-norm/post-RoPE
+    K head-vector (int32-quantized) is encoded to its 64-byte signature, and
+    the test asserts (1) two independent prefills produce byte-identical
+    signatures, (2) every signature survives a store/load unchanged and carries
+    the frozen wire form (version/branching/depth/reserved + k=head_dim), (3)
+    distinct K vectors give distinct signatures. Measured on Qwen3-0.6B: 6944
+    signatures (28×31×8), all deterministic + wire-valid.
 - **Notes for picking up.** CPU is the canonical track because it has
   the fewest build dependencies. Bring up CPU first if any other
   backend is blocked; using CPU outputs as the ground truth for the

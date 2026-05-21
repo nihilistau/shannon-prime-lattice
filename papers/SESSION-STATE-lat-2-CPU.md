@@ -2,7 +2,7 @@
 
 **Phase:** 2-CPU — engine, CPU backend (`shannon-prime-system-engine`).
 **Session date:** 2026-05-21, extended 2026-05-22.
-**Status:** **2-CPU.A done (E_CPU_1). 2-CPU.B done (E_CPU_2 green 2026-05-22).** GGUF loader, Qwen3 config+bind (MODEL_BIND), and the full f32 forward pass all pass. Engine ctest 3/3. Next: 2-CPU.C (E_CPU_3 Frobenius/Q8).
+**Status:** **Phase 2-CPU CLOSED 2026-05-22 — all six E-tests green (engine ctest 7/7 incl. MODEL_BIND).** E_CPU_1 loader, E_CPU_2 forward (distributional gate), E_CPU_3 Frobenius/Q8, E_CPU_4 AVX2, E_CPU_5 NTT-attention (meets literal T_PR_2), E_CPU_6 KSTE KV. Per §8.6 this is the canonical-anchor close → tag `lat-phase-2-closed`. Remaining for full Phase 2: T_FRO_4 (Gemma3-1B PPL) and the other backends (2-CU/VK/HX).
 
 ---
 
@@ -39,14 +39,20 @@ Engine tests use the math-core `sp/sp_test.h` harness (via the submodule). Refer
 
 E_CPU_1, MODEL_BIND, E_CPU_2 are green. Remaining subphases:
 
-1. **2-CPU.C — Frobenius/Q8 matmul** (`sp_frob_*`) → **E_CPU_3**. Diff the Frobenius/Q8 logits against the **engine's own pure-f32 `qwen3_forward` logits** (same arithmetic + accumulation order), **NOT** against ggml — tolerance ~1e-3 rel. Quantize against the pure-f32 path, never `SP_ENGINE_F16_ACT`. (Rationale: §8.6.1 / `reference-ecpu2-qknorm-precision-gate` — the ggml precision gap must not propagate.) The matmul to swap is the single `matmul()` in `forward.c`; keep the scalar f32 path as the reference under an env gate.
-2. **2-CPU.D** AVX2/512 matmul vs scalar within 1e-6 (E_CPU_4); **2-CPU.E** NTT-attention (sieve OFF, `sp_pr_*`) within T_PR_2 (E_CPU_5); **2-CPU.F** KSTE KV behind `SP_KSTE_KV=1` (E_CPU_6). **T_FRO_4** (Gemma3-1B PPL, `d:\Files\models\Mine\gemma-3-1b-it\gemma-3-1b-it-f16\`).
-   - Qwen GPT2-BPE **tokenizer** (vocab+merges in the GGUF `tokenizer.ggml.*` arrays) needed for real prompts/PPL; build when generation/PPL is required (the E-tests use raw token IDs from `ref.bin`).
-3. **Close 2-CPU:** 6/6 green → tag `lat-phase-2-closed` (both repos) → offload + push.
+**2-CPU.C–F all closed 2026-05-22** (commits 3e6ebee/1d033b4/9c65af7 + E_CPU_6):
 
-### Forward-pass reference (for the alternate-kernel subphases)
+- **E_CPU_3** Frobenius/Q8 (`SP_ENGINE_FROB`): inline-lift==dequant-ref (1e-4); Q8-vs-f32 KL ~2e-2 (per-row Q8 lossy by design, argmax reported not gated).
+- **E_CPU_4** AVX2 (`dot_f32`, `/arch:AVX2`; `SP_CPU_SCALAR=1` forces scalar): argmax 31/31, |Δ| 1.7e-4 (reassoc floor, not 1e-6 — §8.6.1).
+- **E_CPU_5** NTT-attention (`SP_ENGINE_NTT_ATTN`, exact `sp_pr_inner`, int32 scale 2^16): KL 2.7e-10 ≤ 1e-7 (literal T_PR_2).
+- **E_CPU_6** KSTE KV (`qwen3_forward_ex` + `kv_trees`, gate `SP_KSTE_KV=1`): 6944 signatures deterministic + wire-valid.
 
-embed → per layer { RMSNorm(attn_norm) → Q/K/V proj → per-head QK-RMSNorm (over head_dim, BEFORE RoPE) → NEOX RoPE (base 1e6) → GQA attention (16 q / 8 kv, group 2; causal; fp32 softmax; scale 1/√128) → O proj → residual → RMSNorm(ffn_norm) → SwiGLU → residual } → RMSNorm(output_norm) → LM head. ggml weight layout `[ne0=in, ne1=out]`, `y[j]=Σ_i W[i+j*in]·x[i]`, dequant via `sp_dequant_row`.
+Engine env knobs all default OFF (pure-f32 reference): `SP_ENGINE_F16_ACT`, `SP_ENGINE_FROB={1,2}`, `SP_CPU_SCALAR`, `SP_ENGINE_NTT_ATTN`, plus build-time `SP_ENGINE_WITH_AVX2/AVX512`.
+
+**Truly next (not blocking the CPU close):** **T_FRO_4** (Gemma3-1B PPL, `d:\Files\models\Mine\gemma-3-1b-it\gemma-3-1b-it-f16\`) — needs a real tokenizer (Qwen/Gemma GPT2-BPE: vocab+merges in GGUF `tokenizer.ggml.*`; the E-tests use raw token IDs from `ref.bin`, no tokenizer). Then other backends **2-CU/VK/HX** (§8.3–8.5) mirror the CPU set, output vs CPU within 1e-3 rel.
+
+### Forward-pass reference
+
+embed → per layer { RMSNorm(attn_norm) → Q/K/V proj → per-head QK-RMSNorm (over head_dim, BEFORE RoPE) → NEOX RoPE (base 1e6) → GQA attention (16 q / 8 kv, group 2; causal; fp32 softmax; scale 1/√128) → O proj → residual → RMSNorm(ffn_norm) → SwiGLU → residual } → RMSNorm(output_norm) → LM head. ggml weight layout `[ne0=in, ne1=out]`, `y[j]=Σ_i W[i+j*in]·x[i]`, dequant via `sp_dequant_row`. Oracle harness: `tools/oracle/{dump_logits,dump_layers,rope_check,attn_check}` (link clean llama.cpp, f32 KV + flash-attn off).
 
 ## Open / notes
 
