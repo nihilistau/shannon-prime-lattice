@@ -1,668 +1,971 @@
 # PPT-LAT-Roadmap
 
 **Project:** shannon-prime-lattice
-**Document:** Implementation Roadmap
-**Audience:** Future Claude sessions and human contributors picking up phases
-**Status:** Canonical. This document defines the order of work and the gates that separate phases.
-**Sister documents:** `PPT-LAT-Theory.md` (the math), `PPT-LAT-Systems.md` (the architecture).
+**Document role:** Operational roadmap. Read by every future session before doing work.
+**Status:** Living document. Mutable. Papers are scaffolding, not artefacts.
+**Last rewrite:** 2026-05-21
+**Authors:** Knack + Claude + Gemini (Shannon-Prime team)
 
 ---
 
-## 0. How to read this document
+## 0. Read-this-first
 
-This is the operational doc. If you are a session opening this file at the start of a working block:
+This document supersedes the prior linear v1 roadmap that staged work as
+KSTE → engine → multi-node. That framing was too narrow. The project now
+spans four parallel engine backends, four (and growing) model families,
+inline weight and KV-cache compression as **foundational** (not an
+opt-in feature), and the Lattice blockchain track running in parallel
+with the inference work.
 
-1. Find the lowest-numbered phase whose exit conditions are not all satisfied.
-2. Read that phase in full, plus every phase listed in its **Dependencies** line.
-3. Read the most recent `SESSION-STATE-lat-<phase>.md` so you know where the previous session stopped.
-4. Re-read the three binding policy sections later in this doc: **The contract system**, **The offload pattern**, **Anti-contamination rule**.
-5. Begin work. Do not skip ahead — later phases depend on invariants the earlier gates prove.
+Two binding rules govern every session that picks up this roadmap:
 
-Each phase is self-contained. You should not need to read source code in `D:\F\shannon-prime-repos\shannon-prime\` or `D:\F\shannon-prime-repos\shannon-prime-engine\` to do the work.
+1. **Anti-contamination rule.** Do **not** read, copy, vendor, or reach
+   into source files under `D:\F\shannon-prime-repos\shannon-prime\` or
+   `D:\F\shannon-prime-repos\shannon-prime-engine\`. Those repositories
+   exist for archival reference only. The math papers under
+   `D:\F\shannon-prime-repos\papers\PPT-ARM\` are **conceptual reference**
+   — read them for theory, never paste code from them. This project
+   rebuilds everything from scratch. Cross-pollination has already
+   produced regressions in this organization at least ten times in six
+   months. The memory item `feedback_no_cross_contamination` is
+   load-bearing here.
+
+2. **Papers are scaffolding, not artefacts.** PPT-LAT-Theory.md,
+   PPT-LAT-Systems.md, and this file are the lattice from which the
+   system is built, not finished publications. Sessions may amend any of
+   them when reality contradicts the design. The blockchain protocol
+   spec in particular is expected to evolve.
+
+If those two rules feel restrictive, that is the point. The previous
+sessions that ignored them produced the artefacts collected in the
+`feedback_no_cross_contamination` and `feedback_dont_frankenpatch`
+memory items.
 
 ---
 
-## 1. Phase summary table
+## 1. Why the scope expanded
 
-| Phase | Goal | Est. wall-clock (focused dev) | Gate |
-|-------|------|-------------------------------|------|
-| 0 | Bootstrap: repos, README, LICENSE, CI scaffolding, contract format | 1 day | Three repos exist, push green, CI runs no-op test |
-| 1 | KSTE encoder (pure C reference) | 5–7 days | 11/11 unit tests pass on Linux + Windows |
-| 2 | Dominance order and incomparability sieve | 4–5 days | 10/10 tests; sieve maintains invariants under random insertion |
-| 3 | ARM (HRR in CRT cyclotomic ring) | 4–5 days | 6/6 tests; capacity curve matches Theory section 4 |
-| 4 | CRT NTT primitives (dual-prime, Barrett) | 5–6 days | 5/5 tests; bit-exact vs schoolbook |
-| 5 | Engine bootstrap: GGUF loader, forward pass, math core wired | 10–14 days | E1: forward pass produces expected logits on canonical input |
-| 6 | Two-node CRT-sharded inference demo | 5–7 days | E2: bit-identical output to single-machine |
-| 7 | KSTE-encoded crawl cache (single node) | 4–6 days | E3: deduplication ratio measured on reference corpus |
-| 8 | DHT + position-as-arithmetic crawl assignment | 7–10 days | E4: load balancing under skewed URL distribution |
-| 9 | ARM gossip aggregation | 5–7 days | E5: aggregated state converges across nodes |
-| 10 | Verification layer (commitments, dominance proofs, slashing sim) | 7–10 days | E6: FP/FN rates under adversarial bindings within target band |
-| 11 | Token economy simulator (two-token issuance) | 5–7 days | E7: equilibrium under contributor mixes |
-| 12 | End-to-end three-node pilot on three real machines | 10–14 days | Throughput, latency, dedup ratio, fairness all measured and documented |
+The original v1 roadmap presumed a single hot path: build KSTE, wire it
+into one engine, demonstrate dedup, layer blockchain on top. Three
+realities forced the expansion:
 
-Totals: roughly **72–108 focused working days** for the whole stack to walk end-to-end on three machines. The wide band reflects the difficulty of Phase 5 (engine bootstrap) and Phase 10 (verification) more than anything else.
+- **Backend reality.** Real users sit on RTX 3000/4000, on Apple Silicon
+  via Vulkan-MoltenVK, on Snapdragon phones with Hexagon DSP and HTP
+  V69, and on Linux servers with AVX-512. A single-backend prototype
+  cannot be promoted to a production system. Each backend has its own
+  build environment, kernel idioms, and bring-up bugs. The roadmap
+  treats them as four parallel tracks because trying to serialize them
+  costs months for no architectural gain.
+
+- **Model-family reality.** Llama 3.x, Qwen3.0–3.7, Gemma 2.5/3/4, and
+  DeepSeek V4 do not share enough surface area to let one model carry
+  the lattice features alone. They differ in RoPE shape, attention
+  grouping, FFN topology (dense vs MoE), normalisation, and tokenisation.
+  The roadmap therefore plans for an explicit model-family × backend
+  matrix (a 7-row × 4-column grid in Phase 3), and assumes that filling
+  this matrix is the project's centre of mass.
+
+- **Compression-foundation reality.** Inline Q8 weight storage with
+  Frobenius scale, Q4 mixed-precision under calibration, and VHT2 +
+  Möbius + Spinor KV-cache compression are not "features that may be
+  enabled later." They are the **load-bearing memory layout** that makes
+  long-context, multi-model, multi-backend inference fit at all. The
+  roadmap treats compression as bedrock, not topping.
+
+The Lattice features themselves — KSTE dedup, ARM gossip aggregation,
+dominance verification, two-token economy, blockchain protocol — layer
+on top of the compressed-inference stack and are off-by-default behind
+environment-variable gates until they are individually proven.
 
 ---
 
-## 2. Phase-by-phase
+## 2. Phase summary table
 
-### Phase 0 — Bootstrap
+| Phase | Title | Goal in one line | Gate (must pass before advancing) | Wall-clock estimate |
+|-------|-------|------------------|-----------------------------------|---------------------|
+| 0 | Bootstrap | Repos, papers, env scripts, workspace | DONE | DONE |
+| 1 | Math core foundations | O_K, CRT-NTT, poly-ring, VHT2, Frobenius, KSTE built and tested in isolation | All T_* unit tests green on Win+Linux | 3–4 weeks |
+| 2-CPU | Engine, CPU backend | Reference forward pass + compressed weights + NTT attention on x86 | E_CPU_1..E_CPU_6 green | 4–6 weeks |
+| 2-CU | Engine, CUDA backend | Same scope as 2-CPU on NVIDIA GPU | E_CU_1..E_CU_6 green | 4–6 weeks |
+| 2-VK | Engine, Vulkan backend | Same scope as 2-CPU on cross-platform GPU | E_VK_1..E_VK_6 green | 6–8 weeks |
+| 2-HX | Engine, Hexagon backend | Same scope as 2-CPU on Snapdragon HTP V69 | E_HX_1..E_HX_6 green | 8–10 weeks |
+| 3 | Model-family expansion | All four backends host all seven model families | M_*×B_* matrix green | 8–12 weeks |
+| 4 | Inline cache compression validated | PPL drift and memory savings measured per backend × model | Drift ≤ 1% on calibrated families | 4 weeks |
+| 5 | Lattice features (sieve, ARM, dominance) | Off-by-default ENV-gated overlays | Regression suite green when gates off | 6 weeks |
+| 6 | Two-node CRT-sharded inference demo | Dual-prime forward pass across two boxes | End-to-end demo run | 3 weeks |
+| 7 | DHT crawler skeleton | Kademlia-like routing, single-node first | Two-node lookup works | 3 weeks |
+| 8 | Position-as-Arithmetic crawl assignment | Prime-factored lattice key space drives shard ownership | Deterministic re-assignment proven | 2 weeks |
+| 9 | ARM gossip aggregation | Capacity-bounded HRR merge across peers | Capacity curve plotted | 3 weeks |
+| 10 | Verification layer | Spot-check via ⪯_d, slashing simulator | Slashing simulator stable | 4 weeks |
+| 11 | Two-token economy simulator | Discovery vs work-token dynamics | Equilibrium observed in simulator | 3 weeks |
+| 12 | Blockchain protocol design | Protocol scaffolding; simulator-only first | Simulator passes 1k-block run | 6 weeks |
+| 13 | End-to-end pilot | 3 nodes, full stack, real metrics | Pilot report delivered | 4 weeks |
 
-**Goal.** Stand up the three repositories so subsequent phases have a place to live, a way to be tested, and a fixed naming convention. Administrative, but skipping the unglamorous bits is where technical debt accumulates.
+Wall-clock estimates assume one solo developer plus AI agents working a
+standard week. They are **planning numbers**, not commitments. The phase
+gates are non-negotiable. The estimates are.
 
-**Deliverables.**
-- `shannon-prime-lattice/` (umbrella repo, PRIVATE on GitHub):
-  - `README.md` — what the project is, who it is for, how to clone and build the three repos as a set
-  - `LICENSE` — copy in chosen license verbatim
-  - `.gitignore` — language-aware, covers C, C++, Python, Rust, CMake build dirs, IDE droppings
-  - `papers/` — contains this file plus `PPT-LAT-Theory.md`, `PPT-LAT-Systems.md`, and the `PPT-ARM/` math reference subfolder
-  - `BUILD-ENV.md` — exact toolchain versions for Windows (VS2022 + CUDA), Linux (gcc, clang), and any cross-compile targets
-  - `NAMING.md` — naming conventions (see below)
-  - `CONTRACT-FORMAT.md` — the template every phase deliverable list follows
-  - `.github/workflows/ci.yml` — placeholder CI that runs the no-op test
-- `shannon-prime-system/` (math core, PRIVATE on GitHub):
-  - `README.md` — scope statement, dependencies (none on lattice or engine), license
-  - `CMakeLists.txt` — top-level, builds nothing yet but sets the project name, C11 standard, warnings-as-errors
-  - `src/`, `include/`, `tests/` empty dirs with `.gitkeep`
-  - `.github/workflows/ci.yml` — runs `cmake -B build && cmake --build build && ctest --test-dir build` (will pass with no tests for now)
-- `shannon-prime-system-engine/` (engine, PRIVATE on GitHub):
-  - same skeleton as `shannon-prime-system`
-  - declares dependency on `shannon-prime-system` via CMake `FetchContent` or submodule (pick one in Phase 0 and stick with it)
+### 2.1 How to read the phase table
 
-**Naming conventions** (write to `NAMING.md`):
-- C symbol prefix is `sp_` for the math core and `spe_` for the engine.
-- File names are lowercase with underscores: `sp_kste.c`, `sp_arm.c`, `spe_loader.c`.
-- Public headers expose only `sp_<module>_*` or `spe_<module>_*` symbols. Static helpers in `.c` files are not prefixed.
-- Tests live in `tests/test_<module>.c` and register with CTest one test target per module.
-- Document everything in Markdown only. No reStructuredText, no Sphinx. Long-form goes in `papers/`.
+A few notes on interpreting the table above for sessions picking up the
+project cold:
 
-**Contract format** (write to `CONTRACT-FORMAT.md`):
+- The phases are not strictly serial. Phase 2's four backends are four
+  parallel tracks. Phase 3's matrix is up to 28 parallel cells. Sections
+  3 and 20 below detail which work can overlap.
+- A **gate** is a binary go/no-go check. If a gate fails, the phase is
+  not closed and no later phase that lists it as a dependency may
+  start. The estimates are not gates and may slip without changing the
+  go/no-go status.
+- The phase numbering survives reorganisation. If a future session
+  decides Phase 8 should split into 8a and 8b, the table grows
+  vertically; existing phase numbers do not shift. This is what makes
+  the `lat-phase-<n>-closed` tags durable.
+
+### 2.2 The big picture in one paragraph
+
+The project rebuilds the Shannon-Prime mathematical machinery from
+scratch (Phase 1), wires it into four engine backends (Phase 2), spreads
+it across the in-scope model families (Phase 3), validates inline
+compression end-to-end (Phase 4), layers the Lattice-specific
+content-dedup features on top behind environment gates (Phase 5),
+demonstrates two-machine sharded inference (Phase 6), grows the
+distributed-system layer (Phases 7–9), adds verification and economy
+simulation (Phases 10–11), specifies the protocol (Phase 12), and runs
+a three-node pilot (Phase 13). Every phase has a contract; sessions
+that close a phase write an offload note and tag the repository.
+
+---
+
+## 3. Anti-contamination, contracts, and offload pattern
+
+### 3.1 Anti-contamination
+
+Every Phase 1 file is created from a blank buffer. The math papers under
+`papers/PPT-ARM/` may be consulted for theorem statements; their
+implementations may not be copied. Sessions that violate this rule have
+historically produced (a) silent format drift between the new repo and
+the legacy one, (b) duplicate names that confuse later searches, and
+(c) regressions when a "shared" file in the legacy repo is updated and
+the new repo silently inherits a behaviour change.
+
+If a session feels the urge to look at the legacy code "just for
+reference," the correct move is to read the theorem statement in the
+paper and re-derive the implementation from scratch. The derivations are
+short. The bugs that come from cross-contamination are long.
+
+### 3.2 Contract system
+
+Every phase below lists:
+
+- **Goal** — one paragraph.
+- **Deliverables (file list)** — every file the phase must produce.
+- **Tests (named, gated)** — every test the phase must pass, named so
+  that future sessions can search for the exact identifier.
+- **Entry conditions** — what must be done before starting.
+- **Exit conditions** — what must be true to close the phase.
+- **Dependencies** — which other phases gate this one.
+- **Notes for the picking-up session** — what to read first, what gotchas
+  past sessions have hit.
+
+A phase is closed only when every deliverable exists, every test passes
+on both Windows and Linux (where applicable), and an offload note has
+been written.
+
+### 3.3 Offload pattern
+
+Each working session ends by writing
+`papers/SESSION-STATE-lat-<phase>.md` with: current phase, files
+touched, tests passing, tests failing, next concrete action, any open
+questions. Sessions that pick up the project read this file first, then
+this roadmap.
+
+When a phase closes, the corresponding session-state file is renamed to
+`SESSION-CLOSED-lat-<phase>.md` and a one-paragraph summary is added to
+this roadmap's "Phase log" appendix.
+
+### 3.4 VSCode workspace + build environments
+
+The workspace at
+`D:\F\shannon-prime-repos\shannon-prime-lattice.code-workspace` opens
+the four repositories the project actually touches:
+
+- `shannon-prime-system` — math primitives.
+- `shannon-prime-system-engine` — backend implementations.
+- `shannon-prime-lattice` — Lattice features + this roadmap.
+- `shannon-prime-lattice-node` — DHT / blockchain node code (later
+  phases).
+
+Build environment scripts live under
+`shannon-prime-system-engine/scripts/env/`:
+
+- `env-cpu-msvc.bat` — Windows MSVC 19.x, AVX2/AVX512 flags pinned.
+- `env-cpu-gcc.sh` — Linux gcc 12+, -march=native baseline.
+- `env-cuda.bat` — VS2019 Build Tools + CUDA 12.4, `--use-local-env`
+  flag, target SM 75/86/89.
+- `env-vulkan.bat` — Vulkan SDK 1.3.x + glslc.
+- `env-hexagon.bat` — Hexagon SDK 5.x on Windows host, Git sh.exe
+  prepended to PATH per the `reference_hexagon_build_recipe` memory.
+
+Versions are **pinned** in each script. A session that needs to bump a
+toolchain bumps the script in a dedicated commit and notes the change
+in the offload file.
+
+### 3.5 GitHub workflow
+
+All four repositories are private. Workflow is per-phase push, no pull
+requests required (solo developer plus agents). Tags are cut at each
+phase close, named `lat-phase-<n>-closed`. Commits inside a phase use
+the prefix `[lat-<phase>]` so the log is grep-able.
+
+### 3.6 Testing discipline
+
+Every phase keeps the **full regression suite green**, not just its own
+tests. This is the rule that prevents Phase 5+ Lattice features from
+silently breaking Phase 2 backends. Sessions land work behind a flag if
+they cannot make the regressions hold; turning the flag on is a separate
+commit that runs the suite again.
+
+---
+
+## 4. The math primitives — what we are recreating
+
+This section names every math primitive the project will rebuild from
+scratch and what each one is for. Implementations come in Phase 1.
+
+### 4.1 O_K integer arithmetic over Q(√-163)
+
+Q(√-163) is one of the nine imaginary quadratic fields with class
+number 1 (a Heegner number). The ring of integers O_K is a unique
+factorisation domain. We choose Q(√-163) specifically because:
+
+- UFD means every nonzero non-unit factors uniquely (up to units and
+  order) into irreducibles. That property anchors Möbius reconstruction
+  and lets us treat token indices as products of irreducibles without
+  ambiguity.
+- The class group is trivial. No nontrivial ideal class equivalences
+  haunt the storage layout.
+- The discriminant -163 fits comfortably in 64-bit arithmetic for the
+  norms we care about.
+
+All exact arithmetic — KSTE node values, Möbius reconstructions, ARM
+binding accumulators — happens in O_K. The implementation must support
+add, mul, conjugate, norm, division-with-remainder when the divisor's
+norm permits, and irreducible factorisation up to a configurable norm
+bound.
+
+### 4.2 Polynomial-ring attention over R_q = Z_q[x]/(x^N+1)
+
+R_q is the negacyclic polynomial ring used by CKKS and most modern
+lattice cryptosystems. We use it as a **replacement for the softmax
+attention kernel**: queries, keys, and values are encoded as polynomials
+in R_q; the inner-product step becomes a polynomial multiplication
+modulo (x^N + 1); the softmax becomes a p-adic exponential on the
+coefficients followed by a normalisation pass.
+
+Phase 1 targets N = 256 (matching the per-head dimension of the
+current model targets) and parameterises N over {128, 256, 512, 1024}
+so that all four sizes share a single code path.
+
+### 4.3 CRT-NTT dual-prime kernel with no __int128
+
+Multiplying in R_q efficiently requires the Number Theoretic Transform.
+We use a dual-prime CRT decomposition so the kernel never needs 128-bit
+arithmetic and ports to any 64-bit ALU including Hexagon and Vulkan
+compute shaders.
+
+- q1 = 1073738753, q2 = 1073732609 (two 30-bit Proth primes).
+- Each prime has a primitive 2N-th root of unity for N up to 1024.
+- The combined modulus M = q1·q2 ≈ 2^60 carries the full result without
+  overflow.
+- CRT recombination uses Barrett reduction; no 128-bit divide.
+
+Independent NTT branches run per prime. Bit-exactness is checked against
+a reference 60-bit __int128 implementation that exists **only as a
+parity oracle** (compiled out of production builds).
+
+### 4.4 Frobenius lifting for Q8 / Q4 weight storage
+
+Frobenius lifting takes a quantised weight stored as a small integer
+plus a per-row shift and decompresses it inline at matmul time. The
+per-row Frobenius scale is the key design choice: a single per-tensor
+shift collapses to noise on Q4 (the cautionary tale from prior
+validation), while per-row shifts hold accuracy.
+
+- Q8: 1 byte per coefficient + per-row scale. 8× memory compression of
+  the unquantised arena. Production target.
+- Q4: 4 bits per coefficient + per-row scale + calibration table.
+  Mixed-precision path; gated on a per-tensor calibration that may
+  promote outlier rows to Q8.
+
+Decompression is fused into the matmul kernels, not done as a separate
+pass. There is no decoded scratch arena in production builds.
+
+### 4.5 VHT2 + Möbius reorder + 63-byte Spinor block
+
+The KV cache is stored as a sequence of 63-byte Spinor blocks. Each
+block carries:
+
+- A VHT2 (Vilenkin Hierarchical Transform) header that describes which
+  basis vectors the block compresses.
+- A Möbius-reordered coefficient body.
+- A trailing checksum byte.
+
+The byte layout is **frozen** the moment Phase 1D ships. Future sessions
+do not adjust it without a compatibility migration plan. The cache file
+format and the on-wire DHT format both reference this layout, so a
+silent change breaks every node on the network simultaneously.
+
+### 4.6 KSTE encoder + Tier-0/Tier-1 dominance
+
+The Knight-Spinor Tree Encoder maps a K-vector into a 64-byte packed
+tree in T_{60,3}. The encoder is deterministic, lossless under the
+dominance partial order, and produces a compact signature suitable for
+hashing.
+
+Tier-0 dominance compares roots. Tier-1 dominance compares the first
+level of children. The Lattice dedup mechanism uses Tier-0 to bucket
+content into rough equivalence classes and Tier-1 to confirm a match
+before counting it as a duplicate. The encoder must produce identical
+output on every backend so that two nodes can compare signatures
+without a tie-break protocol.
+
+### 4.7 ARM — Algebraic Resonance Memory
+
+ARM stores HRR-style key-value bindings in the CRT cyclotomic ring.
+Binding is a polynomial multiplication; recall is an inverse-binding
+multiplication followed by a similarity search. The choice of the CRT
+cyclotomic ring is what lets ARM share its kernel inventory with the
+poly-ring attention layer: a single NTT-based pointwise multiply
+serves both. Storing ARM bindings as 63-byte Spinor blocks would in
+principle work too; in practice we store the polynomial coefficients
+directly because ARM banks are written-once-read-many and benefit from
+a flat layout.
+
+Phase 1 ships ARM as a single-node primitive. Phase 9 layers gossip on
+top so peers can merge their ARM banks with bounded capacity loss. The
+capacity bound is the usual HRR sqrt-K bound: with K bindings packed
+into a single ring element of dimension N, recall accuracy degrades as
+roughly sqrt(K/N). For N = 256 this means a slab holds about 16
+high-confidence bindings before recall fidelity drops below 0.9 cosine
+similarity, which is the threshold the Phase 9 capacity-curve
+experiment will report against.
+
+### 4.8 Inline weight compression as a foundation, not a feature
+
+The single most consequential design choice in this roadmap is that
+inline Q8 (and eventually Q4) weight storage is not an optional
+optimisation but the **default memory layout**. Every backend's matmul
+kernel reads packed bytes and applies the per-row Frobenius scale
+inline; there is no decoded fp32 arena that holds the same weights in
+expanded form. The reason this matters is twofold:
+
+- Memory pressure. An unquantised arena on Gemma3-1B already costs
+  10.4 GB; the Q8 packed form is 1.3 GB. The unquantised arena does
+  not fit on the phone path at all, and it costs 8× the network
+  transfer on the multi-node CRT-shard path.
+- Bandwidth determinism. Every backend uses the same packed byte
+  layout, so cross-backend verification compares bytes for bytes
+  rather than fp32 approximations. This is what makes the
+  cross-backend determinism test (OQ-8) tractable at all.
+
+The cost of treating compression as foundational is that every backend
+must implement the packed-byte matmul before any larger model can be
+brought up. Sessions that attempt to "do correctness first, compression
+later" hit a wall when the unquantised path runs out of memory on the
+test rigs and need to backtrack to compression-first anyway.
+
+### 4.9 Inline KV-cache compression as a foundation
+
+The same logic applies to the KV cache. The Spinor block layout
+specified in §4.5 is the only KV layout in the production paths.
+There is no "uncompressed KV cache" mode in production builds; the
+reference fp32 cache exists for the parity tests only, compiled out
+of release builds. The reason is identical to the weight-compression
+case: long-context inference does not fit on any of the target
+backends without KV compression, and the CRT-shard and DHT paths
+both consume the on-disk and on-wire byte layout directly, so the
+production format has to match from day one.
+
+---
+
+## 5. The 13-step Prime Power Transformer (canonical table)
+
+The replacements below are the canonical algebraic interpretation of
+every step in a transformer forward pass under the PPT framework. They
+are reproduced verbatim from Paper I §10 so future sessions can grep for
+the exact wording.
+
+| Step | Operation | Algebraic replacement |
+|------|-----------|------------------------|
+| 1 | Embedding lookup | Möbius reconstruction over squarefree token indices; CRT vocabulary sharding |
+| 2 | RMSNorm (pre-attn) | Mersenne-prime scaling; Poncelet closure d²=R²−2Rr |
+| 3 | Q/K/V projections | Twin-prime head pairing; sexy-prime 6:1 GQA grouping |
+| 4 | SP Write (KV → archive) | Poncelet closure as eviction trigger; CRT-sharded KV |
+| 5 | FUSED_KQ | UFD-exact decompression; Heegner endomorphism |
+| 6 | Softmax | p-adic exponential on integers; circulant attention on closed orbits |
+| 7 | Fused V weighted sum | Spinor reconstruction across twin-paired heads |
+| 8 | Attention output projection | CRT decomposition of W_O into independent sub-matrices |
+| 9 | FFN (skeleton + residual) | Mersenne-dimensional skeletons; n²+n+41 cold-start |
+| 10 | Activation oracle update | Cramér prime-gap prefetch; Poncelet early exit |
+| 11 | Residual add + norm | Group-law residual on E(K) |
+| 12 | Per-layer loop | nδ≡0 adaptive depth; caustic projection |
+| 13 | LM head | CRT pruning of vocabulary logits; Mersenne-prime sampling |
+
+This is the operational mapping from "what the model does" to "what we
+build." Every Phase 2 backend ultimately wires these thirteen steps into
+its forward pass. Every Phase 3 model family threads the same table
+through its specific topology.
+
+---
+
+## 6. Theorems and extensions on the anchor
+
+Treat the following as the "already proven" set. Sessions do not need
+to re-prove them; they need to call out when an implementation
+contradicts them.
+
+- **T1 — Endomorphism realization.** A hidden-state trajectory through
+  L transformer layers embeds in the L-fold product of an elliptic curve
+  E over O_K. Layer composition is endomorphism composition.
+- **T2 — Möbius UFD compression.** Exact reconstruction over O_K is
+  possible at the squarefree basis. This is the theoretical anchor for
+  the squarefree token index in step 1.
+- **T3 — Hasse–Weil = Shannon limit.** The Hasse–Weil bound
+  |E_p(F_p) − (p+1)| ≤ 2√p coincides with the Shannon-channel capacity
+  bound applied to the CM curve. The two limits are the same constant
+  to within a unit.
+- **T4 — Frobenius cancellation.** On Gemma3-1B, the Frobenius lift is
+  bit-identical to six significant figures. The validation produced PPL
+  13.11 against a baseline of 13.12 (delta 0.08%). This number is the
+  acceptance criterion for any new model under the same Frobenius
+  configuration.
+- **T5 — Deuring / CM Sato-Tate.** The Frobenius trace a_p is
+  asymmetrically distributed between primes that split and primes that
+  remain inert in O_K. This asymmetry is what makes class-number-1
+  fields work for compression — the inert primes carry more bits per
+  symbol.
+- **T6 — CRT exact sharding.** The dual-prime kernel is bit-identical
+  to the 60-bit reference on Linux gcc and Windows MSVC. Portability
+  across any 64-bit ALU is implied.
+- **E9.1 — Stern-Brocot RoPE.** Discrepancy φ = 0.00134 against 0.05576
+  for standard RoPE. The Stern-Brocot positional encoding is a strict
+  improvement on quasirandomness grounds.
+- **E9.2 — Weil pairing on E[n].** Miller's algorithm validated;
+  bilinearity confirmed empirically. The pairing math is solid; the
+  open research question is the embedding from hidden states into E[n].
+- **E9.3 — Hecke multiplicativity.** 20 of 20 random trials confirm the
+  Hecke operator multiplicativity at composite levels.
+- **E9.5 — LLL reduction.** 20 of 20 trials confirm LLL-reduced bases
+  produce smaller KV-write footprints than the naive basis.
+- **E9.6 — BSD analytic rank.** Toy curves verified via Sage. Not
+  load-bearing for the production system; included for completeness.
+- **E10 — Iwasawa μ=0.** Residual-stream depth stability follows from
+  the μ=0 conjecture in the relevant Z_p-extension. The empirical
+  evidence is consistent with μ=0 on all curves tested.
+
+When a Phase 2 backend produces a result inconsistent with one of these
+theorems, the theorem is correct and the implementation is wrong.
+That is the working assumption until proven otherwise.
+
+The reason this rule reads so strongly is operational: every time a
+prior session has assumed the math was off, the math has turned out to
+be right and the bug has been in the storage layout, the kernel
+ordering, or a sign convention. The theorems above have been validated
+to six significant figures on real hardware running real models; the
+chance that a fresh backend implementation is the first place those
+theorems fail is vanishingly small compared to the chance that the
+implementation has a transposed index somewhere. The corollary is that
+when a backend disagrees with another, the older backend is the
+ground truth and the newer one is the suspect.
+
+A second corollary: do not bend the math to make the implementation
+easier. There is a recurring temptation, especially on the Phase 2-HX
+track, to drop the dual-prime CRT in favour of a single 30-bit prime
+because "the test corpus fits anyway." Resisting that temptation is
+the whole reason Phase 1B's T_NTT_5 grep gate exists. The dual-prime
+kernel is not an optimisation. It is the substrate Phase 6's two-node
+demo runs on, the substrate Phase 8's position-as-arithmetic key
+derivation reads from, and the substrate the verification layer
+audits. Collapsing it to single-prime to save bring-up time costs
+multiple later phases.
+
+---
+
+## 7. Phase 1 — Math core foundations
+
+**Goal.** Stand up every math primitive in section 4 as a standalone
+library inside `shannon-prime-system`, with deterministic unit tests
+that run on Windows MSVC and Linux gcc.
+
+**Dependencies.** Phase 0 (DONE).
+
+**Subphases run in parallel.** Phase 1A through 1F are independent
+modules. A session can pick any one without blocking the others. The
+recommended priority order — for a serial reader — is 1A → 1B → 1D → 1C
+→ 1E → 1F, because the polynomial-ring and Frobenius layers benefit
+from the CRT-NTT kernel being already in place, and KSTE wants the VHT2
+block format frozen first.
+
+**Why these particular primitives.** The Phase 1 list is not a buffet
+of mathematical curiosities. Each primitive answers a specific question
+about how the production system stores and moves bits:
+
+- O_K answers "how do we factor token indices uniquely so Möbius
+  reconstruction works without ambiguity?" The class-number-1 property
+  is the load-bearing piece.
+- The dual-prime CRT-NTT answers "how do we multiply in the cyclotomic
+  ring on every backend without needing 128-bit arithmetic?"
+- Polynomial-ring attention answers "how do we replace softmax with
+  something that lives in the same algebraic universe as the cache
+  representation, so the kernel inventory shrinks?"
+- The Spinor block answers "what is the on-disk and on-wire byte
+  layout of a single KV record?" The 63-byte frozen layout is the
+  contract.
+- Frobenius lifting answers "how do we store weights at 1 byte per
+  coefficient and still get bit-identical PPL?"
+- KSTE answers "how do we produce a content signature that two nodes
+  can compare bit-for-bit without a tie-break protocol?"
+
+Implementing all six in parallel is what makes Phase 1 fit in a few
+weeks rather than a few months. Sessions that try to serialise will
+discover that the bottleneck is rarely arithmetic — it is build
+environments, harness wiring, and offload notes. Spreading the
+implementation work across parallel subphases keeps any single
+bottleneck from gating the whole phase.
+
+### 7.1 Phase 1A — O_K arithmetic over Q(√-163)
+
+- **Deliverables.** `system/ok/ok_int.h`, `ok_int.c`, `ok_int_test.c`.
+- **Tests.**
+  - T_OK_1 — UFD verification on 256 random norms ≤ 2^20.
+  - T_OK_2 — Norm and conjugate identities (N(αβ) = N(α)N(β),
+    conj(conj(α)) = α).
+  - T_OK_3 — Multiplication closure (every product lands back in O_K
+    with correct integer coordinates).
+  - T_OK_4 — Ideal class triviality: every fractional ideal of norm
+    ≤ 2^16 is principal.
+  - T_OK_5 — Round-trip from rational integer to O_K and back.
+  - T_OK_6 — Irreducible factorisation for 1024 random norms ≤ 2^14.
+- **Entry conditions.** None.
+- **Exit conditions.** All six tests pass on Win+Linux. No undefined
+  behaviour under UBSan.
+- **Notes.** The Heegner number 163 is non-negotiable. Other Heegner
+  numbers exist (1, 2, 3, 7, 11, 19, 43, 67, 163) but only 163 has
+  the discriminant we want.
+
+### 7.2 Phase 1B — CRT-NTT dual-prime kernel
+
+- **Deliverables.** `system/ntt/ntt_crt.h`, `ntt_crt.c`,
+  `ntt_crt_test.c`, `ntt_ref_int128.c` (parity oracle, compiled out of
+  production).
+- **Tests.**
+  - T_NTT_1 — Forward/inverse round-trip on 4096 random polynomials at
+    each N ∈ {128, 256, 512, 1024}.
+  - T_NTT_2 — Bit-exactness vs `ntt_ref_int128` on Linux gcc.
+  - T_NTT_3 — Bit-exactness vs `ntt_ref_int128` on Windows MSVC.
+  - T_NTT_4 — Pointwise multiply followed by inverse equals
+    coefficient-wise modular multiplication of the original polynomials
+    (negacyclic convolution).
+  - T_NTT_5 — No 128-bit type used in the production path (static
+    assert in header, plus a grep gate in CI).
+- **Entry conditions.** None.
+- **Exit conditions.** All five tests pass.
+- **Notes.** Barrett reduction for the CRT step. Twiddle factors
+  precomputed and cached per N. The parity oracle is a regression
+  anchor for the lifetime of the project — keep it building even when
+  it is not in the production path.
+
+### 7.3 Phase 1C — Polynomial-ring attention R_q
+
+- **Deliverables.** `system/poly/poly_ring.h`, `poly_ring.c`,
+  `poly_ring_test.c`.
+- **Tests.**
+  - T_PR_1 — Polynomial multiply matches schoolbook reference at
+    N ∈ {128, 256, 512, 1024} for 1024 random polynomial pairs each.
+  - T_PR_2 — Inner-product attention KL ≤ 1e-7 versus softmax baseline
+    at d = 256 (matches the prior Gemma3 head-size result on the legacy
+    repo).
+  - T_PR_3 — Negacyclic property: x · p(x) wraps as expected (the last
+    coefficient becomes the negated leading coefficient).
+  - T_PR_4 — Cross-N stability: the same input expressed at N=256 and
+    N=512 (zero-padded) produces the same result up to the shared
+    coefficient prefix.
+- **Entry conditions.** Phase 1B closed.
+- **Exit conditions.** All four tests pass.
+- **Notes.** The KL bound T_PR_2 is the closest thing the project has
+  to a soft acceptance criterion for "the math is right." Take it
+  seriously.
+
+### 7.4 Phase 1D — VHT2 + Möbius reorder + 63-byte Spinor block
+
+- **Deliverables.** `system/spinor/spinor_block.h`, `spinor_block.c`,
+  `vht2.c`, `mobius_reorder.c`, `spinor_test.c`. Frozen byte layout
+  specified in `papers/PPT-LAT-Systems.md` §3.
+- **Tests.**
+  - T_VHT_1 — Block round-trip: encode then decode identical bytes for
+    65,536 random vectors.
+  - T_VHT_2 — Möbius reorder bijection: every permutation is a true
+    permutation (no element collisions).
+  - T_VHT_3 — 63-byte total size verified by `sizeof(spinor_block_t)`.
+  - T_VHT_4 — Checksum byte detects any 1-bit corruption in the body.
+  - T_VHT_5 — Endianness: identical bytes produced on little-endian
+    Linux and Windows hosts.
+  - T_VHT_6 — Layout frozen flag: a `LAYOUT_VERSION` constant in the
+    header must be incremented by hand if any field moves, and CI
+    refuses a layout change without a migration plan file.
+- **Entry conditions.** None.
+- **Exit conditions.** All six tests pass; layout reviewed and signed
+  off in the offload note.
+- **Notes.** The 63-byte total is deliberate — 64 minus the checksum,
+  packed tight, no padding. Future sessions: do not add a "convenient"
+  reserved byte.
+
+### 7.5 Phase 1E — Frobenius lift for Q8 weight storage
+
+- **Deliverables.** `system/frobenius/frobenius_lift.h`,
+  `frobenius_lift.c`, `frobenius_test.c`.
+- **Tests.**
+  - T_FRO_1 — Per-row scale picker correctness against the ceiling-shift
+    reference (which exists from prior validation; reimplemented from
+    scratch under the anti-contamination rule).
+  - T_FRO_2 — Encode-then-decode round-trip max error ≤ 1 ULP for a
+    fixed test matrix.
+  - T_FRO_3 — 8× memory reduction confirmed on a 4096×4096 weight
+    matrix.
+  - T_FRO_4 — On Gemma3-1B, Frobenius-lifted weights produce PPL within
+    0.1% of baseline. This is the T4 acceptance check repeated under
+    new code.
+- **Entry conditions.** Phase 1A closed.
+- **Exit conditions.** All four tests pass; T_FRO_4 logged as the
+  reference number for future drift checks.
+- **Notes.** Q4 is **not** in Phase 1E. Q4 lives in Phase 4 because it
+  needs calibration tables that depend on a working forward pass.
+
+### 7.6 Phase 1F — KSTE encoder + Tier-0/Tier-1 dominance
+
+- **Deliverables.** `system/kste/kste_encode.h`, `kste_encode.c`,
+  `kste_dominance.c`, `kste_test.c`.
+- **Tests.**
+  - T_KSTE_1 — Encoder determinism: identical K-vector produces identical
+    bytes 1,000,000 trials.
+  - T_KSTE_2 — Tier-0 dominance partial-order axioms: reflexivity,
+    antisymmetry up to equivalence, transitivity.
+  - T_KSTE_3 — Tier-1 confirmation rule: if two trees pass Tier-0 and
+    Tier-1, they share the same first-level child set.
+  - T_KSTE_4 — Cross-platform identity: encoder produces identical bytes
+    on Windows MSVC and Linux gcc.
+  - T_KSTE_5 — 64-byte packed-tree size enforced.
+- **Entry conditions.** None.
+- **Exit conditions.** All five tests pass.
+- **Notes.** Tier-0/Tier-1 nomenclature comes from the original KSTE
+  paper. Future sessions sometimes try to "simplify" to a single tier
+  for ergonomic reasons; the two-tier check is what makes the Lattice
+  dedup adversarially robust. Do not collapse it.
+
+### 7.7 Phase 1 exit
+
+Phase 1 closes when all six subphases close, the regression runner
+prints six green sections, and `SESSION-CLOSED-lat-1.md` is written.
+The repository tag is `lat-phase-1-closed`.
+
+### 7.8 Pseudocode sketch — Phase 1B kernel skeleton
+
+The following pseudocode captures the shape of the dual-prime CRT-NTT
+kernel without descending into a real implementation. It exists here
+to anchor the API a Phase 1B session is expected to land.
+
 ```
-## Phase N — <name>
-- Deliverables:
-  - <repo>/<path>: <what it does>
-  - <repo>/<path>: <what it does>
-- Tests (all must pass):
-  - T<N>.<k>: <one-line description, what it proves>
-- Exit conditions: <bullet list of measurable assertions>
+struct ntt_ctx {
+    uint32_t N;             // ring degree, in {128, 256, 512, 1024}
+    uint32_t q1, q2;        // two 30-bit Proth primes
+    uint32_t* psi1; uint32_t* psi2;   // 2N-th roots of unity per prime
+    uint32_t* inv_psi1; uint32_t* inv_psi2;
+    // Barrett mu values for each prime
+};
+
+ntt_ctx* ntt_init(uint32_t N);
+void     ntt_forward (const ntt_ctx*, const int32_t* in, uint32_t* out1, uint32_t* out2);
+void     ntt_inverse (const ntt_ctx*, const uint32_t* in1, const uint32_t* in2, int64_t* out);
+void     ntt_pointwise_mul(const ntt_ctx*, const uint32_t* a1, const uint32_t* a2,
+                                          const uint32_t* b1, const uint32_t* b2,
+                                          uint32_t* out1, uint32_t* out2);
+void     ntt_crt_recombine (const ntt_ctx*, const uint32_t* x1, const uint32_t* x2, int64_t* out);
 ```
-A phase is complete only when every file in the deliverables list exists in the named repo on the `main` branch and every named test passes in CI.
 
-**Tests.** A single no-op test per repo whose only job is to confirm CTest is wired up correctly.
+The contract is: `ntt_forward` produces two residue vectors; pointwise
+multiply happens per residue (no cross-prime arithmetic); `ntt_inverse`
+applies the inverse transform per residue and `ntt_crt_recombine`
+reassembles a signed 60-bit result via Barrett reduction. No 128-bit
+type appears anywhere. The same kernel is reused by 1C (poly-ring
+attention), 4.7 (ARM), and 1E (Frobenius matmul) without modification.
 
-**Entry conditions.** Empty repos on GitHub (PRIVATE). User has confirmed the GitHub org/user that owns them.
+### 7.9 Pseudocode sketch — Phase 1D Spinor block
 
-**Exit conditions.**
-- All three repos exist on GitHub, PRIVATE.
-- `git clone` of each works.
-- CI is green on `main` for all three (no-op test passes).
-- The three docs (`BUILD-ENV.md`, `NAMING.md`, `CONTRACT-FORMAT.md`) are committed.
+```
+#define LAYOUT_VERSION 1u    // bumping requires migration plan
+struct spinor_block_t {       // 63 bytes total, packed
+    uint8_t  vht2_header[7];
+    uint8_t  mobius_body[55];
+    uint8_t  checksum;        // CRC-8 of header || body
+};
+_Static_assert(sizeof(spinor_block_t) == 63, "frozen layout");
+```
 
-**Estimated wall-clock.** 1 day.
-
-**Dependencies.** None.
-
-**Notes for the picking-up session.**
-- Resist writing math in Phase 0. Bootstrap means bootstrap.
-- The CMake decision (`FetchContent` vs submodule for the engine's dep on math core) is load-bearing. Pick once, document in `BUILD-ENV.md`, do not revisit. Submodules recommended — they pin a SHA. If `FetchContent`, pin to a tag.
-- Use a generated `.gitignore` from gitignore.io. Do not hand-roll.
-- CI runs on `ubuntu-latest` and `windows-latest`. macOS not a target.
-
----
-
-### Phase 1 — KSTE encoder (pure C reference)
-
-**Goal.** A deterministic, single-threaded reference implementation of the Knowledge-State Tree Encoding pipeline: VHT2 → Möbius → anchor/residual split → tree pack. This is the first piece of real math. It must be readable, slow, and obviously correct. SIMD and parallelization come much later.
-
-**Deliverables.**
-- `shannon-prime-system/include/sp_kste.h` — public API:
-  - `sp_kste_encode(const float *input, size_t n, sp_kste_tree *out)`
-  - `sp_kste_decode(const sp_kste_tree *in, float *output, size_t n)`
-  - `sp_kste_tree_init`, `sp_kste_tree_free`
-  - opaque `sp_kste_tree` struct with the documented 60-node budget and 14-anchor layout
-- `shannon-prime-system/src/sp_kste.c` — implementation. Pure C11. No SIMD intrinsics, no OpenMP, no threads.
-- `shannon-prime-system/src/sp_vht2.c` — the VHT2 transform as its own translation unit so it can be replaced later.
-- `shannon-prime-system/src/sp_mobius.c` — Möbius portion isolated similarly.
-- `shannon-prime-system/tests/test_kste.c` — registers tests T1.1 through T1.5.
-- `shannon-prime-system/docs/KSTE-spec.md` — short text description of what each step does, mapping each step to a section of `PPT-LAT-Theory.md`.
-
-**Tests.**
-- **T1.1 Determinism.** Encode the same input twice. The two output trees are byte-identical. Proves: no hidden randomness or uninitialised memory dependence.
-- **T1.2 Frobenius invariance.** Apply the Frobenius automorphism to the input (as defined in Theory section 2.3). The encoded tree's invariants (specifically the per-anchor invariant set documented in the spec) match. Proves: the encoder respects the symmetry the math relies on.
-- **T1.3 Sign respect.** Negate the input. The encoded tree's sign field changes; the residuals' magnitudes are unchanged. Proves: residuals are stored in a sign-extracted form.
-- **T1.4 60-node budget.** No matter what input is fed in (within the spec's input-range constraints), the output tree has at most 60 nodes. Proves: the budget is enforced by construction, not by accident.
-- **T1.5 14 anchor positions.** Anchors are placed at the 14 positions specified in Theory section 2.5. Proves: anchor placement matches the math, not a re-derivation.
-
-**Entry conditions.** Phase 0 complete. `PPT-LAT-Theory.md` exists with sections 2.1 through 2.5 stable (these are the sections Phase 1 references).
-
-**Exit conditions.**
-- 11/11 tests pass on Linux + Windows in CI. (T1.1 through T1.5 yields five logical tests, but they expand into 11 actual test cases — five with random small inputs, three with Frobenius variants, one each for the determinism/sign/budget/anchor invariants.)
-- The CI run is reproducible: same input file in, same SHA-256 of the output tree, run-to-run.
-
-**Estimated wall-clock.** 5–7 days.
-
-**Dependencies.** Phase 0.
-
-**Notes for the picking-up session.**
-- The VHT2 transform is described in the legacy theory papers; **do not copy the legacy implementation**. Re-derive from the spec in `PPT-LAT-Theory.md` and `papers/PPT-ARM/`. The reason: the legacy code mixes encoder concerns with engine-side caching concerns. We want the math core to know nothing about caches.
-- The 60-node budget is a hard constraint, not a soft target. If your encoder produces 61 nodes on a pathological input, the test fails and the phase does not pass. Engineer the budget into the algorithm.
-- Resist adding SIMD or OpenMP. Phase 1 is the reference; later phases optimize.
-- Float comparisons in tests must use a documented tolerance. Pick `1e-6` for float32 and `1e-12` for float64. Document this in `KSTE-spec.md`.
+Encoders and decoders must round-trip on every backend; the
+cross-platform identity test T_VHT_5 specifically compares bytes byte
+for byte between Linux gcc and Windows MSVC builds.
 
 ---
 
-### Phase 2 — Dominance order and incomparability sieve
+## 8. Phase 2 — Engine backend tracks (CPU, CUDA, Vulkan, Hexagon)
 
-**Goal.** Implement the partial order `⪯_d` on packed KSTE trees and the sieve that maintains a dominance-incomparable set under insertion. The sieve is the data structure the discovery token economy in Phase 11 will be built on, and the gossip layer in Phase 9 needs it to dedup incoming binders.
+**Goal.** Each backend supports a single reference model end-to-end:
+GGUF load → forward pass → token-level output. Frobenius-lifted weights
+are inline-decompressed. NTT-attention is wired but the **sieve is
+OFF**. Inline KV-cache compression is wired but the **Lattice features
+are OFF**. The reference model is Qwen3-0.6B Q8.
 
-**Deliverables.**
-- `shannon-prime-system/include/sp_dominance.h` — public API:
-  - `sp_dominance_compare(const sp_kste_tree *a, const sp_kste_tree *b)` returning one of `SP_DOM_LT`, `SP_DOM_GT`, `SP_DOM_EQ`, `SP_DOM_INCOMP`
-  - `sp_dominance_signature(const sp_kste_tree *t, sp_dom_sig *out)` — fast prefilter signature
-- `shannon-prime-system/src/sp_dominance.c` — implementation. Signature-based prefilter, full comparison only on signature collision.
-- `shannon-prime-system/include/sp_sieve.h` — public API:
-  - `sp_sieve_create`, `sp_sieve_destroy`
-  - `sp_sieve_insert(sp_sieve *s, const sp_kste_tree *t)` returning `SP_SIEVE_KEPT`, `SP_SIEVE_DROPPED`, `SP_SIEVE_EVICTED_OTHERS`
-  - `sp_sieve_iterate(sp_sieve *s, sp_sieve_visit_fn fn, void *ctx)`
-- `shannon-prime-system/src/sp_sieve.cpp` — C++ permitted here for `std::unordered_map<sp_dom_sig, ...>` and intrusive list nodes. Public API stays C.
-- `shannon-prime-system/tests/test_dominance.c`, `test_sieve.c` — register T2.1 through T2.10.
+**Dependencies.** Phase 1 closed.
 
-**Tests.**
-- **T2.1 Reflexivity.** `compare(t, t) == SP_DOM_EQ` for any tree.
-- **T2.2 Antisymmetry.** If `compare(a, b) == SP_DOM_LT` then `compare(b, a) == SP_DOM_GT`.
-- **T2.3 Transitivity.** If `compare(a, b) == SP_DOM_LT` and `compare(b, c) == SP_DOM_LT`, then `compare(a, c) == SP_DOM_LT`. Tested on a random sample of 10000 triples.
-- **T2.4 Signature soundness.** If signatures disagree, the full comparison is never `SP_DOM_EQ`. Stronger statement: signature collision is required for equality.
-- **T2.5 Signature completeness.** Two equal trees always have equal signatures. (T2.4 + T2.5 together let the prefilter be safely used.)
-- **T2.6 Sieve invariant 1 — incomparability.** After any sequence of insertions, every pair of stored trees is `SP_DOM_INCOMP`.
-- **T2.7 Sieve invariant 2 — no duplicates.** No two stored trees are `SP_DOM_EQ`.
-- **T2.8 Sieve eviction.** Inserting a tree that dominates `k` stored trees evicts exactly those `k` trees and stores the new one.
-- **T2.9 Sieve dropping.** Inserting a tree that is dominated by any stored tree returns `SP_SIEVE_DROPPED` and the sieve is unchanged.
-- **T2.10 Sieve random stress.** 100000 random insertions; invariants T2.6 and T2.7 hold throughout (checked every 1000 inserts).
+**Parallelism.** The four backends are independent. Sessions can run
+2-CPU and 2-CU concurrently with no shared state. 2-VK and 2-HX can
+start the moment their build environments are sorted, regardless of
+2-CPU and 2-CU status. The matrix below shows the per-backend subphase
+plan — same letter-coded structure across all four.
 
-**Entry conditions.** Phase 1 complete (we need `sp_kste_tree`).
+### 8.1 Per-backend subphase template
 
-**Exit conditions.**
-- 10/10 tests pass on Linux + Windows.
-- T2.10 runs in under 60 seconds on a single core (otherwise the signature prefilter is doing nothing).
+For each backend B ∈ {CPU, CU, VK, HX}:
 
-**Estimated wall-clock.** 4–5 days.
+- **2-B.A — GGUF loader.** Parse the GGUF header, materialise tensors
+  into backend-native storage. No SP transforms applied yet.
+- **2-B.B — Forward pass on Qwen3-0.6B Q8.** Reference correctness vs
+  llama.cpp logits on the same prompt. Acceptance: max-token logit
+  difference ≤ 1e-4 absolute or ≤ 0.1% relative.
+- **2-B.C — Frobenius-quantised matmul with inline decompression.**
+  Production memory layout. 8× compression confirmed end-to-end.
+- **2-B.D — Backend-specific vectorisation.** AVX2 for CPU, AVX512
+  optional second pass, CUDA tensor cores where applicable, Vulkan
+  subgroup ops, HVX vectorisation for Hexagon.
+- **2-B.E — NTT-attention path wired in.** Sieve OFF. PPL must remain
+  within Phase 1C's T_PR_2 tolerance.
+- **2-B.F — KSTE-encoded KV cache.** Gated by `SP_KSTE_KV=1`. Off by
+  default. Phase 2 only requires that the encode path produces
+  identical signatures across backends and that decode reproduces the
+  same KV.
 
-**Dependencies.** Phase 1.
+**Tests E_B_1..E_B_6** mirror the six subphases. The numbering follows
+the subphase letter: E_CPU_1 covers 2-CPU.A, E_CPU_2 covers 2-CPU.B,
+and so on.
 
-**Notes for the picking-up session.**
-- The signature is the most important design decision. Aim for a 16-byte hash that captures the order-relevant structure cheaply. A bad signature does not break correctness (the full compare runs on collision) but a bad signature makes T2.10 slow.
-- Tree comparisons are the hot path of the sieve. Profile T2.10 once it runs; if signature-collision rate is above ~5% on random input, redesign the signature.
-- The sieve owns its stored trees (deep copies on insert). Document this in the header. Callers can free their copies after insert returns.
+### 8.2 Phase 2-CPU (the canonical track)
 
----
+- **Build env.** `scripts/env/env-cpu-msvc.bat` (Windows) and
+  `scripts/env/env-cpu-gcc.sh` (Linux).
+- **Reference model.** Qwen3-0.6B Q8.
+- **Tests.**
+  - E_CPU_1 — GGUF loader round-trips header bytes.
+  - E_CPU_2 — Forward pass within tolerance of llama.cpp on first 256
+    tokens of the Pile sample.
+  - E_CPU_3 — Frobenius matmul produces identical logits to a
+    reference fp32 matmul on the same prompt.
+  - E_CPU_4 — AVX2 path matches scalar within 1e-6 elementwise; AVX512
+    path optional but if present matches AVX2 within 1e-6.
+  - E_CPU_5 — NTT-attention end-to-end PPL within T_PR_2 of softmax
+    baseline. Sieve OFF.
+  - E_CPU_6 — KSTE KV-cache encode/decode round-trip identical bytes.
+    Sieve OFF; this only exercises the encoder.
+- **Notes for picking up.** CPU is the canonical track because it has
+  the fewest build dependencies. Bring up CPU first if any other
+  backend is blocked; using CPU outputs as the ground truth for the
+  other backends is built into the test harness.
 
-### Phase 3 — ARM (HRR in CRT cyclotomic ring)
+### 8.3 Phase 2-CU (CUDA backend)
 
-**Goal.** Holographic Reduced Representation–style associative memory implemented in a CRT-friendly cyclotomic ring `Z_q[x]/(x^N + 1)`. ARM binds (key, value) pairs by circular convolution and recalls by correlation. This is the substrate the gossip layer (Phase 9) and discovery aggregation will use.
+- **Build env.** `scripts/env/env-cuda.bat`. Pinned to CUDA 12.4 + VS2019
+  Build Tools because that combination has the longest stability record
+  on this team's hardware (`reference_cuda_build_recipe` memory).
+- **Reference model.** Same Qwen3-0.6B Q8.
+- **Tests E_CU_1..E_CU_6** mirror the CPU set, with the additional
+  per-platform gate that CUDA output must match CPU output within 1e-3
+  relative on the same prompt. The looser tolerance accounts for
+  expected fused-multiply-add ordering differences.
+- **Notes.** Target SM 75/86/89 (RTX 2060/3000/4000 series). Older SMs
+  not supported. Use `--use-local-env` to keep MSVC from injecting
+  unwanted flags.
 
-**Deliverables.**
-- `shannon-prime-system/include/sp_arm.h` — public API:
-  - `sp_arm_create(N, num_primes, primes[])`
-  - `sp_arm_bind(arm, key, value)` — accumulates a binding into the memory state
-  - `sp_arm_unbind(arm, key, out_value)` — correlation recall
-  - `sp_arm_compose(arm_dst, arm_src)` — ring-additive composition of two ARMs (used by gossip)
-  - `sp_arm_norm(arm)` — for the renormalization step
-- `shannon-prime-system/src/sp_arm.c`
-- `shannon-prime-system/tests/test_arm.c` — registers T3.1 through T3.6.
+### 8.4 Phase 2-VK (Vulkan backend)
 
-**Tests.**
-- **T3.1 Bind/unbind exact for k=1.** Bind one key/value pair into an empty ARM. Unbind with the same key. Recall is bit-identical to the original value.
-- **T3.2 Bind/unbind approximate for k=8.** Bind 8 random pairs. Unbind each key. Each recall's cosine similarity to the original value is at or above the threshold predicted by the Theory section 4 capacity curve (specifically: cos ≥ 0.83 at k=8 in the documented test setup).
-- **T3.3 Capacity curve.** Run T3.2 for k ∈ {1, 2, 4, 8, 16, 32, 64} and record cosine. Stored curve matches Theory section 4 within tolerance.
-- **T3.4 Negacyclic involution.** The involution `inv[N-j] = -in[j]` is a ring automorphism; bind/unbind under involution yields the recall under involution. (This is the math invariant the legacy notes flagged as load-bearing.)
-- **T3.5 Compose distributivity.** `compose(arm1, arm2)` followed by `unbind(key)` equals `unbind(arm1, key) + unbind(arm2, key)`.
-- **T3.6 Norm preservation.** Repeated bind operations grow `sp_arm_norm` predictably; the documented renormalization rule keeps norm bounded.
+- **Build env.** `scripts/env/env-vulkan.bat`. Vulkan SDK 1.3.x. glslc
+  for shader compilation.
+- **Reference model.** Same Qwen3-0.6B Q8.
+- **Tests E_VK_1..E_VK_6** mirror the CPU set, with output vs CPU
+  matching within 1e-3 relative.
+- **Notes.** Lower initial priority than CPU/CUDA. The reason Vulkan is
+  in scope at all is Apple Silicon support via MoltenVK and the option
+  of a cross-platform fallback when CUDA is not available. Subgroup ops
+  are essential — the reduction-heavy parts of NTT-attention rely on
+  them.
 
-**Entry conditions.** Phase 1 complete (we share the float convention). Phase 2 is **not** a dependency — ARM and the sieve are independent.
+### 8.5 Phase 2-HX (Hexagon backend)
 
-**Exit conditions.**
-- 6/6 tests pass.
-- The capacity curve from T3.3 is committed as `tests/data/arm_capacity.csv` and is read back in CI as a regression check.
+- **Build env.** `scripts/env/env-hexagon.bat`. Hexagon SDK 5.x on the
+  Knack Windows host. Git sh.exe prepended to PATH. The
+  `reference_hexagon_build_recipe` memory captures the exact recipe;
+  diverging from it has produced multi-session bring-up delays.
+- **Reference model.** Same Qwen3-0.6B Q8, with a phone-suitable
+  context length cap.
+- **Tests E_HX_1..E_HX_6** mirror the CPU set, with output vs CPU
+  matching within 1e-3 relative.
+- **Notes.** This is the highest build-environment-fragility track in
+  Phase 2. Two prior sessions have hit silent fallback bugs when
+  FastRPC rpcmem registration size mismatched the IDL length parameter
+  (`feedback_fastrpc_exact_alloc`). Do not exceed-allocate. Use the
+  freethedsp shim when `SP_FREETHEDSP=1`; it is opt-in. QNN HTP V69 is
+  the target accelerator for matmul on this platform.
 
-**Estimated wall-clock.** 4–5 days.
+### 8.6 Phase 2 exit
 
-**Dependencies.** Phase 1 (loose: same code style, same project).
+Phase 2 closes when at least one backend (CPU is the minimum) has all
+six E-tests green. Other backends close independently and are tagged
+`lat-phase-2-<backend>-closed`. The CPU backend close also produces
+`lat-phase-2-closed` since CPU is the canonical anchor.
 
-**Notes for the picking-up session.**
-- The CRT primes for ARM **do not have to be the same primes** as the CRT NTT primitives in Phase 4. Document this clearly in the header. They can be unified later if convenient.
-- The `compose` operation is the gossip primitive. Get the math right here; Phase 9 will assume it works.
-- HRR is sensitive to numerical convention (especially complex-conjugate vs negacyclic). The spec is in `PPT-LAT-Theory.md` section 4 — implement what is written there, not what you remember from HRR papers.
+### 8.7 Notes for the picking-up session (per backend)
 
----
+**CPU.** Start from a blank `engine/cpu/forward.c`. Wire the GGUF
+loader first, get tensors materialised into row-major-by-token layout,
+then implement the 13 steps as 13 functions. Keep the AVX2 path
+beside a scalar reference under an `SP_CPU_SCALAR=1` env gate so the
+scalar path stays buildable. The AVX512 path is a second pass and not
+required to close E_CPU_4.
 
-### Phase 4 — CRT NTT primitives
+**CUDA.** Mirror the CPU layer-by-layer. The most fragile cell is the
+fused matmul + Frobenius decompress kernel — get the scalar correctness
+right via Ninja `--use-local-env` before turning on cublas LT or any
+tensor-core fusion. Output verification compares against the CPU run
+for the same prompt, so keep the CPU build alive in the same Phase 2-CU
+sessions.
 
-**Goal.** Dual-prime Number-Theoretic Transform with Barrett reduction and CRT recombination. This is the high-throughput multiplication primitive that the engine's attention path (Phase 5) and the sharded-inference demo (Phase 6) depend on. Bit-exactness against a schoolbook reference is the gate.
+**Vulkan.** Compile glslc shaders into SPIR-V at build time, not at
+runtime; the JIT path has caused at least one driver crash in prior
+attempts. Subgroup ops vary by vendor; test under at least two vendors
+before declaring 2-VK closed. MoltenVK on Apple Silicon is the
+canonical "third vendor" the test harness picks up later.
 
-**Deliverables.**
-- `shannon-prime-system/include/sp_ntt.h` — public API:
-  - `sp_ntt_create(N, primes[2], roots[2])`
-  - `sp_ntt_forward(ctx, in, out)`, `sp_ntt_inverse(ctx, in, out)`
-  - `sp_ntt_poly_mul(ctx, a, b, out)` — convenience: forward both, pointwise multiply, inverse
-  - `sp_ntt_crt_recombine(ctx, residues[2], out)` — recombine two prime branches into the integer result
-- `shannon-prime-system/src/sp_ntt.c` — core NTT
-- `shannon-prime-system/src/sp_barrett.c` — Barrett reduction as its own TU
-- `shannon-prime-system/tests/test_ntt.c` — registers T4.1 through T4.5
-
-**Tests.**
-- **T4.1 Forward/inverse identity.** `inverse(forward(a)) == a` for random inputs, on each prime branch.
-- **T4.2 Pointwise multiplication == polynomial multiplication.** `inverse(forward(a) * forward(b)) == schoolbook_mul(a, b)` modulo each prime.
-- **T4.3 CRT recombination.** A polynomial product computed via CRT-recombine matches the same product computed in big-integer arithmetic, bit-for-bit, across the full output range (no overflow loss).
-- **T4.4 Barrett correctness.** Random `(x, p)` pairs: `barrett_reduce(x, p) == x mod p`. 10 million samples per prime.
-- **T4.5 Cross-platform bit-exact.** The CSV of test vectors produced on Linux x86_64 matches the one produced on Windows x86_64 byte-for-byte.
-
-**Entry conditions.** Phase 1 complete (no direct code dependency, but Phase 4 is in the math core so the conventions need to be established).
-
-**Exit conditions.**
-- 5/5 tests pass.
-- Bit-exact cross-platform vectors are committed as `tests/data/ntt_vectors.bin` and the CI checks the SHA-256 on both platforms.
-
-**Estimated wall-clock.** 5–6 days.
-
-**Dependencies.** Phase 0 (build environment, since 64-bit-integer behaviour differs between MSVC and gcc and the build env doc pins the compiler).
-
-**Notes for the picking-up session.**
-- Pick the two primes carefully. They must both be Proth primes of the form `c · 2^k + 1` with `k ≥ log2(N) + 1`. Document the selection criteria in `sp_ntt.h`.
-- Avoid `__int128` in the public interface. Inside the implementation, prefer two-step Barrett that uses only 64-bit multiplies and one 64×64→128 split that compiles cleanly on both MSVC and gcc.
-- T4.5 (cross-platform bit-exact) is the kind of test that quietly fails when a compiler optimises an integer operation differently. If T4.5 fails on Windows but passes on Linux, suspect the multiply-high step first.
-- Do not optimise with SIMD in Phase 4. The reference is the gate; SIMD ports come after the engine is walking.
-
----
-
-### Phase 5 — Engine bootstrap
-
-**Goal.** Stand up the inference engine. A GGUF loader (using existing libraries — this is engineering, not novel math), a forward pass for a small target model, and the math core wired in: KSTE for KV state, ARM for the latent associative path, NTT for the polynomial-ring attention. Produces logits on a known input that match a documented reference. This phase is the hardest one in the roadmap and the one most likely to slip.
-
-**Deliverables.**
-- `shannon-prime-system-engine/include/spe_loader.h` and `spe_loader.c` — GGUF parsing. Use an existing GGUF parser as a vendored dependency; do not write one from scratch. Document which one in `BUILD-ENV.md`.
-- `shannon-prime-system-engine/include/spe_model.h` and `spe_model.c` — model state, tensor lookups, layer iteration.
-- `shannon-prime-system-engine/include/spe_forward.h` and `spe_forward.c` — the forward pass: tokenize, embed, transformer layers, output logits.
-- `shannon-prime-system-engine/src/spe_attention.c` — NTT-based attention path using `sp_ntt_poly_mul`.
-- `shannon-prime-system-engine/src/spe_kv_state.c` — KSTE-encoded KV state path using `sp_kste_encode/decode`.
-- `shannon-prime-system-engine/src/spe_arm_path.c` — ARM latent path using `sp_arm_*`.
-- `shannon-prime-system-engine/cli/sp-engine.c` — minimal CLI: `sp-engine --model <gguf> --prompt <txt> --tokens N`.
-- `shannon-prime-system-engine/tests/test_forward.c` — registers E1.
-- `shannon-prime-system-engine/tests/data/reference_logits.bin` — committed reference logits for the canonical input.
-
-**Tests.**
-- **E1 Forward pass logits.** Load a small target model (recommended: Qwen 0.5B Q8 or Gemma 0.3B Q8 — pick one and document the choice). Run the forward pass on the canonical input `"The quick brown fox"`. The top-32 logits at the last position match the reference within `1e-3` cosine, and the argmax token matches exactly.
-
-**Entry conditions.** Phases 1, 3, 4 complete (KSTE, ARM, NTT). Phase 2 is not strictly required for E1 but should be done by now anyway.
-
-**Exit conditions.**
-- E1 passes on Linux and Windows.
-- `sp-engine --model <gguf> --prompt "The quick brown fox" --tokens 8` produces deterministic, reproducible output across two consecutive runs on the same machine.
-- Reference logits are committed and CI checks them every build.
-
-**Estimated wall-clock.** 10–14 days. **This is the highest-variance phase.**
-
-**Dependencies.** Phases 1, 3, 4.
-
-**Notes for the picking-up session.**
-- The GGUF format is well-documented and there is a reference parser. Use it. Do not write GGUF parsing yourself; it is not where the value of this project lives.
-- Pick the smallest model you can validate against. Qwen 0.5B Q8 gives plenty of signal and loads in seconds. Resist the temptation to start with a 7B+ model.
-- The order of operations matters: get a plain (non-SP) forward pass producing correct logits first, **then** swap the attention path to NTT, **then** swap the KV path to KSTE, **then** wire in ARM. Bisect-friendly.
-- If E1 cosine drifts above `1e-3`, do not weaken the threshold. Find the math error.
-- This is the phase where "I'll just glance at the legacy engine" becomes tempting. Don't. The legacy engine has years of optimization scar tissue that will fight your clean abstractions. Use the legacy engine **only** as a black-box logits oracle to compare against — never as a code reference.
+**Hexagon.** Build environment first. Do not attempt to bring up the
+forward pass until `env-hexagon.bat` produces a working `qaic.exe`
+invocation per the `reference_hexagon_build_recipe` memory. The
+FastRPC silent-fallback bug (`project_hexagon_silent_fallback`) is
+load-bearing context — when in doubt, log every rpcmem registration
+size and grep the logs against the IDL parameter sizes.
 
 ---
 
-### Phase 6 — Two-node CRT-sharded inference demo
-
-**Goal.** Run the engine across two nodes, each computing one prime branch of the CRT decomposition. A driver process recombines. Output is bit-identical to single-machine. Measures wall-clock vs single-machine to establish a baseline for the sharding overhead.
-
-**Deliverables.**
-- `shannon-prime-system-engine/src/spe_shard.c` — single-prime forward pass mode (driven by a CLI flag `--shard-prime <0|1>`).
-- `shannon-prime-system-engine/cli/sp-engine-shard.c` — driver process. Spawns / connects to two shard workers, sends inputs, collects residues, calls `sp_ntt_crt_recombine`.
-- `shannon-prime-system-engine/src/spe_transport.c` — TCP transport for residues. Length-prefixed framing. No encryption yet (in-cluster only).
-- `shannon-prime-system-engine/tests/test_shard.c` — registers E2.
-
-**Tests.**
-- **E2 CRT-sharded bit-identical.** Run the same canonical input through (a) single-machine and (b) two-node shard. The full logits vector (not just top-32) matches bit-for-bit. Wall-clock for both configurations is logged.
-
-**Entry conditions.** Phase 5 complete and E1 has been passing for at least one CI cycle.
-
-**Exit conditions.**
-- E2 passes.
-- Wall-clock comparison is recorded in `papers/PPT-LAT-Bench-Phase6.md` (numbers + setup, not a polished report).
-- The transport layer is documented as cluster-only: no authentication yet, this is a demo.
-
-**Estimated wall-clock.** 5–7 days.
-
-**Dependencies.** Phase 5.
-
-**Notes for the picking-up session.**
-- Use loopback (two processes on one machine) for the first runs. Move to two physical machines only when E2 passes on loopback.
-- The CRT recombine must run after both residues arrive. Build this as explicit synchronization, not "hope the network is fast enough". Phase 6 establishes the latency reality that informs Phase 12.
-- Do not try to make Phase 6 fast. Make it correct. Sharding overhead is expected to be significant on a slow network; the value of the demo is bit-identity, not throughput.
-
----
-
-### Phase 7 — KSTE-encoded crawl cache (single node)
-
-**Goal.** A crawler skeleton that fetches pages, encodes them through KSTE, and inserts them into the dominance sieve. The point is to validate that KSTE compresses real-world text content well, that dominance prunes redundancy as expected, and that the deduplication ratio on a known corpus matches the theoretical prediction.
-
-**Deliverables.**
-- `shannon-prime-lattice/crawler/spcrawl.py` (Python is fine here — this is a crawler, not a hot path):
-  - Fetches a URL list with rate limiting, robots.txt compliance, and a user-agent that identifies the project.
-  - For each fetched page, calls into `shannon-prime-system` via a thin C extension or `ctypes` to KSTE-encode and sieve-insert.
-- `shannon-prime-system/cli/sp-kste-cli` — command-line wrapper for KSTE encode + sieve insert, called from Python.
-- `shannon-prime-lattice/crawler/corpus.txt` — list of URLs for the reference corpus (Common Crawl sample, or a curated 10k-URL set).
-- `shannon-prime-lattice/crawler/test_crawl.py` — registers E3.
-
-**Tests.**
-- **E3 Deduplication ratio.** Crawl the reference corpus. Measure the deduplication ratio (inserts attempted vs inserts that ended in `SP_SIEVE_KEPT`). Compare to the theoretical prediction from Theory section 7. Within the documented tolerance band.
-
-**Entry conditions.** Phases 1 and 2 complete (KSTE + sieve).
-
-**Exit conditions.**
-- E3 passes.
-- The reference corpus list and the recorded dedup ratio are committed.
-- robots.txt is honoured and the user-agent is unique; this is documented.
-
-**Estimated wall-clock.** 4–6 days.
-
-**Dependencies.** Phases 1, 2.
-
-**Notes for the picking-up session.**
-- The crawler is a means to an end; do not over-engineer it. Rate limit at 1 req/sec per host. Skip non-HTML.
-- KSTE expects normalized text input. Document the normalization step (HTML strip, Unicode NFKC, lowercase optional).
-- The dedup ratio is the headline number from this phase. Expect a wide band; the goal is "matches the prediction within tolerance", not "achieves a specific number".
-
----
-
-### Phase 8 — DHT + position-as-arithmetic crawl assignment
-
-**Goal.** A Kademlia-variant DHT where the key space is the position-as-arithmetic lattice from Theory section 6. Nodes are assigned URL crawl responsibilities by their distance to the URL's lattice key. Multi-node test on loopback first, then on the network.
-
-**Deliverables.**
-- `shannon-prime-lattice/dht/spdht/` — Python package implementing the DHT. (Or Rust if the contributor is comfortable; Python is fine for the lattice prototype.)
-  - `node.py` — node-side: routing table, RPC handlers, periodic refresh
-  - `key.py` — URL → lattice key derivation (this is where position-as-arithmetic lives)
-  - `assignment.py` — given a URL, which N nodes are responsible
-- `shannon-prime-lattice/dht/spdht/test_dht.py` — registers E4
-- `shannon-prime-lattice/dht/docs/PROTOCOL.md` — wire format
-
-**Tests.**
-- **E4 Load balancing under skewed URL distribution.** Spin up 8 nodes (in 8 processes). Insert 100k URLs drawn from a heavy-tailed distribution (Zipf alpha=1.1, simulating real web traffic). Measure the assignment distribution. Gini coefficient on per-node URL count is below the documented threshold (target: < 0.3).
-
-**Entry conditions.** Phase 7 complete (we need a crawler to drive the DHT).
-
-**Exit conditions.**
-- E4 passes on loopback (8 processes, one machine).
-- The wire protocol is documented and stable; future phases will assume it.
-
-**Estimated wall-clock.** 7–10 days.
-
-**Dependencies.** Phases 1 (KSTE is in the assignment key), 7.
-
-**Notes for the picking-up session.**
-- The "position-as-arithmetic" key derivation is the novel piece. It is described in Theory section 6. Read it carefully before writing `key.py`.
-- Use an existing Kademlia library as the starting point for routing tables, but **replace** the XOR metric with the lattice metric. Most Kademlia libraries assume XOR; you will be replacing the core distance function.
-- Test E4 on loopback. Network tests come in Phase 12.
-
----
-
-### Phase 9 — ARM gossip aggregation
-
-**Goal.** Nodes periodically exchange compressed ARM state. The capacity-decay rule keeps memory bounded. Aggregated state across the network converges in the sense that a recall against any node, after sufficient gossip rounds, returns the same answer as a recall against the union of all node states.
-
-**Deliverables.**
-- `shannon-prime-lattice/gossip/spgossip/` — Python package:
-  - `gossiper.py` — periodic exchange driver, partner selection from DHT routing table
-  - `state.py` — local ARM state wrapper (uses `sp_arm_*` via C extension)
-  - `decay.py` — capacity-decay rule
-- `shannon-prime-lattice/gossip/test_gossip.py` — registers E5
-
-**Tests.**
-- **E5 Convergence under gossip.** 16 nodes, each starts with a different set of bindings. Run gossip for K rounds. After K rounds, recall against any node for any of the originally inserted keys returns the expected value within the capacity-curve tolerance. K is documented; expected to be O(log N) but measure.
-
-**Entry conditions.** Phases 3 (ARM), 8 (DHT for partner selection).
-
-**Exit conditions.**
-- E5 passes.
-- Memory per node is bounded under continuous bind+gossip — verified by a 24-hour soak test recorded in `papers/PPT-LAT-Soak-Phase9.md`.
-
-**Estimated wall-clock.** 5–7 days.
-
-**Dependencies.** Phases 3, 8.
-
-**Notes for the picking-up session.**
-- The capacity-decay rule is what stops memory from growing without bound. Get the rule from Theory section 8; do not invent one.
-- Partner selection from the routing table is a design decision: pure-random vs distance-weighted. Document the choice and the reasoning.
-- The 24-hour soak test is non-negotiable. Gossip protocols that look fine in a 5-minute test often pathologically diverge over hours.
-
----
-
-### Phase 10 — Verification layer
-
-**Goal.** Before the token economy can be built, contributions must be verifiable. This phase implements: (a) commitment scheme for KSTE trees so a node can prove "I had this tree at time T", (b) dominance proof checks so a verifier can confirm `a ⪯_d b` without re-encoding, (c) slashing simulation under a documented adversarial model.
-
-**Deliverables.**
-- `shannon-prime-system/include/sp_commit.h` and `sp_commit.c` — KSTE tree commitment scheme (Merkle-style over the tree nodes).
-- `shannon-prime-system/include/sp_dproof.h` and `sp_dproof.c` — dominance proofs: a proof is a sequence of signature checks plus the witness path through the tree.
-- `shannon-prime-lattice/verifier/spverifier/` — verifier daemon (Python is fine).
-- `shannon-prime-lattice/verifier/test_slash.py` — slashing simulation.
-
-**Tests.**
-- **E6 FP/FN rates under adversarial bindings.** A documented adversarial set (in `papers/PPT-LAT-Theory.md` section 9): a list of attacks the verifier should catch. Run each attack against the verifier. Measure false-positive rate (legitimate contributions wrongly slashed) and false-negative rate (attacks not caught). Both within documented bands: target FP < 1%, FN < 5%.
-
-**Entry conditions.** Phases 1, 2, 9 complete.
-
-**Exit conditions.**
-- E6 passes.
-- Adversarial test set is committed.
-- A short threat model doc is committed at `papers/PPT-LAT-Threat-Model.md`.
-
-**Estimated wall-clock.** 7–10 days. **Second-highest-variance phase after Phase 5.**
-
-**Dependencies.** Phases 1, 2, 9.
-
-**Notes for the picking-up session.**
-- Threat modelling first. Do not write commitment code until the threat model is written down and reviewed. The shape of the commitment depends on what you are defending against.
-- Dominance proofs that require re-encoding are no proofs; the verifier needs a path through the existing tree using only signatures + a witness. This is the design challenge.
-- Slashing is simulated only in Phase 10. Real slashing (with tokens) comes in Phase 11.
-
----
-
-### Phase 11 — Token economy simulator
-
-**Goal.** Two-token economy: a stake token and a discovery token. Discovery tokens are minted when a contribution moves the dominance-incomparable frontier (i.e., the contribution lands in the sieve as `SP_SIEVE_KEPT` AND survives verifier review). Stake is required to participate and is slashable on verification failure. Simulator runs over a synthetic population of contributors and measures equilibrium properties.
-
-**Deliverables.**
-- `shannon-prime-lattice/economy/speconomy/` — simulator package:
-  - `tokens.py` — issuance, balance, slashing rules
-  - `contributors.py` — synthetic contributor population with documented behaviour distributions
-  - `simulate.py` — run a multi-epoch simulation
-- `shannon-prime-lattice/economy/test_economy.py` — registers E7
-
-**Tests.**
-- **E7 Equilibrium under contributor mixes.** Run the simulator for 1000 epochs across (a) all-honest, (b) 10% adversarial, (c) 50% adversarial, (d) lazy-honest majority (mostly low-effort contributions). For each mix, measure: token distribution Gini, fraction of slashable events caught, total discovery-token issuance rate. All within documented bands.
-
-**Entry conditions.** Phases 2, 7, 10 complete.
-
-**Exit conditions.**
-- E7 passes for all four contributor mixes.
-- Results are committed at `papers/PPT-LAT-Economy-Phase11.md`.
-
-**Estimated wall-clock.** 5–7 days.
-
-**Dependencies.** Phases 2, 7, 10.
-
-**Notes for the picking-up session.**
-- This is a simulator, not a blockchain. No on-chain anything in Phase 11.
-- The contributor behaviour distributions matter more than the simulation engine itself. Document them carefully in the test.
-- "Equilibrium" here means "no runaway in token issuance, no degenerate concentration in any one node, no exploit that lets adversaries mint discovery tokens without contributing dominance-incomparable trees". Measure all three.
-
----
-
-### Phase 12 — End-to-end three-node pilot
-
-**Goal.** Real machines. Three nodes on three different physical hosts, each running the full stack: crawler, KSTE, sieve, ARM gossip, sharded-inference shards, verifier. Measure throughput, latency, dedup ratio, and token issuance fairness. This is the integration phase; nothing new is being built, but everything has to work together.
-
-**Deliverables.**
-- `shannon-prime-lattice/pilot/` — orchestration scripts (Ansible / shell — pick one and document):
-  - `bootstrap.sh` — provision a fresh node
-  - `start.sh` / `stop.sh` — start/stop the daemons
-  - `harvest.sh` — pull metrics from a running pilot
-- `shannon-prime-lattice/pilot/dashboard/` — minimal HTML dashboard (or a Markdown report generator) that shows: nodes alive, throughput, latency, dedup, fairness.
-- `papers/PPT-LAT-Pilot-Phase12.md` — full pilot report.
-
-**Tests.** No new unit tests. The pilot itself is the test. It either runs for the documented duration with all metrics within the documented bands, or it doesn't.
-
-**Entry conditions.** Phases 0 through 11 all complete and all green in CI.
-
-**Exit conditions.**
-- Three real nodes run the full stack for at least 72 hours without manual intervention.
-- All four headline metrics (throughput, latency, dedup ratio, token issuance fairness) are measured and recorded in the pilot report.
-- The pilot report includes the start-from-zero runbook so a fourth machine could be added by following written instructions.
-
-**Estimated wall-clock.** 10–14 days.
-
-**Dependencies.** Everything.
-
-**Notes for the picking-up session.**
-- Phase 12 is integration, not invention. If you find yourself writing new functionality in Phase 12, stop and add it to the appropriate earlier phase first.
-- The 72-hour soak is non-negotiable. Most systems look fine in a 1-hour pilot and fall over by hour 18.
-- The runbook is the deliverable. A pilot that works once but cannot be reproduced is not a pilot.
-
----
-
-## 3. The contract system
-
-Each phase's **Deliverables** and **Tests** sections together form its contract.
-
-1. A phase is complete only when every file in its deliverables list exists on `main` of the named repo, and every named test is passing in CI on Linux and Windows.
-2. "Passing in CI" means a green workflow on the commit that marks the phase complete. Green local builds are not sufficient.
-3. If a deliverable list is incomplete after the fact, reopen the phase and finish it — do not paper over the gap in a later phase.
-4. The contract is **append-only**. You may add deliverables; you may not remove them. Unnecessary deliverables get marked "skipped — see session state".
-5. Phases complete in order. You may prototype a later phase to clarify an earlier phase, but prototypes do not count toward completion.
-
-The gates are the only mechanism preventing drift between what was supposed to be built and what got built.
-
----
-
-## 4. The offload pattern
-
-At the end of every working session, write `SESSION-STATE-lat-<phase>.md` to `D:\F\shannon-prime-repos\shannon-prime-lattice\papers\`. Multiple session-state files per phase are expected; future sessions read the most recent first.
-
-**Required sections:**
-
-1. **Date and phase.** ISO date, phase number, working title.
-2. **Where I stopped.** Last commit, last test passing, next file to edit.
-3. **What's green.** Tests passing right now.
-4. **What's red.** Tests failing, with error and best guess at cause.
-5. **What I learned.** Design decisions not yet documented elsewhere, blind alleys to skip, departures from spec that need either fixing or spec update.
-6. **What the next session should do first.** One paragraph, concrete action.
-
-Sessions are short, the project is long. When picking up, **read the most recent session-state file before the roadmap**. The roadmap says what to build; the session state says where things are.
-
----
-
-## 5. Anti-contamination rule
-
-This is the rule that this project lives or dies by.
-
-**Sessions MUST NOT copy code or designs from `D:\F\shannon-prime-repos\shannon-prime\` or `D:\F\shannon-prime-repos\shannon-prime-engine\`.** Those repos are reference for **theory only** (the math papers in `papers/PPT-ARM/`) and are explicitly off-limits for everything else.
-
-Specifically:
-
-- Do not open `.c` or `.h` files in the legacy repos.
-- Do not open `CMakeLists.txt` or build scripts in the legacy repos.
-- Do not skim test files in the legacy repos. (Yes, even tests. Tests encode design assumptions that may be wrong for the new architecture.)
-- Do not "just check how they did it". The whole point of this rebuild is to be free of the legacy code's accumulated decisions.
-
-What you **may** read:
-
-- The math papers in `papers/PPT-ARM/` (these are the theory reference).
-- This roadmap.
-- `PPT-LAT-Theory.md`.
-- `PPT-LAT-Systems.md`.
-- The legacy engine as a **black box**: you can run it, observe its outputs, and use those outputs as comparison oracles. You cannot look inside.
-
-Why the rule is strict: the user has reported that previous attempts to start fresh got contaminated by the existing codebase being pulled back in piece by piece. The result was that the "new" repo became indistinguishable from the old one within a few sessions. The memory entry `feedback_no_cross_contamination` is the canonical statement of this; it is binding.
-
-If you are in doubt about whether a particular read is allowed, the answer is: **don't**. Re-derive from the math papers.
-
----
-
-## 6. Testing discipline
-
-Tests are the contract. Tests that pass in phase N must continue to pass in phase N+k for all k. Concretely:
-
-- Every test from every prior phase runs in CI on every commit. There is no "this test was for the old API, we'll skip it now". If an API changes, the test is updated to track the new API while still proving the same invariant.
-- A regression — a previously-green test going red — blocks the commit. CI must be green on `main` at all times.
-- If a regression is found in a later phase, the root-cause fix goes in the earliest phase whose module is responsible, and a regression test is added that would have caught it earlier.
-- Test data files (reference logits, NTT vectors, capacity curves, dedup ratios) are committed to the repo. They are part of the contract.
-
-The cost of this discipline is that early-phase tests must be designed to be stable. Do not write tests against implementation details; write tests against the invariants in the theory paper. If the theory paper changes, that is a coordinated change; if the implementation changes, the tests must not.
-
----
-
-## 7. GitHub workflow
-
-All three repos are **PRIVATE** on GitHub. They will stay private through Phase 12.
-
-**Per-phase workflow:**
-
-1. Pick up phase N. Read the latest `SESSION-STATE-lat-N.md` if any.
-2. Work on a feature branch named `phaseN/<short-description>`.
-3. Commit small, named commits. Each commit message starts with `[phaseN]`.
-4. When the phase's exit conditions are all met, open a pull request from the feature branch to `main`. The PR description includes the contract check: every deliverable checked off, every test listed with its status.
-5. CI must be green on the PR. Merge to `main`.
-6. Tag `main` with `phaseN-complete` after merge.
-7. Push the tag.
-8. Write the final `SESSION-STATE-lat-N.md` describing the completion.
-
-If a phase takes multiple sessions, only the **final** session merges to main. Intermediate sessions push to the feature branch and write intermediate session-state files. This is the offload pattern integrated with the GitHub workflow.
-
-Each repo's CI runs only its own tests. The lattice repo's CI runs the orchestration/Python tests; the math core's CI runs the C unit tests; the engine's CI runs the engine tests and the E1-E2 integration tests. There is no global CI; the gate is that each repo is green at the moment of phase completion.
-
----
-
-## 8. Risks and Mitigations
-
-A short, blunt list. Read this before starting each phase.
-
-**Risk 1 — Phase 5 schedule slip.** The engine bootstrap phase is doing four things at once (GGUF loader, plain forward pass, math-core integration, reference validation). Any one of them can stall the whole phase.
-*Mitigation.* Sequence them. Plain forward pass first with the **existing** attention math (not NTT yet). Validate against the reference logits. Then swap in NTT attention. Validate again. Then KSTE KV. Then ARM. Each swap is a bisect point. If a swap breaks the cosine target, you know which swap.
-
-**Risk 2 — Anti-contamination drift.** The legacy repos are right there. The temptation to "just peek" compounds over many sessions.
-*Mitigation.* Each session's first action when picking up a phase is to re-read Section 5 of this doc. Yes, every session. If a session does open a forbidden file, it must document the contamination in its session-state file and flag the deliverables that may have been influenced.
-
-**Risk 3 — Verification (Phase 10) is harder than it looks.** Designing a commitment scheme and a dominance-proof system without re-encoding is a real piece of cryptographic engineering, and the project does not have a cryptographer on it.
-*Mitigation.* Budget extra time. Start the threat model writeup before any code. If the FP/FN bands in E6 cannot be hit with the proposed scheme, escalate — do not weaken the bands. Consider engaging outside review before committing.
-
-**Risk 4 — Gossip convergence in Phase 9.** Gossip protocols look easy in a small test and pathologically diverge at scale or over time.
-*Mitigation.* The 24-hour soak is mandatory. Do not skip it under schedule pressure. If you are tempted to skip it, you are exactly the person who needs to run it.
-
-**Risk 5 — Phase 12 pilot logistics.** Three real machines on a real network introduce failure modes (clock skew, partial network partitions, ISP-level filtering of the user agent) that loopback testing cannot reproduce.
-*Mitigation.* Start Phase 12 with a "day zero" test on one machine only, then add the second, then the third. Don't go to three machines on the first day. The runbook is built up incrementally with each machine added.
-
-**Risk 6 — Cross-platform bit-exactness drifting silently.** The math core is supposed to be bit-exact on Linux and Windows. A compiler change or a Windows update can break this without any local signal.
-*Mitigation.* T4.5 (cross-platform bit-exact vectors) runs on every CI build, on both platforms. If T4.5 ever goes red, treat it as a blocker for everything downstream; do not paper over by regenerating the vectors on the failing platform.
-
-**Risk 7 — Token economy gaming in Phase 11.** A simulated economy can hide attacks that a real economy would surface. The simulator may declare equilibrium under a contributor mix that is, in reality, a degenerate case.
-*Mitigation.* The four contributor mixes in E7 are a floor, not a ceiling. Add adversarial mixes that target the specific incentive structures of the two-token system. Document each new mix in the test file with the attack it represents.
-
-**Risk 8 — Theory drift.** The theory papers are the spec. If theory changes mid-stream, every downstream phase needs reconciling.
-*Mitigation.* Theory changes land with a list of impacted phases and tests, updated in the same commit. Check theory papers' git log first when picking up a phase.
-
----
-
-## 9. Where to start tomorrow
-
-First session after this roadmap lands:
-
-1. Re-read Section 5 (anti-contamination) and Section 4 (offload pattern).
-2. Open Phase 0. Create the three GitHub repos (PRIVATE).
-3. Push the bootstrap files: `.gitignore`, `LICENSE`, `README.md`, `BUILD-ENV.md`, `NAMING.md`, `CONTRACT-FORMAT.md`, empty CMakeLists, placeholder CI workflow.
-4. Verify CI is green on all three repos.
-5. Write `SESSION-STATE-lat-0.md`, commit, push.
-
-Phase 1 starts on the next session, with a clean slate and a clear contract.
+## 9. Phase 3 — Model-family expansion
+
+**Goal.** Every backend supports every model family in the in-scope
+list. The matrix is large (7 model families × 4 backends = 28 cells),
+and not every cell must close — some cells are explicit "later" cells
+(see priority below).
+
+**Dependencies.** Phase 2-CPU closed. Other backends may or may not be
+closed; the matrix is filled per-cell.
+
+**Parallelism.** Cells are independent. Sessions can pick any cell.
+
+### 9.1 Model-family list
+
+- 3.1 Llama 3.1 / 3.2 — established baseline; Llama 3 is the most-tested
+  upstream architecture, so it exercises every loader edge case.
+- 3.2 Qwen3 base — closest to the current canonical Qwen3-0.6B test
+  model.
+- 3.3 Qwen3.5 — incremental update on Qwen3, mostly architecture-flag
+  differences.
+- 3.4 Qwen3.6 — **MoE.** Adds the routing layer, sparse FFN, expert
+  parameter sharding. Largest single-cell scope in Phase 3.
+- 3.5 Qwen3.7 — incremental update on 3.6 if it lands by then;
+  otherwise deferred.
+- 3.6 Gemma 2.5 / 3 / 4 — Google family. Different RoPE shape, different
+  RMSNorm placement, attention sliding window. Gemma 3 is the canonical
+  research target (the T4 validation curve was on Gemma3-1B).
+- 3.7 DeepSeek V4 — large MoE with FP8 weights. Lower priority for
+  initial bring-up; the architecture is heavy and the FP8 weights would
+  require an additional dequant path.
+
+### 9.2 Priority cells
+
+The matrix has 28 cells. To stay honest about scope, the project
+declares which cells **must** close by end of Phase 3 and which are
+later-phase:
+
+- **Must close (8 cells).** CPU × {Llama 3.x, Qwen3, Gemma 3}, CUDA ×
+  {Llama 3.x, Qwen3, Gemma 3}, Hexagon × {Qwen3, Gemma 3}.
+- **Should close (10 cells).** CPU × {Qwen3.5, Qwen3.6, Gemma 2.5,
+  Gemma 4, DeepSeek V4}, CUDA × {Qwen3.5, Qwen3.6, Gemma 2.5, Gemma 4,
+  DeepSeek V4}.
+- **Later (10 cells).** All Vulkan cells beyond the canonical
+  Qwen3-0.6B test model. All Hexagon cells beyond Qwen3 and Gemma 3.
+
+### 9.3 Per-cell deliverables
+
+Each cell delivers:
+
+- `engine/models/<family>/loader.<backend>.c` — model-specific loader.
+- `engine/models/<family>/forward.<backend>.c` — forward pass.
+- `engine/models/<family>/test_<backend>.c` — correctness tests.
+- An entry in `engine/models/matrix_status.md` updated when the cell
+  closes.
+
+### 9.4 Per-cell tests
+
+- M_<family>_<backend>_1 — model loads.
+- M_<family>_<backend>_2 — first 256 tokens of forward pass match
+  llama.cpp within 1e-3 relative.
+- M_<family>_<backend>_3 — PPL on a standard 4k-token sample within
+  0.5% of baseline.
+- M_<family>_<backend>_4 — memory footprint reported in the offload
+  note.
+
+Cells close on M_*_4 passing. A failed M_*_2 indicates a loader or
+forward-pass bug; do not declare the cell closed by skipping it.
+
+### 9.5 Phase 3 exit
+
+Phase 3 closes when the 8 must-close cells are green and the should-close
+cells are at least started. Tag `lat-phase-3-closed`. Later cells
+continue to land in Phase 4+ alongside their own work.
+
+### 9.6 Architectural notes per model family
+
+**Llama 3.1 / 3.2.** Most-tested upstream architecture, which means
+the loader exercises every GGUF metadata edge case the project will
+encounter. Use Llama 3.x as the canary when adding any new loader
+field. Llama's RoPE is the "plain" reference shape; everything else
+in the family list is a delta against it.
+
+**Qwen3 base.** Closest to the canonical test model and the easiest
+cell to bring up second. The Qwen3 RoPE includes a per-head linear
+bias which the Stern-Brocot variant (E9.1) wires into directly; keep
+both code paths buildable until Phase 4 has Stern-Brocot validated
+end-to-end on this family.
+
+**Qwen3.5.** Incremental delta on Qwen3 base. Most of the bring-up
+cost is metadata flags and a slightly different normalisation order
+inside the attention block; the kernel inventory is identical.
+
+**Qwen3.6 (MoE).** This is the architectural step change inside the
+Qwen family. The routing layer assigns each token to k-of-N experts
+and the FFN becomes a sparse gather. The cell must add an expert
+parameter sharding path so the experts can be split across multiple
+machines or pipeline stages later. Phase 3 only requires the
+single-machine case; multi-machine MoE is a later phase.
+
+**Qwen3.7.** Speculative. If 3.7 has shipped by the time the project
+gets here, treat it as another incremental Qwen update; if it hasn't,
+defer this row.
+
+**Gemma 3 (and 2.5 / 4).** Different RoPE shape, different RMSNorm
+placement (pre + post on some sublayers), attention sliding window.
+Gemma 3 is the canonical research tar

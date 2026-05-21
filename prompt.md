@@ -8,7 +8,11 @@ You are Claude, opening a new session on **shannon-prime-lattice**. Read this fi
 
 **shannon-prime-lattice** is a clean from-scratch rebuild and synthesis of the mathematical primitives from six months of prior Shannon-Prime work, aimed at a unified architecture for **decentralized cooperative AI training and inference**.
 
-It uses **one math object** across the entire stack: the prime-factored coordinate lattice with the dominance order `⪯_d` (Friedman–Kruskal homeomorphic embedding) and the CRT cyclotomic ring for compact representation. Six architectural layers, each using a different aspect of the same lattice:
+It uses **one math object** across the entire stack: the prime-factored coordinate lattice with the dominance order `⪯_d` (Friedman–Kruskal homeomorphic embedding) and the CRT cyclotomic ring for compact representation, anchored to the ring of integers `O_K` over `Q(√-163)` (a UFD by the Heegner discriminant). The Prime Power Transformer (PPT) is the substrate: 13 transformer steps each replaced by an exact algebraic operation in this framework (see PPT-LAT-Theory.md §7).
+
+**Engine scope:** four backends sharing the math core — CPU (AVX2 + AVX512), CUDA (sm_86/sm_89), Vulkan (SDK 1.3.x), Hexagon (V69 HTP on S22U-class phones). Foundational features (inline Q8/Q4 weight compression with Frobenius scale, inline KV cache compression via VHT2 + Spinor block) must work on all four before Lattice features layer on. Target model families: Llama 3.x, Qwen3/3.5/3.6/3.7, Gemma 2.5/3/4, DeepSeek V4.
+
+**Lattice layer (the decentralized network), gated by ENV/CLI:** Six architectural layers, each using a different aspect of the same lattice:
 
 1. **Knowledge representation** — KSTE-encoded packed trees, Friedman-sieve deduplication via `⪯_d`.
 2. **Cross-node aggregation** — ARM (HRR in the CRT cyclotomic ring) for compact bound state.
@@ -118,52 +122,126 @@ The user (**KnackAU / Ray Daniels**, `knack112358@gmail.com`) is not a standard 
 
 ## Build environment
 
-- Windows host. WSL available. PowerShell is the default shell — use PowerShell syntax (`$null`, `$env:VAR`, backtick line continuation).
-- **VS2019 BuildTools + CUDA 12.4** for the engine CUDA path. `--use-local-env` flag required. ~5 min build.
-- **VS2022 / newer VS18** available if needed for non-CUDA paths.
-- **CMake + Ninja generator** for builds. MSVC `rc.exe` gotcha applies — if rc is unresolved, prepend the SDK bin to PATH before configure.
-- `git` and `gh` CLI available.
-- Python 3.13 available.
+**Set in stone. Do not guess. Do not re-derive each session.**
 
-If a build environment detail bites you, check `D:\F\shannon-prime-repos\project_paths_and_stuff.md` (the master paths doc) before guessing.
+The four backends each have a dedicated env activation script + build script under `shannon-prime-system-engine/scripts/`. All toolchain paths are pinned in `scripts/env/env-common.bat`.
+
+| Backend | Env script | Build script | Build dir | Toolchain |
+|---------|-----------|--------------|-----------|-----------|
+| CPU     | `scripts\env\env-cpu.bat`     | `scripts\build\build-cpu.bat`     | `build-cpu/`     | VS2019 BT + Ninja, AVX2+AVX512 |
+| CUDA    | `scripts\env\env-cuda.bat`    | `scripts\build\build-cuda.bat`    | `build-cuda/`    | VS2019 BT + CUDA 12.4 + Ninja, sm_86/sm_89 |
+| Vulkan  | `scripts\env\env-vulkan.bat`  | `scripts\build\build-vulkan.bat`  | `build-vulkan/`  | VS2019 BT + Vulkan SDK 1.3.x + glslc |
+| Hexagon | `scripts\env\env-hexagon.bat` | `scripts\build\build-hexagon.bat` | `build-hexagon/` | Hexagon SDK 5.4.0.x + Git sh.exe on PATH |
+
+All four build directories coexist. Switching backends does **not** invalidate the others.
+
+**VSCode workspace:** open `D:\F\shannon-prime-repos\shannon-prime-lattice.code-workspace` — multi-root view of all three repos, build tasks for each backend wired into the task list (Ctrl-Shift-B → pick backend).
+
+**Full doc:** `shannon-prime-system-engine/docs/BUILD-ENV.md` — pin table, common failure modes (Hexagon rpcmem strict alloc, qaic WinNT path, CUDA 12.4 + VS2019 pin tightness, Vulkan subgroup ops requirement), per-phase build status matrix.
+
+If a build env script errors out, fix the pin or install the missing tool. Do **not** invent fallbacks. The scripts are intentionally strict.
+
+Other tools: `git`, `gh` CLI, Python 3.13 available. PowerShell is default shell — use PowerShell syntax (`$null`, `$env:VAR`, backtick line continuation) in interactive work; the build/env scripts are batch.
 
 ---
 
 ## Target file layout
 
 ```
+shannon-prime-lattice.code-workspace   # VSCode multi-root workspace at the parent dir
+
 shannon-prime-lattice/
 ├── prompt.md                          # this file
 ├── README.md                          # public-facing overview
 ├── papers/
-│   ├── PPT-LAT-Theory.md
-│   ├── PPT-LAT-Systems.md
-│   ├── PPT-LAT-Roadmap.md
-│   ├── PPT-LAT-Theory.pdf
-│   ├── PPT-LAT-Systems.pdf
-│   ├── PPT-LAT-Roadmap.pdf
+│   ├── PPT-LAT-Theory.{md,pdf}        # math foundations (O_K, R_q, CRT-NTT, PPT 13-step, theorems)
+│   ├── PPT-LAT-Systems.{md,pdf}       # architecture (4 backends, inline compression, blockchain)
+│   ├── PPT-LAT-Roadmap.{md,pdf}       # 14 phases, parallel backend tracks, model x backend matrix
 │   └── SESSION-STATE-lat-*.md         # offload docs, one per session
-├── tests/                             # integration tests across math + engine
-├── demos/                             # phase demos (two-node sharded inference, ...)
-├── docs/                              # ancillary docs
+├── scripts/
+│   └── render-papers.bat              # regenerates PDFs from MDs
+├── tests/                             # cross-repo integration tests
+├── demos/                             # phase demos (two-node sharded inference, end-to-end pilot)
 └── .gitignore
 
-shannon-prime-system/
+shannon-prime-system/                   # math core
 ├── README.md
-├── core/                              # KSTE, sieve, ARM, NTT primitives
+├── core/
+│   ├── ok_arith/                      # O_K integer arithmetic over Q(√-163)
+│   ├── frobenius/                     # Frobenius lift for Q8/Q4 weight storage
+│   ├── vht2/                          # VHT2 + Möbius reorder + 63-byte Spinor block (frozen)
+│   ├── ntt_crt/                       # CRT dual-prime NTT (no __int128)
+│   ├── poly_ring/                     # R_q = Z_q[x]/(x^N+1) attention
+│   ├── kste/                          # Knight-Spinor Tree Encoder + Tier-0/Tier-1 signatures
+│   ├── dominance/                     # ⪯_d order + signature dominance
+│   ├── sieve/                         # Friedman sieve cache
+│   └── arm/                           # Algebraic Resonance Memory (HRR in CRT cyclotomic ring)
 ├── include/sp/
 ├── tests/
-├── CMakeLists.txt
-└── .gitignore
+├── cmake/
+└── CMakeLists.txt
 
-shannon-prime-system-engine/
+shannon-prime-system-engine/            # inference engine + backends
 ├── README.md
-├── src/                               # engine sources
-├── lib/shannon-prime-system           # submodule pointer to math core
+├── src/
+│   ├── backends/
+│   │   ├── cpu/                       # AVX2 + AVX512 paths
+│   │   ├── cuda/                      # sm_86 + sm_89
+│   │   ├── vulkan/                    # compute shaders
+│   │   └── hexagon/                   # V69 HTP host stub + device .so
+│   ├── common/                        # backend-agnostic helpers
+│   ├── loader/                        # GGUF loader
+│   └── forward/                       # forward-pass dispatcher
+├── include/sp_engine/
 ├── tests/
-├── CMakeLists.txt
-└── .gitignore
+├── scripts/
+│   ├── env/                           # env-{cpu,cuda,vulkan,hexagon,common}.bat
+│   ├── build/                         # build-{cpu,cuda,vulkan,hexagon}.bat
+│   └── smoke/                         # smoke-*.bat
+├── cmake/
+│   └── toolchain-hexagon.cmake
+├── docs/
+│   └── BUILD-ENV.md                   # pinned toolchain doc
+├── lib/shannon-prime-system           # submodule pointer to math core (added Phase 2)
+└── CMakeLists.txt
 ```
+
+---
+
+## Backends and model families
+
+Engine = 4 backends × N model families. Each cell in the matrix must hit the same correctness gate (PPL within 1% of fp16 reference) before moving on.
+
+**Backends:** CPU (AVX2 + AVX512, MSVC/clang), CUDA (sm_86 + sm_89, NVCC), Vulkan (compute shaders), Hexagon (V69 HTP on S22U-class phones via FastRPC).
+
+**Model families (foundational — Phase 3 of the roadmap):**
+- Llama 3.1, 3.2
+- Qwen3, Qwen3.5, Qwen3.6 (MoE), Qwen3.7
+- Gemma 2.5, Gemma 3, Gemma 4
+- DeepSeek V4 (671B MoE, ~37B active, FP8 native, MTP)
+
+**Foundational features (must work everywhere before sieve / Lattice features land):**
+- Inline Q8 weight storage with per-row Frobenius scale
+- Inline Q4 mixed-precision (calibration-gated)
+- Inline KV cache compression via VHT2 + 63-byte Spinor block
+- Hardware-specific code paths: AVX2 / AVX512 / NEON / HVX / DSP scalar
+
+**Sieve / Lattice features (gated, off-by-default):**
+- `SP_LATTICE_SIEVE=1` — KSTE KV cache + Friedman sieve
+- `SP_LATTICE_ARM=1` — ARM aggregation across nodes
+- `SP_LATTICE_CRT_SHARD=1` — two-node CRT-sharded inference
+- `SP_LATTICE_DHT=<peer>` — DHT participation
+- `SP_LATTICE_TOKENS=1` — token-economy tracking
+
+**Regression invariant:** with all `SP_LATTICE_*` unset, the engine produces bit-identical output to the plain (non-Lattice) path. Lattice features never break the baseline.
+
+---
+
+## Blockchain layer (Lattice umbrella)
+
+This is a real component, not decoration. Two-token economy (Work + Discovery), Proof-of-Useful-Work via ⪯_d dominance verification, validator rotation, slashing on residue mismatch. Genesis parameters defined in the Lattice repo; consensus rules mutable through governance. Detail in `papers/PPT-LAT-Systems.md` §6.
+
+The blockchain is intentionally mutable. Papers are scaffolding, not specification — the consensus mechanism, token curves, and verification thresholds are expected to evolve as we measure them.
 
 ---
 
