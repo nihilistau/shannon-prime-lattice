@@ -1,8 +1,8 @@
-# SESSION-STATE-lat-1
+# SESSION-CLOSED-lat-1
 
 **Phase:** 1 — Math core foundations (`shannon-prime-system`).
 **Session date:** 2026-05-21.
-**Status:** **Phase 1 CLOSED at Tier-1 + Tier-2.** All six subphases (1A–1F) green under Windows MinGW-gcc (Tier-1); integrated root `ctest` = **6/6** (T_OK, T_NTT, T_PR, T_VHT, T_FRO, T_KSTE), whole-build UBSan sweep clean. Linux gcc CI green (Tier-2, run 26235084222). Tag `lat-phase-1-closed` cut on both repos. Tier-3 (MSVC) is a separately-tracked follow-up wave, not a close blocker (§3.7).
+**Status:** **Phase 1 CLOSED — all three platform tiers green.** All six subphases (1A–1F): integrated `ctest` **6/6** (T_OK, T_NTT, T_PR, T_VHT, T_FRO, T_KSTE), UBSan-clean. Tier-1 Windows MinGW-gcc; Tier-2 Linux gcc CI; **Tier-3 Windows MSVC** (full suite 6/6 under VS2019 BT, plus a `windows-msvc` CI job — both CI jobs green, run 26237235573). Tag `lat-phase-1-closed` on both repos. Only Phase-1 item carried forward: T_FRO_4 (needs the Phase-2 forward pass).
 
 ---
 
@@ -66,20 +66,20 @@ Integrated root `ctest` at last full run (1A,1B,1D,1E,1F): **5/5 green** (T_OK, 
 
 ## Open / outstanding
 
-1. **Tier-2 (Linux CI)** — not yet confirmed. Push all repos to trigger `.github/workflows/ci.yml`; verify the run is green before declaring Phase 1 fully closed.
-2. **Scaffold: add a `DEPENDS` arg to `sp_add_module`** (1C feedback). Currently a dependent module appends `target_link_libraries(sp_<m> PUBLIC sp_<dep>)` after the call and only the root build links. A `DEPENDS sp_ntt_crt` arg (helper does the link, optionally find-or-add_subdirectory the dep) would make dependent modules uniform and standalone-buildable. Phase 2 will have many inter-module deps — worth doing before then.
-3. **Tier-3 (MSVC)** — deferred wave: T_NTT_3, and MSVC runs of T_VHT_5 / T_KSTE_4. Plan: configure each module in a second build dir via `vcvarsall x64`; the `__int128` oracle can't compile on MSVC, so generate a checked-in reference fixture from the gcc build. Note: `.gitignore` blocks `*.bin` — use a `.h` fixture (C array) or add a `.gitattributes` negation + `binary` attr.
-4. **T_FRO_4** — runs in Phase 2 alongside E_CPU_3.
-5. **Minor:** add `.gitattributes` (`*.bin binary`, settle CRLF) for the MSVC fixture wave; CRLF↔LF warnings on commit are cosmetic.
+1. ✅ **Tier-2 (Linux CI)** — green (`.github/workflows/ci.yml`, `linux-gcc`).
+2. ✅ **`sp_add_module` `DEPENDS`** — done; `poly_ring` uses it, standalone build works. Helper auto-`add_subdirectory`s the sibling dep when its target is absent.
+3. ✅ **Tier-3 (MSVC)** — done. T_NTT_3 compiles on every compiler and checks the production kernel against `core/ntt_crt/ntt_ref_vectors.h` (gcc-pre-generated from the `__int128` oracle by `ntt_gen_fixture.c`); T_NTT_2 self-skips on MSVC; oracle excluded from the MSVC test build. T_VHT_5 / T_KSTE_4 byte-identity pass under MSVC. `windows-msvc` CI job (VS2022 generator) added — both CI jobs green.
+4. ✅ **`.gitattributes`** — `* text=auto` + `*.bin/*.gguf/*.safetensors binary`.
+5. **T_FRO_4** — the only carried-forward item: runs in Phase 2 alongside E_CPU_3 (needs the forward pass + Gemma3-1B).
 
 ---
 
 ## Next session — pick up first
 
-Phase 1 close is done (6/6 Tier-1, Tier-2 CI green, tagged `lat-phase-1-closed`, this file renamed to `SESSION-CLOSED-lat-1.md`). The fork:
+Phase 1 is fully closed (all three tiers green, tagged `lat-phase-1-closed`, scaffold polished, MSVC + CI durable). Next is **Phase 2-CPU (engine)** — the project's centre of mass:
 
-1. **MSVC parity wave (Tier-3)** — close the deferred T_NTT_3 + MSVC runs of T_VHT_5 / T_KSTE_4. Configure each module via `vcvarsall x64` in a second build dir; the `__int128` oracle won't compile under MSVC, so generate a checked-in reference fixture from the gcc build (`.h` C array, not `.bin` — gitignored). Add `.gitattributes` (`*.bin binary`) while there. Then tag the full `lat-phase-1-closed` (all three tiers).
-2. **Phase 2-CPU (engine)** — GGUF loader → Qwen3-0.6B Q8 forward pass, the reference anchor all other backends verify against (E_CPU_1..6). This is the project's centre of mass; the math core is now ready to consume.
-3. **Scaffold polish** — add `sp_add_module(... DEPENDS ...)` before Phase 2 multiplies inter-module links.
-
-Recommend 2 (Phase 2-CPU) as the higher-leverage path; the MSVC wave can run opportunistically since nothing downstream needs MSVC yet.
+- Repo: `shannon-prime-system-engine` (consumes the math core via `lib/shannon-prime-system` submodule — add the submodule pointer first, Phase-2 entry).
+- Bring-up order (§8.1 per-backend template, B=CPU): **2-CPU.A** GGUF loader → **2-CPU.B** forward pass on **Qwen3-0.6B Q8** (within 1e-4 / 0.1% of llama.cpp logits) → **2-CPU.C** inline Frobenius-decompressed matmul (use `sp_frob_*`) → **2-CPU.D** AVX2 (+optional AVX512) → **2-CPU.E** NTT-attention wired in, sieve OFF (use `sp_pr_*` / `sp_ntt_*`) → **2-CPU.F** KSTE KV-cache encode behind `SP_KSTE_KV=1` (use `sp_kste_*`, `sp_spinor_*`).
+- Tests E_CPU_1..6; **T_FRO_4** (Gemma3-1B PPL within 0.1%) runs here once the forward pass exists.
+- The engine build uses the pinned scripts under `shannon-prime-system-engine/scripts/env|build/` (NOT the math-core gcc/Ninja flow). CPU env: `env-cpu*.bat`.
+- Reuse the **scaffold-first + parallel-agent** pattern, but note Phase-2 cells are larger and more sequential within a backend (loader → forward → kernels), so parallelism is across backends/models, not within a single forward-pass bring-up.

@@ -1040,7 +1040,7 @@ restored. The rest of the §9.6 Gemma discussion remains to be written. -->
 
 One paragraph per closed phase (§3.3). Most recent last.
 
-### Phase 1 — Math core foundations — closed Tier-1+Tier-2 (2026-05-21)
+### Phase 1 — Math core foundations — closed all tiers (2026-05-21)
 
 All six subphases green. **1A** O_K arithmetic over Q(√-163)
 (`core/ok_arith`, T_OK_1..6). **1B** dual-prime CRT negacyclic NTT
@@ -1054,8 +1054,12 @@ Frobenius Q8 lift (`core/frobenius`, T_FRO_1..3; T_FRO_4 → Phase 2).
 T_KSTE_1..5; frozen 64-byte T_{60,3} tree). Built scaffold-first
 (`cmake/sp_module.cmake`, `sp_test.h`, EXISTS-guarded root) and executed
 by parallel agent dispatch. Integrated `ctest` 6/6, UBSan-clean on
-Windows MinGW-gcc (Tier-1); Linux gcc CI green (Tier-2). **Open:** Tier-3
-MSVC parity wave (T_NTT_3 + MSVC runs of T_VHT_5/T_KSTE_4 via a checked-in
-`__int128`-oracle fixture); T_FRO_4 in Phase 2; `sp_add_module` `DEPENDS`
-arg for inter-module links. Tag: `lat-phase-1-closed`. Offload:
-`SESSION-CLOSED-lat-1.md`.
+Windows MinGW-gcc (Tier-1); Linux gcc CI green (Tier-2). **Tier-3 (MSVC)
+also closed same session:** full suite 6/6 under MSVC (VS2019 BT), T_NTT_3
+gated against a gcc-pre-generated `__int128`-oracle fixture
+(`ntt_ref_vectors.h`, cases to 2^28 exercising the ~2^60 CRT range),
+T_VHT_5 / T_KSTE_4 byte-identity green under MSVC, and a `windows-msvc`
+CI job added so all three tiers stay continuously gated. Scaffold gained
+`sp_add_module(... DEPENDS ...)` for inter-module links. **Still open:**
+T_FRO_4 (Gemma3-1B PPL) runs in Phase 2. Tag: `lat-phase-1-closed`.
+Offload: `SESSION-CLOSED-lat-1.md`.
