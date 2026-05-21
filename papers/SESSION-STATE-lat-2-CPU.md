@@ -35,11 +35,20 @@ Engine tests use the math-core `sp/sp_test.h` harness (via the submodule). Refer
 - **Oracle (DONE):** clean stock llama.cpp cloned + built at `D:\F\shannon-prime-repos\shannon-prime-lattice-llama` (CPU-only, gcc/Ninja; its own git repo, not committed into ours). Oracle tool `shannon-prime-system-engine/tools/oracle/dump_logits.{cpp,sh}` (self-contained MinGW exe) tokenizes a prompt with the stock tokenizer and dumps token IDs + per-position logits — verified on Qwen3-0.6B-f16 (5 tok × 151936). File format in `tools/oracle/README.md`. (The local `llama-cpp-*` checkouts — incl. the misnamed "cleanroom" — are all contaminated with `shannon_prime_*` libs and must NOT be used.)
 - Qwen3-0.6B arch (now locked in `model.c`): 28 layers, n_embd 1024, n_ff 3072, **GQA 16/8, head_dim 128** (Q→2048, K/V→1024), **per-head QK-RMSNorm**, **untied** `output.weight`, SwiGLU, RoPE base 1e6, rms_eps 1e-6, vocab 151936, GPT2-BPE.
 
-## Next session — pick up first (2-CPU.C Frobenius/Q8)
+## Post-close additions (2026-05-22, after the Phase 2-CPU tag)
 
-E_CPU_1, MODEL_BIND, E_CPU_2 are green. Remaining subphases:
+The CPU engine now generates readable text end-to-end (Qwen3-0.6B):
 
-**2-CPU.C–F all closed 2026-05-22** (commits 3e6ebee/1d033b4/9c65af7 + E_CPU_6):
+- **Generation loop** `qwen3_generate` (`src/forward/generate.c`, commit 82489dc) — greedy, reuses the validated `qwen3_forward` per step (recompute-the-prefix, O(n²), correct by construction). Test **GEN_QWEN3**. A persistent-KV-cache decode (O(n)) is the optimization to add next, validated for token-identity against this.
+- **Tokenizer — DECODE side** (`src/tokenizer/tokenizer.c`, `include/sp_engine/tokenizer.h`, commit 283d9e0) + GGUF `gguf_kv_str_array` helper. GPT2 byte-level inverse decode of `tokenizer.ggml.tokens`. Test **TOK_DECODE** decodes ref.bin's IDs back to the exact oracle prompt; greedy continuation reads as English.
+
+**Next pickup (in order, per user 2026-05-22):**
+
+1. **Tokenizer ENCODE side** (text → IDs). Hard/correctness-critical: Qwen2 pre-tokenization regex (`tokenizer.ggml.pre`="qwen2"; Unicode `\p{L}`/`\p{N}` classes + contraction/lookahead splits — see llama.cpp `unicode_regex_split`) then byte-level encode + ranked BPE merges (load `tokenizer.ggml.merges` via `gguf_kv_str_array`; build pair→rank map + token→id map). **Hard validation target:** encoding the known ref prompt string must reproduce ref.bin's exact 31 IDs — an inexact encoder silently mis-tokenizes (do NOT ship a partial one). Then a KV-cache decode loop for fast generation.
+2. **T_FRO_4** — Gemma3-1B PPL (`d:\Files\models\Mine\gemma-3-1b-it\gemma-3-1b-it-f16\`). Needs a **second architecture** (Gemma3: different norms/attention, SentencePiece tokenizer — not GPT2-BPE) + a PPL loop. Substantial.
+3. **2-CU CUDA backend** (§8.3) — E_CU_1..6 mirror CPU, output vs CPU within 1e-3. CUDA 12.4 + VS2019 BT (`reference_cuda_build_recipe`); roadmap flags fragility.
+
+## Closed subphases — 2-CPU.C–F (2026-05-22; commits 3e6ebee/1d033b4/9c65af7 + E_CPU_6)
 
 - **E_CPU_3** Frobenius/Q8 (`SP_ENGINE_FROB`): inline-lift==dequant-ref (1e-4); Q8-vs-f32 KL ~2e-2 (per-row Q8 lossy by design, argmax reported not gated).
 - **E_CPU_4** AVX2 (`dot_f32`, `/arch:AVX2`; `SP_CPU_SCALAR=1` forces scalar): argmax 31/31, |Δ| 1.7e-4 (reassoc floor, not 1e-6 — §8.6.1).
