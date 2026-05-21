@@ -691,10 +691,14 @@ bottleneck from gating the whole phase.
     matrix.
   - T_FRO_4 — On Gemma3-1B, Frobenius-lifted weights produce PPL within
     0.1% of baseline. This is the T4 acceptance check repeated under
-    new code.
+    new code. **DEFERRED to Phase 2** (amended 2026-05-21): T_FRO_4
+    requires a working forward pass + a loaded Gemma3-1B, neither of
+    which exists in Phase 1 (the engine lands in Phase 2). It runs as a
+    Phase-2 gate (alongside E_CPU_3) once the CPU forward pass can host
+    the model. Phase 1E closes on the pure-math tests T_FRO_1..3.
 - **Entry conditions.** Phase 1A closed.
-- **Exit conditions.** All four tests pass; T_FRO_4 logged as the
-  reference number for future drift checks.
+- **Exit conditions.** T_FRO_1..3 pass under UBSan; T_FRO_4 deferred to
+  Phase 2 and logged there as the reference drift number.
 - **Notes.** Q4 is **not** in Phase 1E. Q4 lives in Phase 4 because it
   needs calibration tables that depend on a working forward pass.
 
