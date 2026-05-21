@@ -226,6 +226,51 @@ silently breaking Phase 2 backends. Sessions land work behind a flag if
 they cannot make the regressions hold; turning the flag on is a separate
 commit that runs the suite again.
 
+### 3.7 Platform-gate policy (amended 2026-05-21)
+
+The original Phase 1 exit conditions read "all tests pass on Windows
+MSVC and Linux gcc." That conflates three distinct platforms with three
+distinct costs, and as written it could not be satisfied in a single
+session on the current dev host (Windows, no local Linux, MSVC needs a
+separate toolchain bring-up). This amendment splits the platform gate
+explicitly. It does **not** weaken any test — every T_* still has to
+pass everywhere eventually; it only stages *which platform closes when*,
+and names the follow-up wave so it cannot be silently dropped.
+
+The dev host has MinGW **gcc 15.2** and **MSVC v142 (VS2019 BT)**
+available; **no local Linux**.
+
+Three-tier close, per Phase 1 subphase:
+
+- **Tier 1 — Windows MinGW-gcc (closes in-session).** Every T_* test
+  passes under MinGW gcc on Windows. This is the primary gate a Phase 1
+  session closes. Repo tag suffix: `lat-phase-1<X>-gcc-closed`.
+- **Tier 2 — Linux gcc (CI).** Verified by the GitHub Actions workflow
+  `.github/workflows/ci.yml` added in the Phase-1 scaffold pass
+  (ubuntu-latest, gcc, `cmake -G Ninja` + `ctest`). Linux is not run
+  locally; the CI run on push is the Linux gate. A subphase is not
+  fully closed until its CI job is green on `origin/main`.
+- **Tier 3 — Windows MSVC (follow-up wave).** A dedicated later session
+  configures each module in a second build dir via `vcvarsall x64` and
+  runs `ctest` under MSVC. Repo tag (full close): `lat-phase-1<X>-closed`.
+
+**`__int128` and the cross-platform identity tests.** The CRT-NTT parity
+oracle `ntt_ref_int128.c` uses `__int128`, which MinGW gcc and Linux gcc
+support but **MSVC does not**. The production path (`ntt_crt.c`) is
+already forbidden `__int128` by T_NTT_5, so this only affects the oracle.
+Strategy: the oracle runs under gcc and dumps its reference vectors to a
+checked-in binary fixture (`core/ntt_crt/ntt_ref_vectors.bin`); the MSVC
+build of the test loads that fixture and compares bytes, rather than
+recompiling the `__int128` oracle. The same checked-in-fixture pattern
+serves the other cross-platform identity gates (T_NTT_2/3, T_VHT_5,
+T_KSTE_4): the gcc build is the byte-source-of-truth, MSVC and Linux CI
+compare against it. This makes "bit-identical across platforms" a
+concrete file-diff rather than a re-derivation.
+
+So for a Phase 1 session on this host, "subphase closed" means **Tier 1
+green locally + Tier 2 green in CI**, tagged `-gcc-closed`. Tier 3 (MSVC)
+is tracked as open in the offload note and closed in its own wave.
+
 ---
 
 ## 4. The math primitives — what we are recreating
@@ -264,8 +309,11 @@ modulo (x^N + 1); the softmax becomes a p-adic exponential on the
 coefficients followed by a normalisation pass.
 
 Phase 1 targets N = 256 (matching the per-head dimension of the
-current model targets) and parameterises N over {128, 256, 512, 1024}
-so that all four sizes share a single code path.
+current model targets) and parameterises N over {128, 256, 512} so that
+all three sizes share a single code path. (N = 1024 was in the original
+draft but is **not supported** on the frozen CRT primes — see §4.3; the
+primes admit a primitive 2N-th root only up to N = 512. Amended
+2026-05-21.)
 
 ### 4.3 CRT-NTT dual-prime kernel with no __int128
 
@@ -274,8 +322,16 @@ We use a dual-prime CRT decomposition so the kernel never needs 128-bit
 arithmetic and ports to any 64-bit ALU including Hexagon and Vulkan
 compute shaders.
 
-- q1 = 1073738753, q2 = 1073732609 (two 30-bit Proth primes).
-- Each prime has a primitive 2N-th root of unity for N up to 1024.
+- q1 = 1073738753, q2 = 1073732609 (two 30-bit Proth primes). These are
+  **frozen** — the dominance-commitment verification and the DHT key
+  topology (§4.4) derive from these exact prime residues, so they do not
+  change.
+- Each prime admits a primitive 2N-th root of unity for **N up to 512**,
+  not 1024. Both have q−1 = 2^10 · (odd), so the 2-adic valuation is 10:
+  2N | (q−1) holds for 2N ≤ 1024, i.e. N ≤ 512. A negacyclic NTT at
+  N = 1024 would need 2^11 | (q−1), which neither prime satisfies. The
+  supported ring degrees are therefore {128, 256, 512}. (Amended
+  2026-05-21 after the original draft over-claimed N = 1024.)
 - The combined modulus M = q1·q2 ≈ 2^60 carries the full result without
   overflow.
 - CRT recombination uses Barrett reduction; no 128-bit divide.
@@ -561,7 +617,7 @@ bottleneck from gating the whole phase.
   production).
 - **Tests.**
   - T_NTT_1 — Forward/inverse round-trip on 4096 random polynomials at
-    each N ∈ {128, 256, 512, 1024}.
+    each N ∈ {128, 256, 512}.
   - T_NTT_2 — Bit-exactness vs `ntt_ref_int128` on Linux gcc.
   - T_NTT_3 — Bit-exactness vs `ntt_ref_int128` on Windows MSVC.
   - T_NTT_4 — Pointwise multiply followed by inverse equals
@@ -582,7 +638,7 @@ bottleneck from gating the whole phase.
   `poly_ring_test.c`.
 - **Tests.**
   - T_PR_1 — Polynomial multiply matches schoolbook reference at
-    N ∈ {128, 256, 512, 1024} for 1024 random polynomial pairs each.
+    N ∈ {128, 256, 512} for 1024 random polynomial pairs each.
   - T_PR_2 — Inner-product attention KL ≤ 1e-7 versus softmax baseline
     at d = 256 (matches the prior Gemma3 head-size result on the legacy
     repo).
@@ -677,7 +733,7 @@ to anchor the API a Phase 1B session is expected to land.
 
 ```
 struct ntt_ctx {
-    uint32_t N;             // ring degree, in {128, 256, 512, 1024}
+    uint32_t N;             // ring degree, in {128, 256, 512}
     uint32_t q1, q2;        // two 30-bit Proth primes
     uint32_t* psi1; uint32_t* psi2;   // 2N-th roots of unity per prime
     uint32_t* inv_psi1; uint32_t* inv_psi2;

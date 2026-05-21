@@ -98,6 +98,8 @@ A single 60-bit modulus would require 128-bit accumulation to be safe against ov
 $$
 q_1 = 1{,}073{,}738{,}753, \qquad q_2 = 1{,}073{,}732{,}609.
 $$
+These two primes are **frozen** (the dominance-commitment verification and the DHT key topology read these exact residues). Both satisfy $q - 1 = 2^{10}\cdot(\text{odd})$, so a primitive $2N$-th root of unity exists for $2N \le 1024$, i.e. **$N \le 512$**. The supported ring degrees are therefore $N \in \{128, 256, 512\}$; $N = 1024$ would require $2^{11}\mid q-1$, which neither frozen prime satisfies, so it is out of scope on this prime pair (amended 2026-05-21).
+
 For each polynomial $f \in R_{q_1 q_2}$ — equivalently, each pair $(f_1, f_2)$ with $f_1 = f \bmod q_1$, $f_2 = f \bmod q_2$ — compute the multiplication in $R_{q_1}$ and $R_{q_2}$ independently. Each independent multiplication is a 30-bit kernel; the product never exceeds 60 bits, so it fits comfortably in a 64-bit register and the NTT butterflies need no widening.
 
 After both component products are computed, the CRT recombination
