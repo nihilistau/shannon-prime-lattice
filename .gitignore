@@ -1,0 +1,73 @@
+# Build directories
+build/
+build-*/
+out/
+cmake-build-*/
+_build/
+
+# Object files
+*.o
+*.obj
+*.lo
+*.a
+*.lib
+*.so
+*.so.*
+*.dylib
+*.dll
+*.pdb
+
+# Executables
+*.exe
+*.out
+*.app
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+Testing/
+Makefile
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# Visual Studio / VSCode
+.vs/
+.vscode/
+*.user
+*.suo
+*.sdf
+
+# JetBrains
+.idea/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+
+# Logs and scratch
+*.log
+*.tmp
+*.bak
+
+# Models and large data (host these out-of-tree)
+*.gguf
+*.safetensors
+*.bin
+*.ckpt
+models/
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor temp
+*~
+*.swp
+*.swo
