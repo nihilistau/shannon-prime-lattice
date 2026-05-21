@@ -57,7 +57,9 @@ Contract amended first (roadmap **§8.2.1**, dated block): added E_CPU_7/E_CPU_8
 - **E_CPU_8 — Inline VHT2+Spinor KV compression** (`SP_KV_SPINOR=1`; `kv_spinor_roundtrip`). Each post-norm/post-RoPE K and post-proj V head vector (head_dim=128) → ⌈128/55⌉=3 frozen 63-byte Spinor blocks (balanced 43/43/42; **frozen layout untouched**), decoded back lossily before attention reads it. Gate OFF ⇒ bit-identical. **Measured:** KL mean 2.18e-2 / argmax 29/31 (much gentler than Q4). Distinct from E_CPU_6 KSTE.
 - **GEN_KV — persistent-KV O(n) decode** (`qwen3_generate_kv`, `src/forward/forward.c`). Position-indexed K/V cache, stores K/V **post-RoPE**, weight matmuls run once per token (O(n)) vs `qwen3_generate`'s re-prefill (O(n²)). Honors FROB/SCALAR/KV_SPINOR. Gate = **sequence (argmax) identity** vs the O(n²) ref under `SP_CPU_SCALAR=1` (not bit-equal logits — different softmax-sum lengths hit the reassoc floor). **24/24 generated tokens identical.**
 
-Env reads factored into `read_env_knobs()` (shared by prefill + decode). Engine knobs still all default OFF.
+Env reads factored into `read_env_knobs()` (shared by prefill + decode). Engine knobs still all default OFF. GEN_KV token count is `SP_GEN_KV_N` (default 8 to keep the O(n²) reference cheap; =24 for thorough).
+
+**Open follow-up:** each compression gate is validated individually; the three together (`SP_ENGINE_FROB=3` + `SP_KV_SPINOR=1` + `qwen3_generate_kv`) aren't yet exercised by a composability smoke test. Code paths look composable (shared `read_env_knobs`, cache holds the spinor round-tripped K/V, matmuls honor frob) — add a ~30-line all-gates-on smoke when convenient.
 
 **Next pickup (in order, per user 2026-05-22):**
 
