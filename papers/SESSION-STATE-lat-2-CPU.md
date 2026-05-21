@@ -24,15 +24,15 @@ Engine tests use the math-core `sp/sp_test.h` harness (via the submodule). Refer
 ## Prerequisites in place
 
 - **Model:** `Qwen3-0.6B-f16.gguf` (1.5G) + `Qwen3-0.6B-Q8_0.gguf` (768M) from `ggml-org/Qwen3-0.6B-GGUF` (llama.cpp org) at `d:\Files\models\Qwen\Qwen3-0.6B-GGUF\`. f16 = unquantized source for the Frobenius-Q8 path + the higher-precision oracle run.
-- **Oracle (BLOCKER for E_CPU_2):** the local llama.cpp checkouts — `d:\F\llama-cpp-sp`, `…\shannon-prime-repos\llama-cpp-sp-cleanroom`, `…\llama-cpp-b8861-test` — are **all contaminated** (each links `shannon_prime_core/cuda/engine` libs; "cleanroom" is misnamed). They are NOT valid stock references and are in the anti-contamination zone — do not use them. E_CPU_2 needs a **clean** logit oracle: either (a) a fresh upstream `llama.cpp` build (then `llama-perplexity --kl-divergence-base ref.bin` dumps logits, or a ~60-line tool against stock `libllama` + ggml libs), or (b) HF `transformers` running `Qwen/Qwen3-0.6B` (authoritative; needs torch). Build it out-of-tree, away from the contaminated checkouts.
+- **Oracle (DONE):** clean stock llama.cpp cloned + built at `D:\F\shannon-prime-repos\shannon-prime-lattice-llama` (CPU-only, gcc/Ninja; its own git repo, not committed into ours). Oracle tool `shannon-prime-system-engine/tools/oracle/dump_logits.{cpp,sh}` (self-contained MinGW exe) tokenizes a prompt with the stock tokenizer and dumps token IDs + per-position logits — verified on Qwen3-0.6B-f16 (5 tok × 151936). File format in `tools/oracle/README.md`. (The local `llama-cpp-*` checkouts — incl. the misnamed "cleanroom" — are all contaminated with `shannon_prime_*` libs and must NOT be used.)
 - Qwen3-0.6B arch (now locked in `model.c`): 28 layers, n_embd 1024, n_ff 3072, **GQA 16/8, head_dim 128** (Q→2048, K/V→1024), **per-head QK-RMSNorm**, **untied** `output.weight`, SwiGLU, RoPE base 1e6, rms_eps 1e-6, vocab 151936, GPT2-BPE.
 
 ## Next session — pick up first (2-CPU.B forward pass)
 
-Model layer (`qwen3_load` + dequant) is in place and MODEL_BIND-green. Two tracks:
+Model layer (`qwen3_load` + dequant) is MODEL_BIND-green and the clean oracle is built (see Prerequisites). Remaining:
 
-1. **Clean logit oracle first** — the E_CPU_2 gate depends on it and all local llama.cpp are contaminated (see Prerequisites). Build upstream llama.cpp out-of-tree, or stand up HF `transformers` for `Qwen/Qwen3-0.6B`. Produce reference logits for a fixed token-ID sequence (skip our tokenizer; feed the same IDs both sides). Dump to a file the engine test reads.
-2. **Forward pass (f32 reference path)** producing logits for a token-ID sequence:
+1. **Wire the oracle into the test:** run `dump_logits.exe` on Qwen3-0.6B-f16 with a fixed prompt → `ref.bin` (commit a small one, or generate in a CMake/test step). The engine E_CPU_2 test reads the token IDs + reference logits from `ref.bin`. (The `.bin` magic/layout is in `tools/oracle/README.md`.)
+2. **Forward pass (f32 reference path)** producing logits for the same token IDs:
    embed → per layer { RMSNorm(attn_norm) → Q/K/V proj → **per-head QK-RMSNorm** (over head_dim, BEFORE RoPE) → RoPE (base 1e6) → GQA attention (16 q-heads / 8 kv-heads, group 2; causal; fp32 softmax) → O proj → residual → RMSNorm(ffn_norm) → SwiGLU(gate,up)→down → residual } → RMSNorm(output_norm) → LM head (`output.weight`).
    - ggml weight layout: tensor `[ne0=in, ne1=out]`, element (out_j,in_i) at `in_i + out_j*ne0` ⇒ `y[j]=Σ_i W[i+j*in]·x[i]`. Dequant via `sp_dequant_row`; f32 path first.
    - **Bug hotspots only the oracle catches:** RoPE convention (NEOX vs GPT-J interleave), QK-norm placement, GQA q→kv head mapping, causal masking, the weight layout above.

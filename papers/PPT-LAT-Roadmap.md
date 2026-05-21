@@ -901,6 +901,16 @@ beside a scalar reference under an `SP_CPU_SCALAR=1` env gate so the
 scalar path stays buildable. The AVX512 path is a second pass and not
 required to close E_CPU_4.
 
+**E_CPU_2 oracle (do NOT use the local llama.cpp checkouts).** The
+`llama-cpp-*` builds under `D:\F\` and `D:\F\shannon-prime-repos\` are all
+contaminated — they link `shannon_prime_*` libs (even the one named
+"cleanroom") — so their logits are non-stock and they sit in the
+anti-contamination zone. The clean reference is a pristine upstream
+llama.cpp at `D:\F\shannon-prime-repos\shannon-prime-lattice-llama` with the
+`dump_logits` tool at `shannon-prime-system-engine/tools/oracle/`; it dumps
+token IDs + per-position logits so the engine validates on identical IDs.
+Same rule applies to every later backend's correctness gate.
+
 **CUDA.** Mirror the CPU layer-by-layer. The most fragile cell is the
 fused matmul + Frobenius decompress kernel — get the scalar correctness
 right via Ninja `--use-local-env` before turning on cublas LT or any
