@@ -922,13 +922,47 @@ never ggml and never the F16-act path.
     bit-equal logits, because the incremental and re-prefill paths reduce
     different-length softmax sums and so legitimately differ by the
     float-reassociation floor (§8.6.1). Composes with `SP_KV_SPINOR` (the cache
-    may hold Spinor blocks).
+    may hold Spinor blocks). Token count `SP_GEN_KV_N` (default 8).
+
+#### 8.2.2 Load-bearing layout: packed-weight arena + persistent KV (amended 2026-05-22)
+
+E_CPU_3/7/8 prove the codecs but ran them as a per-matmul *demonstration*
+(re-quantize on the fly; KV stored f32 with a lossy round-trip). §4.8/§4.9 require
+the compression to be the **actual memory layout** — and the GPU backends must
+read the *same packed bytes* (§4.8 "compare bytes for bytes"), so the packed
+formats are built and frozen on the canonical CPU track **before** 2-CU. The Q4
+quant/pack primitive was first lifted into `core/frobenius` (shared by all
+backends; math-core `T_FRO_Q4`). Three pieces, dependency-ordered:
+
+  - **E_CPU_9 — packed-weight arena (Piece 1a, DONE).** `SP_ARENA=q8|q4` (default
+    off): at load, quantize the matmul weights once into a per-row Frobenius Q8/Q4
+    packed arena; the matmul lifts inline from the codes. Versioned in-memory
+    layout (`SP_ARENA_LAYOUT_VERSION=1`) = the byte format the GPU backends read
+    (per-ROW Frobenius, NOT ggml per-32-block Q8_0). Tight gate: `SP_ARENA=q8`
+    forward **byte-identical** to `SP_ENGINE_FROB=1` (and `q4` to `=3`). Measured:
+    Q8 arena 574.5 MB, Q4 arena 300.7 MB (2.85% rows promoted). Scope 1a: matmul
+    weights only; embedding+norms stay f32 from the mapping (still held).
+  - **Piece 1b (next) — release the F16 source.** Fold the embedding into the
+    arena, copy norms to owned f32, give the tokenizer owning vocab/merges, then
+    unmap the GGUF so peak memory reflects the real §4.8 claim. **T_FRO_4**
+    (Gemma3-1B PPL within 0.1%) runs right after 1b — the arena is the production
+    layout T_FRO_4 is meant to validate.
+  - **Piece 2 — persistent Spinor KV cache.** Store the cache as
+    `sp_spinor_block_t[]` (3 blocks/head, decode on read) rather than f32 + a
+    round-trip, for the real §4.9 ~6× KV memory drop.
+  - **Piece 3 — composability + format-lock.** All gates on together
+    (`SP_ARENA` + `SP_KV_SPINOR` + `qwen3_generate_kv`) + `_Static_assert`/version
+    gates freezing the arena and KV byte layouts as the cross-backend contract.
+
+2-CU starts only once the load-bearing layout is solid (user direction 2026-05-22).
 
 ### 8.3 Phase 2-CU (CUDA backend)
 
-- **Build env.** `scripts/env/env-cuda.bat`. Pinned to CUDA 12.4 + VS2019
-  Build Tools because that combination has the longest stability record
-  on this team's hardware (`reference_cuda_build_recipe` memory).
+- **Build env.** `scripts/env/env-cuda.bat`. **Pin update (2026-05-22):** the dev
+  host now has **CUDA 13.2** on PATH and the GPU is an **RTX 2060 (sm_75)** — so
+  the 2-CU bring-up targets **CUDA 13.2 + sm_75** (still a §8.3 supported arch),
+  not the old 12.4 pin. `env-cuda.bat` is to be updated to 13.2 (and likely needs
+  the same ASCII/`goto` fix the CPU env scripts got) when 2-CU starts.
 - **Reference model.** Same Qwen3-0.6B Q8.
 - **Tests E_CU_1..E_CU_6** mirror the CPU set, with the additional
   per-platform gate that CUDA output must match CPU output within 1e-3
