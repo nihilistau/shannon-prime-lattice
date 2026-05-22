@@ -942,11 +942,17 @@ backends; math-core `T_FRO_Q4`). Three pieces, dependency-ordered:
     forward **byte-identical** to `SP_ENGINE_FROB=1` (and `q4` to `=3`). Measured:
     Q8 arena 574.5 MB, Q4 arena 300.7 MB (2.85% rows promoted). Scope 1a: matmul
     weights only; embedding+norms stay f32 from the mapping (still held).
-  - **Piece 1b (next) — release the F16 source.** Fold the embedding into the
-    arena, copy norms to owned f32, give the tokenizer owning vocab/merges, then
-    unmap the GGUF so peak memory reflects the real §4.8 claim. **T_FRO_4**
-    (Gemma3-1B PPL within 0.1%) runs right after 1b — the arena is the production
-    layout T_FRO_4 is meant to validate.
+  - **E_CPU_10 — release the F16 source (Piece 1b, DONE).** `SP_ARENA_EMBED=1`
+    folds the embedding into the arena; `qwen3_release_source()` copies norms to
+    owned f32 and `gguf_release_data()` unmaps the GGUF data (keeping the parsed
+    tensor/kv structs). The forward then reads only the arena + owned norms — peak
+    memory drops from the ~1.5 GB F16 mapping to the packed footprint (~574 MB Q8).
+    `SP_ARENA_RELEASE=1` does it at load. Tokenizer owning mode
+    (`sp_tokenizer_load_ex(g,1)`) copies vocab+merges so it survives the unmap.
+    Gate: forward after release **byte-identical** to held (a dangling pointer
+    would diverge/crash) + `gguf_tensor_data` NULL post-release + owning tokenizer
+    still decodes. **T_FRO_4 is next** — the arena is the production layout it
+    validates (Gemma3-1B PPL within 0.1%; needs the 2nd arch + SentencePiece).
   - **Piece 2 — persistent Spinor KV cache.** Store the cache as
     `sp_spinor_block_t[]` (3 blocks/head, decode on read) rather than f32 + a
     round-trip, for the real §4.9 ~6× KV memory drop.

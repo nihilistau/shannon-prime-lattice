@@ -68,12 +68,14 @@ User direction: do the **core load-bearing** layout before CUDA. CUDA deferred.
 - **Q4 codec migrated to `core/frobenius`** (math-core commit 7907421, T_FRO_Q4; submodule bumped 562e819→7907421). `sp_frob_quant1_q4 / dequant1_q4 / q4_pack / q4_unpack / q4_row_relerr / q4_packed_bytes`, `SP_FROB_QMAX4`. Engine matmul now calls the shared primitives (engine-local q4 helpers removed); behavior byte-identical (E_CPU_7 unchanged). So all backends share one Q4 impl.
 - **E_CPU_9 — packed-weight arena (Piece 1a)** (`include/sp_engine/arena.h`, `src/forward/arena.c`; engine commit 7994803). `SP_ARENA=q8|q4` (default off): at load, quantize the matmul weights once into a per-row Frobenius Q8/Q4 packed arena; `matmul` lifts inline from the codes (no per-call re-quant). **Versioned in-memory layout `SP_ARENA_LAYOUT_VERSION=1` = the byte format the GPU backends will read** (per-ROW Frobenius, NOT ggml per-32-block Q8_0). **Tight gate:** `SP_ARENA=q8` forward byte-identical to `SP_ENGINE_FROB=1`, `q4` to `=3`. Measured: Q8 arena 574.5 MB, Q4 300.7 MB (2.85% rows promoted). Scope 1a: matmul weights only (attn q/k/v/o, ffn gate/up/down, LM-head output); embedding+norms stay f32 from the still-held mapping. Full CPU regression **14/14**.
 
-**Load-bearing plan (dependency-ordered, per user 2026-05-22; CUDA after):**
+**Piece 1b DONE — F16 source release (E_CPU_10)** (engine commit dda10a0). `SP_ARENA_EMBED=1` folds the embedding into the arena; `qwen3_release_source()` copies norms→owned f32 and `gguf_release_data()` unmaps the GGUF data (keeps parsed tensor/kv structs; `gguf_tensor_data` returns NULL after). Forward then reads only arena + owned norms → peak mem ~1.5 GB f16 → ~574 MB Q8. `SP_ARENA_RELEASE=1` = do it at load. **Tokenizer owning** `sp_tokenizer_load_ex(g,1)` copies vocab+merges (survives unmap); `sp_tokenizer_load` still borrows. Gate: forward-after-release **byte-identical to held** (catches dangling ptrs) + data NULL post-release + owning tokenizer decodes. CPU regression **15/15**.
 
-1. **Piece 1b — release the F16 source.** Fold the embedding into the arena, copy norms to owned f32, give the tokenizer **owning** vocab/merges (it currently borrows the mapping), then unmap the GGUF → real §4.8 peak-memory drop. **Then T_FRO_4** (Gemma3-1B PPL; 2nd arch + SentencePiece) — the arena is the production layout T_FRO_4 validates.
-2. **Piece 2 — persistent Spinor KV cache:** store `sp_spinor_block_t[]` (3/head, decode on read), not f32+roundtrip → real §4.9 ~6× KV drop.
+**Load-bearing plan (remaining, dependency-ordered; CUDA after):**
+
+1. **T_FRO_4 (next)** — Gemma3-1B PPL within 0.1% (`d:\Files\models\Mine\gemma-3-1b-it\gemma-3-1b-it-f16\`). The arena is the production layout this validates. Needs the **2nd architecture** (Gemma3: norms/attn/softcap) + **SentencePiece** tokenizer (not GPT2-BPE) + a PPL loop. Substantial; its own session.
+2. **Piece 2 — persistent Spinor KV cache:** store `sp_spinor_block_t[]` (3/head, decode on read) in `qwen3_generate_kv`, not f32+roundtrip → real §4.9 ~6× KV drop.
 3. **Piece 3 — composability + format-lock:** all gates on together + `_Static_assert`/version gates freezing the arena & KV byte layouts as the cross-backend contract.
-4. **2-CU** (§8.3) — only after the above. Host reality: **CUDA 13.2 + RTX 2060 sm_75** (not the old 12.4 pin); `env-cuda.bat` to be updated to 13.2 (+ likely the ASCII/goto fix).
+4. **2-CU** (§8.3) — only after the above. Host reality: **CUDA 13.2 + RTX 2060 sm_75** (not the old 12.4 pin); `env-cuda.bat`→13.2 (+ likely the ASCII/goto fix).
 
 ## Closed subphases — 2-CPU.C–F (2026-05-22; commits 3e6ebee/1d033b4/9c65af7 + E_CPU_6)
 
