@@ -236,7 +236,10 @@ STRUCTURAL REFERENCE ONLY (IDL/skel/stub/host-split/CMake patterns) — no code 
 - **HX.3a step 1 GREEN (12af2dd): per-tensor rpcmem upload BYTE-EXACT on device** — 32 MB SYSTEM-heap
   buffer, host CRC-32 == DSP CRC-32 (0x85a11a5b). The weight-upload mechanism (`in sequence<uint8>`
   over rpcmem at exact length) is byte-exact; the exact-alloc/silent-zero-fill trap does NOT bite it.
-- HX.3a (forward) / HX.3b..HX.7 NOT STARTED. **NEXT: HX.3a — `sp_hex_upload_tensor` (retain per-slot) +
+- **HX.3a step 2 GREEN (be0fb74): cDSP scalar f32 matmul BIT-EXACT to host** — sp_hex.matmul_f32
+  (y[j]=sum_i w[j*cols+i]*x[i]), 256x512, worst |dsp-host| = 0.000e+00. The core forward kernel +
+  float data path proven; the full scalar forward will match the CPU baseline by construction.
+- HX.3a (forward assembly) / HX.3b..HX.7 NOT STARTED. **NEXT: `sp_hex_upload_tensor` (retain per-slot) +
   scalar-f32 `sp_hex_forward` on the cDSP, gated to match the
   on-phone CPU PPL baseline (-0.0144%) BEFORE any HVX** (advisor discipline: this validates the
   per-tensor rpcmem upload + forward orchestration + exact-alloc with zero HVX risk; the silent-fallback
