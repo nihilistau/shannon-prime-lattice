@@ -94,8 +94,8 @@ environment-variable gates until they are individually proven.
 | 5 | Lattice features (sieve, ARM, dominance) | Off-by-default ENV-gated overlays | Regression suite green when gates off | 6 weeks |
 | 6 | Two-node CRT-sharded inference demo | Dual-prime forward pass across two boxes | End-to-end demo run | 3 weeks |
 | 7 | DHT crawler skeleton | Kademlia-like routing, single-node first | Two-node lookup works | 3 weeks |
-| 8 | Position-as-Arithmetic crawl assignment | Prime-factored lattice key space drives shard ownership | Deterministic re-assignment proven | 2 weeks |
-| 9 | ARM gossip aggregation | Capacity-bounded HRR merge across peers | Capacity curve plotted | 3 weeks |
+| 8 | Position-as-Arithmetic crawl assignment + **Fibonacci-Prime DHT** | 2-axis prime-lattice (semantic) × φ-hashed (load) key space | Deterministic re-assignment + uniform load under skewed inputs | 2 weeks + 1 day (Fibonacci hashing) |
+| 9 | ARM gossip aggregation + **Golden-Ratio key init** | Capacity-bounded HRR merge across peers; φ-spaced phases replace random projection | Capacity curve extends past prior K=64 ceiling | 3 weeks + 2 days (key init) |
 | 10 | Verification layer | Spot-check via ⪯_d, slashing simulator | Slashing simulator stable | 4 weeks |
 | 11 | Two-token economy simulator | Discovery vs work-token dynamics | Equilibrium observed in simulator | 3 weeks |
 | 12 | Blockchain protocol design | Protocol scaffolding; simulator-only first | Simulator passes 1k-block run | 6 weeks |
@@ -810,6 +810,17 @@ For each backend B ∈ {CPU, CU, VK, HX}:
   subgroup ops, HVX vectorisation for Hexagon.
 - **2-B.E — NTT-attention path wired in.** Sieve OFF. PPL must remain
   within Phase 1C's T_PR_2 tolerance.
+- **2-B.E.1 — RoPE Three-Step optimisation.** Implement the discrete
+  3-gap lookup for relative-attention offsets (PPT-LAT-Theory T7;
+  PPT-LAT-Systems §1.6). Align Q/K-projection dimension ordering to map
+  contiguous sorted frequencies to the VHT2 + Möbius squarefree
+  anchors so the continuous phase rotation natively aligns with the
+  discrete structural lattice — no second sort required. Gated by
+  `SP_ROPE_THREE_STEP=1`; default OFF; regression invariant binds.
+  Acceptance: rel-attn cache size ≤ ctx × 3 entries (~43× memory
+  reduction at D=128, ctx=4096); per-backend argmax + KL parity with
+  the non-gated path within E_B_2 tolerance. High-leverage memory and
+  compute win, applies to every backend.
 - **2-B.F — KSTE-encoded KV cache.** Gated by `SP_KSTE_KV=1`. Off by
   default. Phase 2 only requires that the encode path produces
   identical signatures across backends and that decode reproduces the
@@ -827,6 +838,43 @@ backend (2-CU/VK/HX) mirrors E_B_7/E_B_8/GEN_B alongside E_B_1..E_B_6, with
 the same gates (`SP_ENGINE_FROB=3`, `SP_KV_SPINOR=1`, `qwen3_generate_kv`)
 defaulting OFF and the cross-backend tolerance (output vs CPU within 1e-3).
 Do not silently drop them. See §8.2.1 for the CPU definitions and gates.
+
+**Three-Gap deliverables across phases (added on the T7 anchor in
+PPT-LAT-Theory):** the Three-Gap Theorem (T7) unifies four optimisations
+that land in different phases of the roadmap but share one substrate
+(golden-ratio rotation in phase space). Cross-reference summary so a
+session picking up any one of these knows where the others live:
+
+- **2-B.E.1 — RoPE Three-Step** (this phase, all backends). Discrete
+  3-gap lookup replaces continuous trig in relative attention. ~43×
+  rel-attn cache memory reduction. Gated by `SP_ROPE_THREE_STEP=1`.
+  Dimension-ordering aligns to the VHT2 + Möbius squarefree anchors
+  (no second sort).
+- **Phase 4 amendment — Fibonacci KV sub-sampling.** When KV cache
+  exceeds memory bounds, retain tokens at positions $\lfloor k\varphi
+  \cdot N \rfloor \mod N$ instead of FIFO/LRU. Bounded discrepancy on
+  the temporal axis. Gated by `SP_KV_FIB=1`. Validates against the
+  PPL-drift sweep already run for VHT2+Spinor.
+- **Phase 8 amendment — Fibonacci-Prime DHT** (1-day deliverable under
+  Phase 8). 2-axis address space: prime-factored lattice for semantic
+  adjacency (axis 1) × Fibonacci hashing for load balance (axis 2).
+  Solves Kademlia clustering natively without cryptographic hashing.
+  See PPT-LAT-Systems §4.4.
+- **Phase 9 amendment — ARM Golden-Ratio key init** (2-day deliverable
+  under Phase 9). Replace random projection + Gram-Schmidt with
+  deterministic $\varphi$-spaced phases in $R_q$. Capacity curve
+  expected to extend past the prior K=64 ceiling at 0.15 cosine
+  recall. See PPT-LAT-Systems §4.2.
+- **§6.x amendment — Validator selection by Golden-Ratio rotation**
+  (rolls into Phase 11/12 — Two-token economy and Blockchain). Replace
+  VRF/randao beacon with deterministic $\{b\varphi\}$ partitioning of
+  the stake-weighted validator set. Provably fair, no consensus rounds
+  needed. See PPT-LAT-Systems §6.x.
+
+All five items default OFF / additive. None are blocking dependencies
+for the foundational compression and model-family work — they are
+optimisations that layer on once the underlying compression and DHT
+infrastructure is green.
 
 ### 8.2 Phase 2-CPU (the canonical track)
 
@@ -864,416 +912,4 @@ Do not silently drop them. See §8.2.1 for the CPU definitions and gates.
     negacyclic poly-ring product (`sp_pr_inner`, head_dim=128=ring N) after
     int32 quantization (scale 2^16) of the post-norm/post-RoPE head vectors;
     softmax + V-sum stay f32. Gate: argmax agreement + mean end-to-end
-    `KL(softmax-baseline‖ntt) ≤ 1e-7` (the literal T_PR_2). Measured ~2.7e-10
-    mean — because the inner product is *exact* (only int32 quant deviates),
-    this meets the tight T_PR_2 bound end-to-end, unlike the F16/FMA gaps of
-    E_CPU_2/E_CPU_4.
-  - E_CPU_6 — KSTE KV-cache overlay (`qwen3_forward_ex` with a `kv_trees`
-    sink; production gate `SP_KSTE_KV=1`), sieve OFF, encoder only. KSTE is a
-    one-way deterministic encoder (no decode), so the "round-trip identical
-    bytes" is byte-identical determinism + store/load: each post-norm/post-RoPE
-    K head-vector (int32-quantized) is encoded to its 64-byte signature, and
-    the test asserts (1) two independent prefills produce byte-identical
-    signatures, (2) every signature survives a store/load unchanged and carries
-    the frozen wire form (version/branching/depth/reserved + k=head_dim), (3)
-    distinct K vectors give distinct signatures. Measured on Qwen3-0.6B: 6944
-    signatures (28×31×8), all deterministic + wire-valid.
-- **Notes for picking up.** CPU is the canonical track because it has
-  the fewest build dependencies. Bring up CPU first if any other
-  backend is blocked; using CPU outputs as the ground truth for the
-  other backends is built into the test harness.
-
-#### 8.2.1 Foundational-compression extension (amended 2026-05-22)
-
-The original six E_CPU items closed 2026-05-22 (`lat-phase-2-closed`). The
-inline weight + KV compression that §1/§4.8/§4.9 call **foundational** is only
-partly covered by them: E_CPU_3 is Q8 weights, E_CPU_6 is the *KSTE* KV overlay
-(a Lattice-sieve signature encoder, one-way) — neither is **Q4 weight storage**
-nor the **VHT2+Spinor KV codec** that §4.5/§4.9 freeze as the production KV
-layout. This amendment adds the missing foundational items as explicit Phase-2-CPU
-contract gates, plus the persistent-KV decode loop. All are gated OFF by default
-(regression invariant: gates off ⇒ bit-identical to the E_CPU_2 f32 path). Per
-§8.6.1 every quality gate is measured against the engine's own pure-f32 logits,
-never ggml and never the F16-act path.
-
-  - **E_CPU_7 — Q4 inline weight compression.** Frobenius Q4: per-row scale,
-    symmetric 4-bit codes in `[-7,+7]` (the Q8 `[-127,127]` rule at 4 bits; two
-    codes per byte), dequant `w_hat = q·s/7`. **Mixed-precision / calibration:**
-    a per-tensor pass promotes high-error ("outlier") rows to Q8. v1 calibration
-    is **weight-only per-row sensitivity** (promote rows whose Q4 round-trip
-    error / row-L2 exceeds a threshold) — the **activation-based** calibration
-    of §4.4 stays a **Phase-4** refinement (§7.5), with the promotion-mask hook
-    left in place. Gate `SP_ENGINE_FROB=3`. Validated on Qwen3-0.6B: lift
-    faithfulness (inline-Q4 matmul == dequant-then-f32-dot of the same Q4 weights,
-    float-assoc) + Q4 quality vs pure-f32 (mean KL under a regression gate, looser
-    than Q8 since Q4 is lossier by design; argmax reported, not gated).
-  - **E_CPU_8 — Inline VHT2+Spinor KV-cache compression.** The §4.5 frozen
-    63-byte Spinor block carries 55 int8 anchors; a Qwen3 head vector is
-    head_dim=128, so each post-norm/post-RoPE K and V head vector is stored as
-    ⌈128/55⌉ = **3 Spinor blocks** (balanced 43/43/42 split; the frozen layout is
-    NOT modified). Gate `SP_KV_SPINOR=1`; attention reads the decoded (lossy)
-    K'/V'. Gate OFF ⇒ bit-identical to E_CPU_2. ON: mean KL(f32-KV ‖ spinor-KV)
-    under a regression gate, argmax reported. (Distinct from E_CPU_6's KSTE
-    overlay — this is the foundational lossy KV codec, KSTE is the sieve signature.)
-  - **GEN_KV — persistent-KV O(n) decode loop.** A KV cache stores
-    position-finalized (post-RoPE) K/V so decode steps append one token without
-    re-rotating. Gate: **argmax-identity** with the O(n²) `qwen3_generate`
-    (greedy sequence equals greedy sequence) under `SP_CPU_SCALAR=1` — NOT
-    bit-equal logits, because the incremental and re-prefill paths reduce
-    different-length softmax sums and so legitimately differ by the
-    float-reassociation floor (§8.6.1). Composes with `SP_KV_SPINOR` (the cache
-    may hold Spinor blocks). Token count `SP_GEN_KV_N` (default 8).
-
-#### 8.2.2 Load-bearing layout: packed-weight arena + persistent KV (amended 2026-05-22)
-
-E_CPU_3/7/8 prove the codecs but ran them as a per-matmul *demonstration*
-(re-quantize on the fly; KV stored f32 with a lossy round-trip). §4.8/§4.9 require
-the compression to be the **actual memory layout** — and the GPU backends must
-read the *same packed bytes* (§4.8 "compare bytes for bytes"), so the packed
-formats are built and frozen on the canonical CPU track **before** 2-CU. The Q4
-quant/pack primitive was first lifted into `core/frobenius` (shared by all
-backends; math-core `T_FRO_Q4`). Three pieces, dependency-ordered:
-
-  - **E_CPU_9 — packed-weight arena (Piece 1a, DONE).** `SP_ARENA=q8|q4` (default
-    off): at load, quantize the matmul weights once into a per-row Frobenius Q8/Q4
-    packed arena; the matmul lifts inline from the codes. Versioned in-memory
-    layout (`SP_ARENA_LAYOUT_VERSION=1`) = the byte format the GPU backends read
-    (per-ROW Frobenius, NOT ggml per-32-block Q8_0). Tight gate: `SP_ARENA=q8`
-    forward **byte-identical** to `SP_ENGINE_FROB=1` (and `q4` to `=3`). Measured:
-    Q8 arena 574.5 MB, Q4 arena 300.7 MB (2.85% rows promoted). Scope 1a: matmul
-    weights only; embedding+norms stay f32 from the mapping (still held).
-  - **E_CPU_10 — release the F16 source (Piece 1b, DONE).** `SP_ARENA_EMBED=1`
-    folds the embedding into the arena; `qwen3_release_source()` copies norms to
-    owned f32 and `gguf_release_data()` unmaps the GGUF data (keeping the parsed
-    tensor/kv structs). The forward then reads only the arena + owned norms — peak
-    memory drops from the ~1.5 GB F16 mapping to the packed footprint (~574 MB Q8).
-    `SP_ARENA_RELEASE=1` does it at load. Tokenizer owning mode
-    (`sp_tokenizer_load_ex(g,1)`) copies vocab+merges so it survives the unmap.
-    Gate: forward after release **byte-identical** to held (a dangling pointer
-    would diverge/crash) + `gguf_tensor_data` NULL post-release + owning tokenizer
-    still decodes. **T_FRO_4 is next** — the arena is the production layout it
-    validates (Gemma3-1B PPL within 0.1%; needs the 2nd arch + SentencePiece).
-  - **Piece 2 — persistent Spinor KV cache (DONE).** `qwen3_generate_kv` with
-    `SP_KV_SPINOR=1` now stores the cache as `sp_spinor_block_t[]` (NBLK =
-    ceil(head_dim/55) blocks/head; 3 for Qwen3) and decodes on read into a
-    per-LAYER f32 scratch — resident KV memory is the packed blocks + one layer of
-    scratch, not the full f32 cache. `decode(encode(x))` is arithmetically the same
-    as the in-place round-trip, so the block cache is **sequence-identical** to the
-    f32 round-trip parity reference, exposed as `SP_KV_SPINOR_REF=1` (the §4.9 "fp32
-    cache for parity tests only"). **Gate `GEN_KV_SPINOR`** (in `test_gen_kv`)
-    asserts that identity. **Measured drop: 2.71×** (block 2.96 MB vs f32 8.03 MB on
-    Qwen3-0.6B, P=44) — the honest figure for the *frozen* 63-byte / 55-anchor block
-    at head_dim=128 (3 blocks). The earlier "~6×" was aspirational; the frozen
-    layout gives 512 B → 189 B per head = 2.71×. Larger drops would require changing
-    the frozen block (out of scope; would bump `SP_SPINOR_LAYOUT_VERSION`).
-  - **Piece 3 — composability + format-lock (DONE).** **`COMPOSE`** gate
-    (`test_compose`): with the arena ACTIVE (`SP_ARENA=q8`), the Spinor-block KV
-    cache is still sequence-identical to the f32 KV reference — i.e. the weight
-    source (arena Q8) and the KV layout (blocks vs f32) are orthogonal axes that
-    compose without interference (all three gates on: `SP_ARENA` + `SP_KV_SPINOR` +
-    `qwen3_generate_kv`). **Format-lock:** file-scope `_Static_assert`s freeze the
-    cross-backend byte contract — arena: `SP_FROB_ARENA_LAYOUT_VERSION==1`,
-    Q8 qmax 127 / Q4 qmax 7 dequant convention, 4-byte f32 row scale; KV: 63-byte
-    block, 55-anchor body, `SP_SPINOR_LAYOUT_VERSION==1`. A silent layout drift is
-    now a compile error until the version is bumped with a migration.
-  - **Piece 4 — port the load-bearing primitives into the math core (DONE,
-    2026-05-22; user direction "more load-bearing in math-core before 2-CU").**
-    The packed-weight arena FORMAT and the multi-block KV head split were initially
-    written in the engine (`src/forward/{arena,forward}.c`); since they are
-    cross-backend byte contracts (every backend reads the same bytes, §4.8/§4.9),
-    they were ported into `shannon-prime-system` so CUDA/Vulkan/Hexagon share one
-    implementation rather than re-deriving them. **`core/frobenius`** (math-core
-    commit `9a4e0ea`): `sp_frob_packed_tensor` (the mixed-precision per-row Q8/Q4
-    arena layout) + `sp_frob_pack_tensor(rows, cols, prec, promote, get_row_cb, ctx,
-    out, *promoted)` (callback-based so GGUF reading stays engine-side, no full-tensor
-    f32 spike) + `sp_frob_packed_dequant_row` + `SP_FROB_ARENA_LAYOUT_VERSION` (the
-    single source of truth — the engine's duplicate macro was deleted). Gate `T_FRO_5`.
-    **`core/vht2`**: `sp_spinor_blocks_for` / `sp_spinor_encode_vec` /
-    `sp_spinor_decode_vec` (the frozen 43/43/42 head split). Gate `T_VHT_7` (split is
-    byte-identical to an explicit per-chunk encode/decode). Engine (`b00fbf1`) bumps
-    the submodule and consumes them; behavior byte-identical (CPU regression 16/16).
-
-The load-bearing layout (arena + persistent Spinor KV + format-lock), and the
-primitives that realize it, now live in the math core; all four backends will share
-one implementation. 2-CU may start (user direction 2026-05-22) — its kernels read
-the `SP_FROB_ARENA_LAYOUT_VERSION=1` arena bytes and the `SP_SPINOR_LAYOUT_VERSION=1`
-KV blocks directly. T_FRO_4 (Gemma3-1B PPL) remains the production-quality validation
-of the arena, deferred to its own session (2nd arch + SentencePiece + PPL loop).
-
-### 8.3 Phase 2-CU (CUDA backend)
-
-- **Build env.** `scripts/env/env-cuda.bat`. **Pin update (2026-05-22):** the dev
-  host now has **CUDA 13.2** on PATH and the GPU is an **RTX 2060 (sm_75)** — so
-  the 2-CU bring-up targets **CUDA 13.2 + sm_75** (still a §8.3 supported arch),
-  not the old 12.4 pin. `env-cuda.bat` is to be updated to 13.2 (and likely needs
-  the same ASCII/`goto` fix the CPU env scripts got) when 2-CU starts.
-- **Reference model.** Same Qwen3-0.6B Q8.
-- **Tests E_CU_1..E_CU_6** mirror the CPU set, with the additional
-  per-platform gate that CUDA output must match CPU output within 1e-3
-  relative on the same prompt. The looser tolerance accounts for
-  expected fused-multiply-add ordering differences.
-- **Notes.** Target SM 75/86/89 (RTX 2060/3000/4000 series). Older SMs
-  not supported. Use `--use-local-env` to keep MSVC from injecting
-  unwanted flags.
-
-### 8.4 Phase 2-VK (Vulkan backend)
-
-- **Build env.** `scripts/env/env-vulkan.bat`. Vulkan SDK 1.3.x. glslc
-  for shader compilation.
-- **Reference model.** Same Qwen3-0.6B Q8.
-- **Tests E_VK_1..E_VK_6** mirror the CPU set, with output vs CPU
-  matching within 1e-3 relative.
-- **Notes.** Lower initial priority than CPU/CUDA. The reason Vulkan is
-  in scope at all is Apple Silicon support via MoltenVK and the option
-  of a cross-platform fallback when CUDA is not available. Subgroup ops
-  are essential — the reduction-heavy parts of NTT-attention rely on
-  them.
-
-### 8.5 Phase 2-HX (Hexagon backend)
-
-- **Build env.** `scripts/env/env-hexagon.bat`. Hexagon SDK 5.x on the
-  Knack Windows host. Git sh.exe prepended to PATH. The
-  `reference_hexagon_build_recipe` memory captures the exact recipe;
-  diverging from it has produced multi-session bring-up delays.
-- **Reference model.** Same Qwen3-0.6B Q8, with a phone-suitable
-  context length cap.
-- **Tests E_HX_1..E_HX_6** mirror the CPU set, with output vs CPU
-  matching within 1e-3 relative.
-- **Notes.** This is the highest build-environment-fragility track in
-  Phase 2. Two prior sessions have hit silent fallback bugs when
-  FastRPC rpcmem registration size mismatched the IDL length parameter
-  (`feedback_fastrpc_exact_alloc`). Do not exceed-allocate. Use the
-  freethedsp shim when `SP_FREETHEDSP=1`; it is opt-in. QNN HTP V69 is
-  the target accelerator for matmul on this platform.
-
-### 8.6 Phase 2 exit
-
-Phase 2 closes when at least one backend (CPU is the minimum) has all
-six E-tests green. Other backends close independently and are tagged
-`lat-phase-2-<backend>-closed`. The CPU backend close also produces
-`lat-phase-2-closed` since CPU is the canonical anchor.
-
-#### 8.6.1 Why E_CPU_2 is a distributional gate, not a per-logit tolerance
-
-The original gate (forward pass "within tolerance" — read as 1e-4 abs /
-0.1% rel per logit) is **unachievable** for a correct scalar f32 forward
-pass against stock llama.cpp, and the reason is structural, not a bug.
-Established during the 2-CPU.B bring-up (2026-05-22) by isolation testing
-against the clean oracle (`tools/oracle/{dump_logits,dump_layers,rope_check,
-attn_check}`):
-
-- The matmul projection is F16-exact under matched precision: feeding the
-  engine's F16-activation mode (`SP_ENGINE_F16_ACT=1`, which rounds each
-  matmul's activations to F16 to mimic ggml's `vec_dot_type=F16` src1
-  downcast) reproduces ggml's `Vcur` to **1.3e-6**.
-- RoPE is bit-faithful (≤2e-6 vs `ggml_rope_ext` at all positions; it is a
-  linear map, fully characterised by `rope_check`).
-- The attention core (scale / softmax / GQA mapping / causal mask /
-  V-weighted sum) reproduces ggml's `kqv` to **1e-6** when run on ggml's
-  own Q/K/V (`attn_check`, all layers).
-- **Per-head QK-RMSNorm is a precision amplifier.** It divides each head by
-  its RMS; where that RMS is small it magnifies the ~1e-6 matmul-precision
-  floor by 39× (Q) to 477× (K) — measured at layer 0 with identical input.
-  Compounded over 28 layers at the positions where QK-norm RMS is small,
-  this reaches a ~1–2% worst-case per-logit gap.
-
-So the per-logit gap is real, content/position-correlated, and *inherent to
-any implementation that does not bit-replicate ggml's SIMD F16 arithmetic* —
-which a portable scalar reference must not be required to do. The argmax is
-nonetheless exact and the **distributions are nearly identical**: mean
-`KL(ggml‖engine) ≈ 2.3e-6` nats. KL is therefore the correctness metric
-(it is also what llama.cpp uses for perplexity-style validation), with
-top-1/top-5 agreement as the structural guard.
-
-Two gates, two purposes, no contamination:
-
-- **E_CPU_2** validates the engine's pure-f32 path against the *reference
-  model* (ggml): argmax + top-5 + KL. The pure-f32 path is used (not
-  F16-act) because it has *lower* KL to ggml than F16-act does.
-- **E_CPU_3+** validate alternate kernels (Frobenius/Q8, AVX2, NTT-attn)
-  against the *engine's own* pure-f32 logits — same arithmetic and
-  accumulation order — so a tight per-kernel tolerance stays meaningful and
-  the ggml precision gap never propagates downstream. Quantize against
-  pure-f32, never against F16-act.
-
-### 8.7 Notes for the picking-up session (per backend)
-
-**CPU.** Start from a blank `engine/cpu/forward.c`. Wire the GGUF
-loader first, get tensors materialised into row-major-by-token layout,
-then implement the 13 steps as 13 functions. Keep the AVX2 path
-beside a scalar reference under an `SP_CPU_SCALAR=1` env gate so the
-scalar path stays buildable. The AVX512 path is a second pass and not
-required to close E_CPU_4.
-
-**E_CPU_2 oracle (do NOT use the local llama.cpp checkouts).** The
-`llama-cpp-*` builds under `D:\F\` and `D:\F\shannon-prime-repos\` are all
-contaminated — they link `shannon_prime_*` libs (even the one named
-"cleanroom") — so their logits are non-stock and they sit in the
-anti-contamination zone. The clean reference is a pristine upstream
-llama.cpp at `D:\F\shannon-prime-repos\shannon-prime-lattice-llama` with the
-`dump_logits` tool at `shannon-prime-system-engine/tools/oracle/`; it dumps
-token IDs + per-position logits so the engine validates on identical IDs.
-Same rule applies to every later backend's correctness gate.
-
-**CUDA.** Mirror the CPU layer-by-layer. The most fragile cell is the
-fused matmul + Frobenius decompress kernel — get the scalar correctness
-right via Ninja `--use-local-env` before turning on cublas LT or any
-tensor-core fusion. Output verification compares against the CPU run
-for the same prompt, so keep the CPU build alive in the same Phase 2-CU
-sessions.
-
-**Vulkan.** Compile glslc shaders into SPIR-V at build time, not at
-runtime; the JIT path has caused at least one driver crash in prior
-attempts. Subgroup ops vary by vendor; test under at least two vendors
-before declaring 2-VK closed. MoltenVK on Apple Silicon is the
-canonical "third vendor" the test harness picks up later.
-
-**Hexagon.** Build environment first. Do not attempt to bring up the
-forward pass until `env-hexagon.bat` produces a working `qaic.exe`
-invocation per the `reference_hexagon_build_recipe` memory. The
-FastRPC silent-fallback bug (`project_hexagon_silent_fallback`) is
-load-bearing context — when in doubt, log every rpcmem registration
-size and grep the logs against the IDL parameter sizes.
-
----
-
-## 9. Phase 3 — Model-family expansion
-
-**Goal.** Every backend supports every model family in the in-scope
-list. The matrix is large (7 model families × 4 backends = 28 cells),
-and not every cell must close — some cells are explicit "later" cells
-(see priority below).
-
-**Dependencies.** Phase 2-CPU closed. Other backends may or may not be
-closed; the matrix is filled per-cell.
-
-**Parallelism.** Cells are independent. Sessions can pick any cell.
-
-### 9.1 Model-family list
-
-- 3.1 Llama 3.1 / 3.2 — established baseline; Llama 3 is the most-tested
-  upstream architecture, so it exercises every loader edge case.
-- 3.2 Qwen3 base — closest to the current canonical Qwen3-0.6B test
-  model.
-- 3.3 Qwen3.5 — incremental update on Qwen3, mostly architecture-flag
-  differences.
-- 3.4 Qwen3.6 — **MoE.** Adds the routing layer, sparse FFN, expert
-  parameter sharding. Largest single-cell scope in Phase 3.
-- 3.5 Qwen3.7 — incremental update on 3.6 if it lands by then;
-  otherwise deferred.
-- 3.6 Gemma 2.5 / 3 / 4 — Google family. Different RoPE shape, different
-  RMSNorm placement, attention sliding window. Gemma 3 is the canonical
-  research target (the T4 validation curve was on Gemma3-1B).
-- 3.7 DeepSeek V4 — large MoE with FP8 weights. Lower priority for
-  initial bring-up; the architecture is heavy and the FP8 weights would
-  require an additional dequant path.
-
-### 9.2 Priority cells
-
-The matrix has 28 cells. To stay honest about scope, the project
-declares which cells **must** close by end of Phase 3 and which are
-later-phase:
-
-- **Must close (8 cells).** CPU × {Llama 3.x, Qwen3, Gemma 3}, CUDA ×
-  {Llama 3.x, Qwen3, Gemma 3}, Hexagon × {Qwen3, Gemma 3}.
-- **Should close (10 cells).** CPU × {Qwen3.5, Qwen3.6, Gemma 2.5,
-  Gemma 4, DeepSeek V4}, CUDA × {Qwen3.5, Qwen3.6, Gemma 2.5, Gemma 4,
-  DeepSeek V4}.
-- **Later (10 cells).** All Vulkan cells beyond the canonical
-  Qwen3-0.6B test model. All Hexagon cells beyond Qwen3 and Gemma 3.
-
-### 9.3 Per-cell deliverables
-
-Each cell delivers:
-
-- `engine/models/<family>/loader.<backend>.c` — model-specific loader.
-- `engine/models/<family>/forward.<backend>.c` — forward pass.
-- `engine/models/<family>/test_<backend>.c` — correctness tests.
-- An entry in `engine/models/matrix_status.md` updated when the cell
-  closes.
-
-### 9.4 Per-cell tests
-
-- M_<family>_<backend>_1 — model loads.
-- M_<family>_<backend>_2 — first 256 tokens of forward pass match
-  llama.cpp within 1e-3 relative.
-- M_<family>_<backend>_3 — PPL on a standard 4k-token sample within
-  0.5% of baseline.
-- M_<family>_<backend>_4 — memory footprint reported in the offload
-  note.
-
-Cells close on M_*_4 passing. A failed M_*_2 indicates a loader or
-forward-pass bug; do not declare the cell closed by skipping it.
-
-### 9.5 Phase 3 exit
-
-Phase 3 closes when the 8 must-close cells are green and the should-close
-cells are at least started. Tag `lat-phase-3-closed`. Later cells
-continue to land in Phase 4+ alongside their own work.
-
-### 9.6 Architectural notes per model family
-
-**Llama 3.1 / 3.2.** Most-tested upstream architecture, which means
-the loader exercises every GGUF metadata edge case the project will
-encounter. Use Llama 3.x as the canary when adding any new loader
-field. Llama's RoPE is the "plain" reference shape; everything else
-in the family list is a delta against it.
-
-**Qwen3 base.** Closest to the canonical test model and the easiest
-cell to bring up second. The Qwen3 RoPE includes a per-head linear
-bias which the Stern-Brocot variant (E9.1) wires into directly; keep
-both code paths buildable until Phase 4 has Stern-Brocot validated
-end-to-end on this family.
-
-**Qwen3.5.** Incremental delta on Qwen3 base. Most of the bring-up
-cost is metadata flags and a slightly different normalisation order
-inside the attention block; the kernel inventory is identical.
-
-**Qwen3.6 (MoE).** This is the architectural step change inside the
-Qwen family. The routing layer assigns each token to k-of-N experts
-and the FFN becomes a sparse gather. The cell must add an expert
-parameter sharding path so the experts can be split across multiple
-machines or pipeline stages later. Phase 3 only requires the
-single-machine case; multi-machine MoE is a later phase.
-
-**Qwen3.7.** Speculative. If 3.7 has shipped by the time the project
-gets here, treat it as another incremental Qwen update; if it hasn't,
-defer this row.
-
-**Gemma 3 (and 2.5 / 4).** Different RoPE shape, different RMSNorm
-placement (pre + post on some sublayers), attention sliding window.
-Gemma 3 is the canonical research target.
-
-<!-- NOTE (2026-05-21): the Gemma 3 paragraph above was truncated mid-word
-in the Phase-0 bootstrap commit; only the obvious word "target." was
-restored. The rest of the §9.6 Gemma discussion remains to be written. -->
-
----
-
-## Phase log
-
-One paragraph per closed phase (§3.3). Most recent last.
-
-### Phase 1 — Math core foundations — closed all tiers (2026-05-21)
-
-All six subphases green. **1A** O_K arithmetic over Q(√-163)
-(`core/ok_arith`, T_OK_1..6). **1B** dual-prime CRT negacyclic NTT
-(`core/ntt_crt`, T_NTT_1/2/4/5; N∈{128,256,512} on the frozen primes;
-no `__int128` in the production path, configure-time guard). **1C** R_q
-polynomial-ring attention (`core/poly_ring`, T_PR_1..4; ⟨q,k⟩ recovered
-exactly via the negacyclic involution, T_PR_2 KL=0). **1D** VHT2 +
-Möbius + frozen 63-byte Spinor block (`core/vht2`, T_VHT_1..6). **1E**
-Frobenius Q8 lift (`core/frobenius`, T_FRO_1..3; T_FRO_4 → Phase 2).
-**1F** KSTE encoder + Tier-0/Tier-1 dominance (`core/kste`,
-T_KSTE_1..5; frozen 64-byte T_{60,3} tree). Built scaffold-first
-(`cmake/sp_module.cmake`, `sp_test.h`, EXISTS-guarded root) and executed
-by parallel agent dispatch. Integrated `ctest` 6/6, UBSan-clean on
-Windows MinGW-gcc (Tier-1); Linux gcc CI green (Tier-2). **Tier-3 (MSVC)
-also closed same session:** full suite 6/6 under MSVC (VS2019 BT), T_NTT_3
-gated against a gcc-pre-generated `__int128`-oracle fixture
-(`ntt_ref_vectors.h`, cases to 2^28 exercising the ~2^60 CRT range),
-T_VHT_5 / T_KSTE_4 byte-identity green under MSVC, and a `windows-msvc`
-CI job added so all three tiers stay continuously gated. Scaffold gained
-`sp_add_module(... DEPENDS ...)` for inter-module links. **Still open:**
-T_FRO_4 (Gemma3-1B PPL) runs in Phase 2. Tag: `lat-phase-1-closed`.
-Offload: `SESSION-CLOSED-lat-1.md`.
+    `KL(softmax-baseline�

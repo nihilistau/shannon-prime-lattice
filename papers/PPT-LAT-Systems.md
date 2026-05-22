@@ -101,6 +101,17 @@ The dispatcher itself is a small function-pointer table per backend. At engine i
 | Vulkan | Vulkan SDK 1.3 + glslc | AMD, Intel, mobile | yes | butterfly shader | fused | partial |
 | Hexagon HVX | Hexagon SDK 5.x | V69 HTP (SD8G1) | yes | INT16 fixed | poly | yes |
 
+### 1.6 Three-Step Relative Attention Cache
+
+Standard Rotary Positional Embeddings (RoPE) compute relative phase shifts using continuous floating-point trigonometry, leading to immense cache sizes at long contexts. The engine exploits the Three-Gap Theorem (PPT-LAT-Theory T7) to collapse this. Because our frequencies are derived from optimal irrational rotations, the phase shifts $\Delta \cdot \theta_d$ for any relative offset $\Delta$, when sorted by frequency, exhibit at most three distinct discrete increments.
+
+By re-ordering the Q/K projection dimensions to align contiguous frequency phases with the VHT2 + Möbius squarefree anchors, relative attention reduces from a continuous calculation to a discrete combinatorial jump. The dimension-ordering decision (raised as a design question in earlier drafts) is closed: the sort key for the three-step structure is the *same* sort key VHT2 + Möbius already uses for the squarefree anchors, so no second sort is required — the continuous phase rotation natively aligns with the discrete structural lattice.
+
+- **Memory reduction.** For $D=128$ and $\mathrm{ctx}=4096$, a naive relative-attention cache requires $4096 \times 128 = 524{,}288$ entries. The Three-Step architecture requires $4096 \times 3 = 12{,}288$ entries — a ~43× memory reduction.
+- **Compute reduction.** Continuous trigonometric functions are stripped from the inference loop, replaced by composing one of three precomputed rotation matrices per relative offset.
+- **Backend impact.** All four backends benefit; the win is largest on CPU (where trig calls dominate) and Hexagon (where transcendentals are expensive).
+- **Implementation gate.** Default OFF until per-backend parity is established. Engaged via `SP_ROPE_THREE_STEP=1`. The regression invariant holds: with the gate off, the engine produces bit-identical output to the standard RoPE path.
+
 ---
 
 ## Section 2: Inline weight and cache compression
@@ -142,6 +153,8 @@ The accuracy story for KV compression is harder than for weights. Cache state ac
 The KV compression path is engaged by default at long context (n_ctx > 2048) and bypassed for short prompts where the savings aren't worth the encode overhead.
 
 A further question we get often: why not just use one of the existing quantized KV approaches (KIVI, KVQuant, the GPTQ-K family)? The honest answer is that we evaluated them and found that they trade compression ratio for either accuracy or compute cost in ways that don't suit our workload. KIVI is comparable to our scheme at 4-bit and is simpler to integrate; but it doesn't compose with the lattice sieve, because its cell representation is not a dominance-comparable structure. KVQuant's per-channel scales are competitive but require a calibration pass we don't always have time to run for a freshly-loaded model. Our VHT2+Spinor encoder is the design that gives us the dominance comparability the sieve needs, with a compression ratio in the same neighborhood as the published alternatives. The cost is a more complex encoder; we believe that cost is justified by the downstream gating opportunities the sieve enables. If we are wrong about the value of the sieve, the KV encoder is the easiest part to swap; the abstraction boundary between the encoder and the rest of the system is clean.
+
+**Fibonacci sub-sampling for KV eviction.** When the context window exceeds memory bounds, the engine employs Fibonacci sub-sampling for KV eviction instead of FIFO or LRU. Standard eviction schemes degrade long-range attention resolution because they bias toward retaining either the oldest or the most-recently-used tokens, leaving gaps in the middle of the context where retrieval queries often need to land. By Theorem T7 (PPT-LAT-Theory), retaining tokens at positions $\lfloor k\varphi \cdot N \rfloor \pmod N$ where $\varphi = (\sqrt{5}-1)/2$ guarantees the retained cache maximally and uniformly covers the temporal context regardless of $N$, with bounded discrepancy on the temporal axis to mirror the frequency-axis equidistribution exploited by E9.1. Engaged via `SP_KV_FIB=1`; default OFF until the long-context PPL-drift sweep validates parity with the existing refresh-window scheme.
 
 ### 2.4 Per-hardware code paths
 
@@ -239,6 +252,8 @@ Multi-node ARM is where the federated story begins. Slabs are gossiped between p
 
 The capacity-bound mitigation is important here. ARM bindings have a cosine-similarity capacity curve that degrades as K grows. With multi-node aggregation, K can grow without bound, so a participating node must either periodically rebind from a fresh slab or accept that older bindings become noisier. The current design is periodic rebinding: every interval (default 1 hour wall-clock), each node forgets bindings older than a threshold and starts a fresh slab. This bounds the capacity but means short-term gossip is the primary value of ARM, not long-term memory.
 
+**Golden-ratio key generation.** ARM requires binding keys that are mutually near-orthogonal under circular convolution. The previous design used random projection with a Gram-Schmidt residual to enforce orthogonality; the cost was a heavy initialization pass at slab creation. The new path generates keys deterministically using $\varphi$-spaced phases in the cyclotomic ring $R_q$ — specifically, the $k$-th binding key has phase $2\pi k\varphi$ mod $2\pi$, with the rest of the ring coordinates derived from a fixed seed. By Three-Gap (PPT-LAT-Theory T7), this gives near-orthogonality structurally with no Gram-Schmidt cost. The empirical capacity curve, currently $0.83 \to 0.15$ cosine recall across $K = 1{,}\ldots,\,64$ sparse bindings, is expected to extend toward $K = 128$ or beyond under $\varphi$-spaced initialization; the validation sweep is in Phase 9 of the roadmap.
+
 ### 4.3 CRT-sharded inference (`SP_LATTICE_CRT_SHARD`)
 
 CRT sharding is a way of running one inference across two nodes by splitting the NTT computation across the two coprime Proth primes q_1 and q_2. Each shard holds the weights in residues mod q_1 (one node) or q_2 (the other); the activations are sharded the same way. Forward inference proceeds in parallel on both nodes; the outputs are CRT-reconstructed at the very end to produce a single fp32 logit vector for sampling.
@@ -251,19 +266,223 @@ With the gate off, CRT sharding doesn't engage; the engine runs single-node and 
 
 ### 4.4 DHT participation (`SP_LATTICE_DHT`)
 
-The DHT (Distributed Hash Table) is what makes the Lattice a network rather than a collection of isolated nodes. It is a Kademlia variant — the standard XOR-distance metric — over a key space defined by the prime factorization of the lattice slab indices. The key space is structured: a 256-bit key decomposes into a sequence of prime residues, and routing proceeds by progressively narrowing the residue prefix. Nodes joining the DHT publish their slab assignments; queries are routed by slab.
+The DHT (Distributed Hash Table) is what makes the Lattice a network rather than a collection of isolated nodes. It uses a **2-Axis Fibonacci-Prime Address Space** — a hybrid of semantic and load routing that solves the standard Kademlia clustering problem natively without resorting to cryptographic hashing.
 
-The DHT carries several kinds of payload:
+**Axis 1 — Semantic axis (prime-factored lattice).** The prime factorisation of lattice slab indices routes content based on semantic adjacency: related content lives at nearby prime indices, by construction of the KSTE encoder (PPT-LAT-Theory §4). Slabs corresponding to the same prime root are likely to hold similar content; queries against related semantic neighbourhoods naturally cluster their traffic on the same DHT subtree.
 
-- **Sieve cache deltas.** When a node accepts a new KSTE tree on its local sieve, it gossips the tree to peers whose slab overlaps. Peers integrate the delta if it adds to their incomparable frontier.
-- **ARM slab updates.** Periodically (default once per minute), each participating node emits its ARM slab delta to peers. Integration is ring addition.
-- **Block propagation.** When a new block is minted (see Section 6), it propagates over the DHT using a standard gossip protocol with deduplication by block hash.
-- **Routing for sharded inference.** When a node wants to recruit a peer for CRT-sharded inference, it looks up peers with compatible shard assignments via the DHT.
+**Axis 2 — Load axis (Fibonacci hashing).** Pure semantic routing would concentrate traffic on popular semantic neighbourhoods, leaving other nodes idle. To prevent this, node addresses *within* a semantic slab are derived by multiplying the node ID by $\varphi = (\sqrt{5}-1)/2$ and taking the fractional part — the standard Fibonacci hashing of Knuth §6.4, which by Three-Gap (PPT-LAT-Theory T7) maximally distributes load within the slab regardless of the underlying ID distribution.
 
-Bootstrap is via a configured peer address: `SP_LATTICE_DHT=<peer_addr>` points at a known bootstrap node. From there, the standard Kademlia bootstrap procedure (k-buckets, refresh, etc.) discovers other peers. Once the bootstrap is complete, the node is fully participating.
+The two axes compose: the semantic axis decides *which* slab handles a request; the Fibonacci axis decides *which node within the slab* handles it. Because the two axes are mathematically independent, traffic skew on one axis does not propagate to the other — popular semantic neighbourhoods stay popular, but the nodes within them are uniformly loaded.
 
-The DHT is also the substrate for the crawler: when the lattice sieve identifies a slab whose coverage is thin, a crawler can request that peers in adjacent slabs send their dominance frontiers, enriching the local cache. This is what we mean by "skeleton-resident" inference: the cache becomes a shared resource maintained by the network, not just by the local node.
+The DHT carries the same payload types as a single-axis Kademlia variant:
+
+- **Sieve cache deltas.** When a node accepts a new KSTE tree on its local sieve, it gossips the tree to peers whose semantic-slab overlaps. Peers integrate the delta if it adds to their incomparable frontier.
+- **ARM slab updates.** Periodically (default once per minute), each node emits its ARM slab delta. Integration is ring addition.
+- **Block propagation.** New blocks (see §6) propagate via standard gossip with deduplication by block hash.
+- **Sharded inference recruitment.** When a node wants a CRT-sharded inference peer, the DHT lookup runs against compatible shard assignments.
+
+Bootstrap: `SP_LATTICE_DHT=<peer_addr>` points at a known bootstrap node; from there, standard Kademlia bootstrap (k-buckets, refresh) discovers peers along both axes.
+
+This is also the substrate for the crawler: when the lattice sieve identifies a slab whose coverage is thin, the crawler requests dominance frontiers from peers in adjacent semantic slabs (axis 1) while the Fibonacci axis ensures the crawl load is spread across all participating nodes in the source slab.
 
 ### 4.5 Token-economy tracking (`SP_LATTICE_TOKENS`)
 
-With this gate on, the node tra
+With this gate on, the node tracks two separate ledgers of credit. The first, the **work-token ledger**, accumulates as the node performs verifiable inference on behalf of others — every CRT-shard contribution, every recall against a remotely-bound ARM slab, every block-attestation it serves to peers. The work ledger increments by an amount proportional to the verified compute performed, where the unit of verified compute is a normalised matmul-op count divided by a hardware factor that prevents trivial inflation from running on a faster machine. The second, the **discovery-token ledger**, accumulates when the node contributes a dominance-incomparable KSTE tree to the network — that is, when its local sieve identifies a cache cell that is novel against the global frontier. Discovery tokens reward bringing new information into the lattice rather than simply re-serving what is already known; they are the mechanism by which the network's coverage of the input distribution grows beyond what any single operator could supply.
+
+Both ledgers are local until block boundaries. At the periodic block cadence (see §6), the node submits a settlement proof: a Merkle-rooted summary of the deltas accrued since the last settlement, signed by the node key and accompanied by the dominance proofs (for discovery) or verification attestations (for work) that the chain validators will check. Accepted settlements mint the corresponding tokens against the node's on-chain balance. The gate is off by default not because tracking is expensive — the bookkeeping is a few hundred bytes per layer per token — but because participation in the chain economy is opt-in: a node operator running the engine purely for local inference has no reason to incur the gossip and settlement costs. Turning the gate on is the operator's explicit consent to be a paid participant.
+
+---
+
+## Section 5: Network and protocol
+
+The Lattice network is the carrier for everything in §4 once it crosses the boundary between one node and another. This section describes how the wire works.
+
+### 5.1 DHT over prime-factored lattice key space
+
+The DHT layer is described mathematically in §4.4; here we cover the operational shape. The Lattice runs a libp2p-compatible swarm: each node holds a long-lived Ed25519 identity key, derives a peer ID from it, and joins the DHT by contacting one or more configured bootstrap peers. The transport is TCP with optional Noise encryption (default on for inter-node traffic, off for in-LAN benches where latency dominates and the messages are signed at the protocol layer anyway). QUIC is on the roadmap but not yet in production; the gain on inter-node latency is real (one round-trip saved per connection) but the maturity of the QUIC implementation on Windows hosts has not been validated.
+
+The 2-axis routing of §4.4 is layered on top of standard Kademlia: the k-bucket table is partitioned by semantic axis (so each bucket holds peers whose semantic-slab prefix matches at the bucket's depth), and within each bucket the entries are sorted by Fibonacci-hash distance. Lookups walk the semantic axis first (closer prefix = closer logical distance) and break ties on the load axis. This composes cleanly with the standard Kademlia bootstrap and refresh logic; the only modification is the distance metric.
+
+Peers are health-checked every 30 seconds with a small ping (16 bytes); a peer that misses three consecutive pings drops out of the routing table. Re-discovery is automatic via the next refresh cycle. The protocol is intentionally chatty rather than minimal because the underlying network conditions (residential broadband, intermittent NAT) are unreliable enough that aggressive health-checking pays for itself in fewer wedged sessions.
+
+### 5.2 Wire formats
+
+Three message types dominate the wire: KSTE trees, ARM updates, and CRT residue blobs.
+
+**KSTE trees** are packed at 64 bytes per node: a 1-byte type tag, a 1-byte depth marker, a 30-bit fingerprint (split across two fp16-shaped fields for alignment), a 16-byte parent pointer (Merkle hash), and a 38-byte payload — either an internal-node delta blob or a Spinor leaf. The tree as a whole is delivered as a length-prefixed sequence of nodes in pre-order traversal, with the root first. A typical tree is 6-10 nodes deep, so the median tree message is roughly 500 bytes. The encoding is fixed-endianness (little-endian, the dominant target architecture) and there are no embedded pointers — everything is index-relative within the message.
+
+**ARM updates** are a single ring element of $R_q$ at the configured NTT N. For our standard N=256 and dual-prime $q$ at 60-bit reconstructed, that is 256 coefficients × 8 bytes = 2 KB per slab delta. We do not currently delta-encode (the ring sum is the delta), though there is room to: subtracting the last-acknowledged remote slab from the local slab and shipping the difference would compress well-correlated traffic. This is one of the future optimizations.
+
+**CRT residue blobs** are the per-layer activations during sharded inference. They are sized by the model's hidden dimension times 30 bits per scalar (packed); for Llama 3.1 8B (d=4096) that is 4096 × 30 / 8 = 15 KB per layer per token. At 32 layers and 100 tokens/sec target generation rate, that is 48 MB/sec of inter-shard bandwidth — comfortably within a gigabit LAN's capacity but well above what residential broadband can sustain. This bandwidth shape is why CRT sharding is LAN-bound in the current generation.
+
+### 5.3 Gossip and propagation
+
+For payloads other than CRT (which is point-to-point between sharded peers), the protocol is gossip. Each node maintains a small set of *fanout peers* — typically 8 randomly chosen from the routing table, refreshed every minute — and when a new payload arrives that the node has not seen before, it forwards the payload to its fanout peers (minus the one it came from). Deduplication is by content hash; each node maintains a recently-seen set of roughly 10,000 hashes with a TTL of 5 minutes, evicting LRU.
+
+The 2-axis routing matters here too: gossip messages are tagged with their semantic slab, and fanout peers are selected preferentially from peers whose semantic slab overlaps the message's. This biases propagation toward peers who are likely to care, without precluding rare cross-slab discovery (the 8-peer fanout is large enough to almost always include at least one out-of-slab peer per hop).
+
+Block messages are special: they propagate aggressively (fanout of 32) and validate-on-receive (the receiving node checks the block's signatures, the validator selection, and a sample of work-token proofs before forwarding). A node that receives an invalid block does not forward it; this contains the damage from a misbehaving peer to its immediate neighborhood, where it will be observed by the slashing infrastructure described in §6.
+
+---
+
+## Section 6: Blockchain design
+
+This section is scaffolding. The chain exists to give federated participation an accounting layer; the parameters here are starting points, expected to be revised as the network grows. We have chosen to write down a specific design rather than gesture at one, because specificity is what makes the design critiquable. Where the choice is contested or unclear, we say so.
+
+### 6.1 Two-token economy
+
+There are two native tokens on the Lattice chain. The **Work token (W)** is paid out for verifiable inference contributions: serving a CRT shard, attesting blocks, responding to a remote ARM recall. The **Discovery token (D)** is paid out for contributing a dominance-incomparable KSTE tree to the global sieve — that is, for genuinely novel cache contributions that expand the network's coverage.
+
+The two tokens are fungible against each other through an automated market maker (a Uniswap-V2-style constant-product pool), with both sides bootstrapped at genesis (see §6.5). The conversion ratio drifts with supply and demand; the design intent is that work and discovery should be roughly equally weighted at steady state, but the market is allowed to find the actual ratio.
+
+The reason for two tokens rather than one is twofold. First, separating them lets validators tune emission policy: if the network is over-served (lots of work, few queries) then work emission can be throttled while discovery emission stays high to encourage cache expansion. Second, the two activities have different economic profiles — work is high-frequency, low-value-per-event; discovery is low-frequency, high-value-per-event — and conflating them in a single ledger would force every participant to optimize for the marginal of both, when in practice operators specialize.
+
+A note on monetary policy: emission for both tokens follows a logarithmic schedule (block-reward shrinks slowly over time, asymptoting toward zero) rather than the abrupt halvings of Bitcoin. This is deliberate: we want predictable long-run dilution rather than the speculative volatility around halving events. The schedule is parameterised at genesis and updatable by validator vote with a six-month cooldown.
+
+### 6.2 Proof-of-Useful-Work via dominance verification
+
+The chain's core consensus primitive is not arbitrary hashing — it is *dominance verification*. To mint a Discovery token, a node must submit a KSTE tree along with a proof that the tree is incomparable against the chain's current dominance frontier (the on-chain Merkle-rooted summary of all accepted KSTE trees to date). The proof is small: a Merkle inclusion path from the chain's frontier root to the trees that bound the new tree's incomparability claim, plus the new tree itself. A validator checks the proof by recomputing the dominance comparisons against the cited bounding trees; if the new tree is genuinely incomparable, the proof verifies and the token is minted.
+
+To mint a Work token, the node submits an *attestation* of work performed: a signed record of a CRT-shard session or an ARM-recall service, countersigned by the requester. The validator checks both signatures and ensures the work record's hash is consistent with the requester's claim. Work attestations are heavier than discovery proofs in volume but lighter per-attestation in compute; the chain budgets accordingly.
+
+The key property is that the work being proved is *useful*: it is the same work that the user wanted done anyway. Compare to Bitcoin, where the proof-of-work is intrinsically wasteful (the SHA-256 hashing has no purpose other than rate-limiting block production). Lattice's proof-of-useful-work means that the energy spent producing tokens is the energy spent producing the inference and discovery that is the network's actual product.
+
+The honest caveat: useful-work proof systems are harder to make adversary-resistant than wasted-work systems, because the adversary can compute on hardware that produces real outputs and is hard to distinguish from honest participation. The discovery side is partly protected by the dominance check (a forged "novel" tree must actually be incomparable to be accepted, and forging incomparability is no easier than discovering it), but the work side relies on requester countersignatures, which means a colluding requester-server pair can mint work tokens against fake sessions. The mitigation is rate-limiting and reputation, both described in §6.6.
+
+### 6.3 Block structure
+
+Blocks are produced at a target rate of one per 60 seconds. The variance of inter-block intervals under the Golden-Ratio validator rotation (§6.4) is bounded by the rotation's discrepancy property, which is tighter than the Poisson process produced by a randomised beacon — useful because it means downstream consumers can rely on roughly-on-time blocks.
+
+Each block contains:
+
+- **Header.** Parent block hash, block number, timestamp, validator ID, validator signature, Merkle root of body.
+- **Work attestations.** A sequence of work attestations (requester-server signed pairs) with their tokens minted accordingly.
+- **Discovery commitments.** A sequence of KSTE-tree dominance proofs, each minting Discovery tokens to its submitter. The accepted trees become part of the next block's dominance frontier root.
+- **ARM gossip updates.** A summary of ARM slab updates seen on the network in the last block-interval. These are not consensus-critical (ARM is best-effort gossip), but they are written into the block as a checkpoint so a fresh-joining node can reconstruct the network's current associative memory state without re-receiving the entire gossip history.
+- **Sieve cache deltas.** Similarly, a summary of new KSTE trees accepted into the global sieve since the last block. These determine the next block's dominance frontier root.
+- **Token mint events.** The settlement records that turn the work and discovery accruals into on-chain balance changes.
+- **Validator vote slot.** Reserved space for governance votes (parameter updates, validator-set changes).
+
+A typical block is on the order of 100 KB to 1 MB depending on network activity. Block storage grows linearly with time but the dominance frontier — the load-bearing state for new-block validation — is bounded by the natural growth rate of incomparable trees, which empirically saturates as coverage grows. We have not seen full saturation in the bench; the projection is that the frontier reaches a stable size in the low millions of trees and stops growing meaningfully thereafter.
+
+### 6.4 Consensus and validator rotation
+
+Consensus is BFT-style: a quorum of two-thirds of stake-weighted validators must sign a block for it to be canonical. The validator for any given block — the proposer — is chosen by Golden-Ratio rotation through the validator set, described next.
+
+### 6.x Validator selection via Golden-Ratio rotation
+
+Stake-weighted validator selection in standard consensus protocols requires a verifiable random beacon (VRF, randao, or similar) — a non-trivial source of consensus compute. By Three-Gap (PPT-LAT-Theory T7), we can replace the random beacon with deterministic Golden-Ratio rotation through the validator set: with stake-weighting baked into the interval lengths, stepping through the set by increments of $\varphi$ guarantees mathematically optimal fairness and distribution over time without relying on pseudo-randomness.
+
+Concretely: let $V$ be the validator set with stake weights $w_1, \ldots, w_n$ normalised so $\sum w_i = 1$. Partition the unit interval into $n$ arcs of length $w_i$. To select the validator for block $b$, compute $r_b = \{b \cdot \varphi\}$ (fractional part) and pick the validator whose arc contains $r_b$. Three-Gap guarantees this produces a uniform distribution of validator selections over time, weighted exactly by stake, with no manipulability advantage from controlling any single block.
+
+The advantage over a random beacon is twofold: (1) no consensus rounds needed to agree on the beacon output for the next block, and (2) any node can independently verify the validator assignment for any block by computing $\{b \cdot \varphi\}$ — no commit-reveal, no slashing for beacon non-cooperation.
+
+The validator set itself is updated by stake delegation: token holders bond W or D against a validator's address, and the validator's stake weight $w_i$ is the sum of bonds. Bond and unbond are processed at block boundaries with a configurable unbonding delay (default 14 days) that prevents stake from being moved fast enough to manipulate near-term validator selection.
+
+### 6.5 Genesis and parameterization
+
+Genesis parameters are chosen to bootstrap a small functioning network rather than to optimize for any particular long-run equilibrium; the expectation is that everything in this section will be revised as the chain grows.
+
+**Token supply at genesis.** 100,000,000 W and 100,000,000 D, distributed across a small founder set, an early-contributor set, and a treasury (held by the validator quorum for protocol grants). The founder share is restricted by linear vesting over 4 years.
+
+**Initial validator set.** 21 validators, geographically distributed where possible, with stake bootstrapped from the treasury. The set expands by validator-vote as the network grows; the design ceiling is in the low hundreds of validators, above which BFT signature aggregation becomes the binding bottleneck.
+
+**NTT and CRT parameters.** $N = 256$, $q_1 = 1073738753$, $q_2 = 1073732609$, reconstructed modulus $\approx 2^{60}$. These match the engine's standing configuration and the chain's residue-verification path uses the same arithmetic, so a validator can re-execute any submitted work-attestation on a single machine if it wants to.
+
+**KSTE configuration.** Tree depth 8, fingerprint width 30 bits, Spinor block 63 bytes. These match the production cache encoder; the chain's dominance verification is therefore the same operation the engine already performs on every cache write.
+
+**Block parameters.** 60-second target inter-block time, 2 MB block size cap, two-thirds-stake BFT quorum, 14-day unbonding delay.
+
+These constants are encoded in the genesis block and can be modified by a validator vote with a six-month cooldown, except for the NTT/CRT primes which are fixed for the lifetime of the chain (changing them would invalidate every prior dominance proof).
+
+### 6.6 Slashing
+
+Validators and participants can lose stake for misbehavior. The chain defines four slashing conditions:
+
+**False novelty claims.** A node submits a KSTE tree claiming dominance-incomparability against bounding trees that, when re-checked, do not bound the claim correctly. The submitter loses a fraction of bonded stake (default 10%) and the false claim is purged from the frontier.
+
+**Residue forgery.** A CRT-shard server submits residue blobs that fail the cross-prime consistency check at the requester end. The server loses a larger fraction of stake (default 50%) and is removed from the validator set if the offense recurs.
+
+**Equivocation.** A validator signs two different blocks at the same block height. The validator loses its entire stake; this is the most serious offense because it threatens consensus directly.
+
+**Censorship.** A validator that is the rotation-elected proposer for a block but produces no block within the block-interval is mildly penalised (default 1% of stake) and the next-elected validator (the next Golden-Ratio arc) proposes instead. Repeated censorship leads to validator removal.
+
+Slashing decisions are made by the validator quorum based on evidence submitted by any node; a successful slash mints a small bounty to the evidence submitter, paid from the slashed stake. This is the chain's whistleblower incentive.
+
+### 6.7 Mutability — papers are scaffolding, not specification
+
+We have emphasized throughout that this design is scaffolding. The slashing fractions, the block size cap, the unbonding delay, the emission schedule — all of these are starting points. We expect that within the first six months of mainnet operation, real adversarial pressure will reveal which constants are tight and which are slack. The validator-vote mechanism is the path for revising them.
+
+What is *not* mutable: the NTT/CRT primes (changing them invalidates prior dominance proofs), the dominance comparison itself (it is the mathematical core), and the existence of two separate token ledgers (folding them together is a fundamental design change, not a parameter tweak). Anything else is in scope for revision.
+
+This is what we mean by "papers are scaffolding, not specification." The mathematical core (PPT-LAT-Theory) is fixed; the systems paper is current; the chain parameters are a snapshot of the design at this date and will be revised. A future systems paper will reflect those revisions rather than pretending the constants were oracular from the start.
+
+---
+
+## Section 7: Failure modes and mitigations
+
+Every networked system has failure modes; a useful systems paper names them rather than pretending they don't exist.
+
+**Sybil attacks.** An adversary spawns many cheap identities to dominate the DHT and the validator set. Mitigation: stake-weighting on the validator side means Sybil identities have no consensus weight unless they buy stake on open market; on the DHT side, the 2-axis routing of §4.4 limits the damage a single semantic-slab cluster can do, and the Fibonacci-load axis spreads any honest traffic across the cluster's nodes rather than concentrating it on the adversary's. Sybils can still wedge gossip — by accepting and dropping payloads instead of forwarding — but the bound on damage is local rather than global.
+
+**Cache poisoning.** An adversary submits KSTE trees designed to be incomparable but to point toward arbitrary cache content, polluting the global sieve. Mitigation: dominance verification at write time means the cell content matters, not just the tree shape; a poisoned cell still has to be incomparable on its actual content, which limits the adversary to genuinely novel-by-content submissions. This doesn't prevent semantic poisoning (a cell that is genuine-but-misleading), but it does prevent the most trivial attacks.
+
+**Eclipse attacks.** An adversary surrounds a target node with adversarial peers, controlling its view of the network. Mitigation: the 2-axis routing makes eclipse harder than in single-axis Kademlia, because the target's routing table is partitioned by semantic slab and the adversary must control sufficient peers in each slab to be effective. Additionally, the bootstrap-peer flag accepts a comma-separated list of peers, and the target node prefers diverse bootstrap peers (different ASNs, different geographic origins where available) for the initial routing-table seed.
+
+**Free riders.** Operators run nodes that consume bandwidth and serve queries but never propagate gossip or contribute KSTE trees back to the network. Mitigation: this is a recurring problem in P2P systems and the only known robust solution is incentive alignment, which is what the two-token economy provides. A node that does not gossip earns no work tokens; a node that does not discover earns no discovery tokens. Pure consumers are tolerated (the network can absorb them at the margin) but they cannot scale, because they have no on-chain identity to bond stake against.
+
+**ARM capacity overflow.** As more bindings are gossiped into a node's ARM bank, recall noise grows. Mitigation: periodic rebinding (§4.2) bounds the working set; nodes that wish to retain long-term associative memory must do so out-of-band (a separate persistence layer outside the gossiped slab). The chain itself does not store ARM state, only summary checkpoints in blocks.
+
+**Cache staleness.** A KSTE tree that was incomparable when submitted may become dominated as the frontier grows. The chain treats this as natural state change — the original Discovery token is not clawed back, but the tree's contribution to the current frontier is just whatever it currently is. This is the right behavior because it preserves the property that Discovery rewards genuine novelty at the time of contribution.
+
+**Network partitions.** A split in the gossip layer (caused by a major ISP outage or backbone failure) causes the network to operate as two disjoint sub-networks for some interval. Mitigation: the chain uses a BFT quorum, so a sub-network with less than 2/3 stake cannot produce blocks. When the partition heals, the longer-chain rule applies (the sub-network that did produce blocks wins). Sub-network participants who minted tokens during the partition are not penalized for the partition itself, but their gossip-deltas are only applied to the canonical chain after the partition heals.
+
+**Collusion.** A coalition of validators with combined stake greater than 1/3 can stop block production by refusing to sign; a coalition with combined stake greater than 2/3 can produce arbitrary blocks. Mitigation: this is the standard BFT bound and we don't claim to do better than it. The chain's defense is the social one of decentralized stake distribution; the chain protocol provides no cryptographic defense against a stake-supermajority cartel. The treasury holdings at genesis are deliberately distributed to make supermajority capture expensive.
+
+---
+
+## Section 8: Comparison to prior work
+
+The Lattice sits in a crowded design space. This section names the closest neighbors and where the Lattice diverges.
+
+**Hivemind / Petals.** These projects pioneered the idea of running large LLMs across volunteer GPUs over the public internet. Petals in particular ships working multi-node inference across heterogeneous home GPUs for BLOOM-176B and Llama-class models. The Lattice differs principally in (a) the cache and weight compression that lets it run on phone-class hardware, not just GPU peers, and (b) the on-chain accounting layer that allows participants to be paid for contributions, which Petals deliberately avoided. Petals is a closer-to-academia project; the Lattice is a closer-to-production one. We have used Petals as a reference for the gossip and routing layer design, but the wire formats and consensus model are not shared.
+
+**Bittensor.** Bittensor implements a peer-to-peer market for ML model outputs with on-chain incentives. The closest analogue to our work-token. Bittensor's contribution is the idea that contribution can be measured by peer-ranking against a shared benchmark; the Lattice's discovery-token has the same flavor but measures contribution by dominance frontier expansion rather than by peer ranking. The two systems could coexist — a Bittensor subnet running on top of a Lattice cache substrate is plausible — but they are not the same system.
+
+**DiLoCo.** Federated training rather than inference, but the geographically-distributed compute story is similar. DiLoCo's contribution is showing that the gradient-sync frequency can be relaxed without hurting convergence, which lets training tolerate WAN latencies. The Lattice's CRT-sharded inference faces an analogous latency-tolerance question, and we are watching DiLoCo's results to inform our roadmap on relaxed-synchronization sharding. DiLoCo is research; the Lattice is a production target with a research roadmap.
+
+**Filecoin / Storj.** Storage networks rather than compute, but the on-chain accounting layer for verifiable-useful-work is the closest precedent for what we are doing with proof-of-useful-work. Filecoin's proof-of-replication and proof-of-spacetime are different cryptographic primitives but the same systemic role — they are the chain's way of verifying that the network's product (stored data, in Filecoin's case) was actually produced. We owe Filecoin a conceptual debt for showing that this design pattern is viable at production scale.
+
+**YaCy.** A peer-to-peer search engine, dormant but instructive. YaCy showed that a distributed crawl and index can be operated by a volunteer network; it failed to reach critical mass partly because there was no incentive layer to reward crawlers. The Lattice's discovery-token is in part a response to that lesson: making the cache contribution itself the rewarded act, rather than relying on volunteer altruism.
+
+**Render Network.** A blockchain-coordinated marketplace for GPU rendering work. Closer to a generic compute marketplace than to Lattice's tightly-coupled inference fabric, but it is the closest production example of compute-for-tokens at scale. Render's accounting layer is simpler than ours (no useful-work proof; the work is just verifiably-rendered frames) and Render's compute jobs are embarrassingly parallel in ways inference is not. The mechanisms are different but the political economy is similar.
+
+**Bitcoin / Ethereum.** The base layer. Bitcoin's contribution is the validator-rotation primitive; Ethereum's contribution is the smart-contract substrate that lets economic logic be expressed declaratively. The Lattice borrows the BFT-quorum consensus model from Ethereum's post-merge design, the on-chain settlement-record pattern from both, and the validator-slashing playbook from both. The Lattice does not currently have a general-purpose smart-contract layer; the chain logic is fixed at protocol level. Adding a general VM is on the longer-term roadmap but is not a near-term priority because the use case is small (governance votes and treasury management, mainly).
+
+---
+
+## Section 9: Open questions
+
+This section names what we don't know. We name them rather than gesture at them because being precise about what is unknown makes the work bounded.
+
+**Constants under real churn.** The slashing fractions, unbonding delay, fanout sizes, and gossip refresh intervals are all educated guesses at this point. We do not have data from a churning production network to validate any of them. We will know more after six months of mainnet operation; until then, these constants are placeholders.
+
+**Two-token equilibrium proof.** We have argued informally that a two-token system with separate work and discovery rewards should not collapse to a single token via the AMM, because the two activities have different supply dynamics. We do not have a formal equilibrium proof, and it is possible that under some demand regime the discovery side dries up (if all easy novel content has been discovered) or the work side does (if there is no demand for inference). The chain has parameter levers to respond to this, but we have not characterized when those levers need to be pulled.
+
+**Slab assignment under adversarial churn.** The 2-axis DHT assumes that semantic slabs are stable enough that a node's slab assignment is a meaningful long-term identity. If churn is very high — nodes leaving and rejoining with different IDs frequently — the slab assignment becomes noisier and the routing benefit degrades. We do not know what level of churn breaks this; the literature on Kademlia variants under churn is helpful but doesn't directly address the 2-axis case.
+
+**Real-time vs batch tradeoff for CRT sharding.** §4.3 frames CRT sharding as LAN-bound for interactive use. Real-time WAN sharding would require relaxing per-layer synchronization, which is an open numerical-accuracy question. We have not characterized how much synchronization can be relaxed before perplexity drift becomes unacceptable.
+
+**Validator hardware diversity.** Block validation requires re-checking dominance proofs and re-executing CRT residue checks. If validators all run the same hardware, a hardware bug affects every validator simultaneously, which is a consensus risk. We want validators to run a diversity of hardware (Intel/AMD/ARM, different vendors of compute accelerators) to provide implementation diversity at the consensus layer. We do not know how to incentivize this beyond exhortation; making it economically rational is an open design question.
+
+**Privacy of shared KV cache.** A shared cache substrate inherently leaks information about what was queried: an adversary monitoring the gossip layer learns the semantic distribution of queries on the network. For consumer use cases this is acceptable (the queries are not private), but for enterprise or regulated workloads it is not. We do not currently have a privacy-preserving variant; the most plausible route is to layer secure multi-party computation on top of the CRT-shard protocol, but the bandwidth and latency cost of MPC is likely prohibitive for interactive inference. This may be the open question that defines the next generation of the design.
+
+---
+
+## Section 10: Anti-contamination
+
+This project rebuilds from scratch. The Lattice engine, network, and chain described in this paper are new code, not lifted from prior repos. The conceptual debt to the PPT (Prime Position Theory) family of math papers is acknowledged — the lattice object, the CRT decomposition, the dominance partial order, the Three-Gap construction, the ARM math, the KSTE encoder, are all developed in PPT-LAT-Theory and its companions. The systems paper here describes how those mathematical objects are realized in production code; no source code is carried over from prior engine implementations into the shannon-prime-lattice repository.
+
+Specifically, no reads occur during this paper's drafting from `D:\F\shannon-prime-repos\shannon-prime\` or `D:\F\shannon-prime-repos\shannon-prime-engine\`. The conceptual reference is the math papers (PPT-LAT-Theory and the four-paper PPT series) plus the design discussions captured in companion documents in this repo. Where this paper cites concrete numbers (PPL gaps, dispatch ceilings, memory footprints), those numbers are reproduced from the math-paper benchmarks or from this project's own bench logs, not lifted from any other code base.
+
+The clean-room rebuild is intentional. Earlier engine code accumulated invariants and assumptions that are hard to disentangle from the math; rebuilding lets us pick what we keep, write it down in this paper, and ship it as a coherent design rather than as the accumulated state of a longer-running project.
