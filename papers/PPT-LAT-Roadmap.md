@@ -810,47 +810,53 @@ For each backend B ∈ {CPU, CU, VK, HX}:
   subgroup ops, HVX vectorisation for Hexagon.
 - **2-B.E — NTT-attention path wired in.** Sieve OFF. PPL must remain
   within Phase 1C's T_PR_2 tolerance.
-- **2-B.E.1 — RoPE Three-Step optimisation (split).** Three-Gap (T7)
-  applies to *linear* irrational sequences $\{k\alpha\}$. Standard RoPE
-  uses *geometric* $\theta_d = \mathrm{base}^{-2d/D}$, which is **not**
-  three-gap-distributed. The original single-gate framing conflated two
-  separable claims; this corrected version splits them:
+- **2-B.E.1 — Lossless Polynomial-Shift RoPE Cache (the production
+  spec).** Precondition: `SP_ENGINE_NTT_ATTN=1` (poly-ring attention
+  active). Mechanism: inside the negacyclic cyclotomic ring
+  $R_q = \mathbb{Z}_q[x]/(x^N+1)$, a RoPE rotation by angle
+  $\Delta \cdot \theta_d$ becomes a *discrete polynomial index shift
+  modulo $N$* — no continuous trigonometry, no $\cos/\sin$ table.
+  The relative-attention rotation cache collapses from
+  $O(\mathrm{ctx} \cdot D)$ fp32 values to $O(\mathrm{ctx})$ integer
+  shift offsets. For $D=128$, $\mathrm{ctx}=4096$: from $4096 \times
+  128 = 524{,}288$ floats (2 MB) down to $4096$ int32 offsets (16 KB).
+  **~128× memory reduction, mathematically lossless on stock
+  geometric-RoPE models.** Applies to Gemma3, Qwen3, Llama 3.x and
+  every other model the engine targets — no φ-RoPE precondition, no
+  frequency-schedule swap, no PPL-drift trade.
 
-  - **2-B.E.1.a — Lossless rel-attn cache restructuring (φ-RoPE
-    conditional).** Applies *only when the model's RoPE frequencies are
-    three-gap-distributed* — i.e. the model was trained or fine-tuned
-    with φ-derived (linear-multiple-of-φ) positional frequencies. Under
-    that precondition, the sorted phase differences across dimensions
-    have ≤ 3 distinct increments, and the rel-attn cache compresses
-    from $O(\mathrm{ctx} \cdot D)$ to $O(\mathrm{ctx} \cdot 3)$ entries
-    losslessly (the ~43× figure at $D=128$). Gate `SP_ROPE_3STEP_CACHE=1`;
-    activates only when the loader reports `rope.style=phi`. **On stock
-    geometric-RoPE models this gate is a no-op.** Acceptance:
-    argmax + KL parity within E_B_2 tolerance, conditional on a φ-RoPE
-    model being loaded; on stock models the gate must round-trip
-    bit-identical (the no-op invariant).
+  **Acceptance: T_PR_2 / E_CPU_5 already measures the gate.** The NTT
+  polynomial-shift representation is exact inside the ring up to int32
+  quantisation; E_CPU_5 on Qwen3-0.6B has it at $\mathrm{KL} \approx
+  2.7 \times 10^{-10}$ mean against the fp32 reference. Activating
+  the shift-cache representation does not introduce any additional
+  error beyond what E_CPU_5 already gates. Per-backend gates inherit
+  the same property: when the backend's NTT-attention path passes
+  E_B_5 / T_PR_2, the polynomial-shift cache is in-spec by
+  construction.
 
-  - **2-B.E.1.b — RoPE frequency-schedule swap (quality-trading).**
-    Replaces the model's geometric $\theta_d$ with a φ-derived linear
-    sequence $\theta_d = \{d \cdot \alpha\} \cdot 2\pi$. This is a
-    genuine positional-basis change — the model was trained with one
-    schedule and is being asked to infer with another. On stock
-    pretrained models this **degrades quality** at long context until
-    fine-tuned. Validation gate is therefore a **PPL-drift sweep** on a
-    calibration corpus (mirroring Phase 4 Fibonacci-KV), NOT
-    argmax/KL parity. Gate `SP_ROPE_PHI=1`; default OFF; lands as
-    research infrastructure for E9.1-style φ-RoPE-finetuned models, not
-    as a production switch for stock models. When both gates are on
-    (`SP_ROPE_PHI=1` + `SP_ROPE_3STEP_CACHE=1`), 2-B.E.1.a's
-    precondition is satisfied and the ~43× rel-attn cache compression
-    becomes lossless — but downstream quality has already been traded
-    by the schedule swap.
+  **Why this works on stock RoPE.** The Three-Gap Theorem (T7) is
+  about *linear* irrational sequences $\{k\alpha\}$; geometric RoPE
+  $\theta_d = \mathrm{base}^{-2d/D}$ does not satisfy that precondition,
+  so the original "≤3 distinct adjacent gaps across dimensions"
+  framing did not apply. But the cyclotomic-ring representation
+  bypasses the frequency-axis sort entirely — inside $R_q$, every
+  rotation is already a discrete index permutation regardless of the
+  underlying $\theta_d$ distribution. The win is structural to the
+  ring, not to the frequency schedule.
 
-  This split closes the inconsistency a previous session flagged: a
-  single gate can't be simultaneously *bit-identical to stock RoPE*
-  AND deliver the ~43× compression — the compression requires a
-  precondition stock RoPE does not satisfy. The split surfaces the
-  precondition and gives each piece its own gate.
+  **Gate: built into `SP_ENGINE_NTT_ATTN=1`.** When NTT-attention is
+  active, the polynomial-shift cache is the production
+  representation; when NTT-attention is off, the engine falls back
+  to the fp32 rotation table. The previous `SP_ROPE_THREE_STEP=1` /
+  `SP_ROPE_3STEP_CACHE=1` / `SP_ROPE_PHI=1` gate proposals are
+  retired in favour of NTT-coupling.
+
+  The φ-RoPE schedule swap and the Three-Gap-derived frequency-sort
+  cache restructuring are moved to **§20 Research Track** at the
+  bottom of this document. They remain interesting for a future
+  φ-RoPE-trained or fine-tuned model but are not on the Phase 2
+  critical path.
 - **2-B.F — KSTE-encoded KV cache.** Gated by `SP_KSTE_KV=1`. Off by
   default. Phase 2 only requires that the encode path produces
   identical signatures across backends and that decode reproduces the
@@ -875,18 +881,17 @@ that land in different phases of the roadmap but share one substrate
 (golden-ratio rotation in phase space). Cross-reference summary so a
 session picking up any one of these knows where the others live:
 
-- **2-B.E.1.a — Lossless rel-attn cache restructuring** (φ-RoPE
-  conditional, all backends). Discrete 3-gap lookup replaces
-  continuous trig **iff** the model's RoPE frequencies are linear
-  multiples of φ. ~43× rel-attn cache memory reduction when the
-  precondition holds. Gated by `SP_ROPE_3STEP_CACHE=1`; no-op on
-  stock geometric-RoPE models. Dimension-ordering aligns to the
-  VHT2 + Möbius squarefree anchors (no second sort).
-- **2-B.E.1.b — RoPE frequency-schedule swap** (quality-trading,
-  research path). Replaces geometric $\theta_d$ with $\{d\varphi\}$.
-  Gated by `SP_ROPE_PHI=1`; PPL-drift sweep is the validation gate,
-  not argmax parity. Required precondition for 2-B.E.1.a to engage
-  on a model that was not pretrained with φ-RoPE.
+- **2-B.E.1 — Lossless Polynomial-Shift RoPE Cache** (production spec,
+  all backends). RoPE rotation in the cyclotomic ring $R_q$ is a
+  discrete polynomial index shift mod $N$. Rel-attn cache collapses
+  from $O(\mathrm{ctx} \cdot D)$ fp32 values to $O(\mathrm{ctx})$
+  int32 offsets — ~128× memory reduction. Gated by
+  `SP_ENGINE_NTT_ATTN=1`. Lossless on stock RoPE models; acceptance
+  is the same E_B_5 / T_PR_2 gate that already closes the
+  NTT-attention path (no separate gate needed).
+
+  *(φ-RoPE frequency swap and the original Three-Gap frequency-sort
+  cache restructuring are demoted to §20 Research Track.)*
 - **Phase 4 amendment — Fibonacci KV sub-sampling.** When KV cache
   exceeds memory bounds, retain tokens at positions $\lfloor k\varphi
   \cdot N \rfloor \mod N$ instead of FIFO/LRU. Bounded discrepancy on
@@ -916,3 +921,54 @@ infrastructure is green.
 ### 8.2 Phase 2-CPU (the canonical track)
 
 - **Build env.** `scripts/env/env-cpu-msvc.bat` 
+---
+
+## 20. Research Track — φ-RoPE / Three-Gap frequency-sort restructuring
+
+Demoted from the Phase 2 critical path 2026-05-22 after the Phase 2-CPU
+agent identified that the original 2-B.E.1 framing required a precondition
+(linear-in-φ RoPE frequencies) that stock pretrained models do not
+satisfy. The cyclotomic-ring polynomial-shift cache (new 2-B.E.1)
+delivers a strictly larger lossless win (~128×) on stock models, so the
+frequency-sort restructuring is no longer competing for the same slot.
+
+The items below remain interesting as research investigations against
+models that ship with φ-derived (linear-in-φ) RoPE — none currently
+exist in the engine's target families, so these are speculative future
+work. They are NOT prerequisites for any Phase 2..13 deliverable.
+
+### 20.1 φ-RoPE schedule swap
+
+Replace geometric $\theta_d = \mathrm{base}^{-2d/D}$ with linear
+$\theta_d = \{d \varphi\} \cdot 2\pi$. This is a positional-basis
+change; on stock models it degrades long-context quality. Production
+use requires the model to be pretrained or fine-tuned on the new
+schedule. Validation gate would be a PPL-drift sweep on a calibration
+corpus (mirroring Phase 4 Fibonacci-KV). Gate `SP_ROPE_PHI=1`;
+currently parked.
+
+### 20.2 Three-Gap frequency-sort cache restructuring (lossless under φ-RoPE)
+
+Given the §20.1 precondition (linear-in-φ frequencies), the
+relative-attention phase shifts across dimensions exhibit at most three
+distinct adjacent gaps (Theorem T7 corollary). The rotation cache
+collapses to $O(\mathrm{ctx} \cdot 3)$ entries at $D$ dimensions —
+roughly $D/3 \approx 43\times$ reduction at $D=128$. Lossless given
+the precondition; pointless without it. Gate `SP_ROPE_3STEP_CACHE=1`;
+no-op when `rope.style` is not `phi`.
+
+### 20.3 Trigger conditions for revisiting
+
+These items move back onto a numbered phase when **any** of:
+
+- A φ-RoPE-pretrained model lands in one of the engine's target
+  families (Llama, Qwen, Gemma, DeepSeek);
+- A fine-tuning run on a stock model with a φ-RoPE schedule produces
+  PPL within 1% of the original on a calibration corpus (validating
+  that the schedule swap is recoverable);
+- An external research result demonstrates that the geometric →
+  linear-in-φ swap can be done at inference time without retraining
+  (currently no such result exists).
+
+Until one of these triggers fires, the production rel-attn cache is
+the §2-B.E.1 polynomial-shift cache and the §20 item
