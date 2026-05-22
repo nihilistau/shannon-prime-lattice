@@ -488,3 +488,864 @@ This section names what we don't know. We name them rather than gesture at them 
 **Validator hardware diversity.** Block validation requires re-checking dominance proofs and re-executing CRT residue checks. If validators all run the same hardware, a hardware bug affects every validator simultaneously, which is a consensus risk. We want validators to run a diversity of hardware (Intel/AMD/ARM, different vendors of compute accelerators) to provide implementation diversity at the consensus layer. We do not know how to incentivize this beyond exhortation; making it economically rational is an open design question.
 
 **Privacy of shared KV cache.** A shared cache substrate inherently leaks information about what was queried: an adversary monitoring the gossip layer learns the semantic distribution of queries on the network. For consumer use cases this is acceptable (the queries are not private), but for enterprise or regulated workloads it is not. We do not currently have a privacy-preserving variant; the most plausible route is to la
+
+---
+
+## Appendix A — L1 ABI contract (PPT-LAT-L1-ABI v0)
+
+The Layer-1 (math core) C ABI contract, frozen for the duration of
+Phase 2. This is the boundary between `libshannonprime` (C/CUDA/
+Vulkan/HVX) and any L2 binding (primary target: Rust). The full
+standalone document lives at `papers/PPT-LAT-L1-ABI-v0.md`; the body
+is reproduced verbatim here so the Systems paper carries the locked
+contract without an external reference.
+
+
+The Layer-1 (math core) C ABI contract for Shannon-Prime. Locks the
+boundary between `libshannonprime` (C/CUDA/Vulkan/HVX) and any L2
+binding (primary: Rust). Designed against the three tear-down axes:
+caller-allocates memory ownership, Send-but-not-Sync session handle,
+and an error surface that names VHT2 / Spinor / Frobenius / ARM /
+sieve failure modes explicitly. After this contract is signed off,
+`.sp-model` byte layout falls out mechanically.
+
+---
+
+## 1. Object lifetimes
+
+Two opaque types cross the FFI:
+
+```c
+typedef struct sp_model    sp_model;     // read-only after load; many sessions per model
+typedef struct sp_session  sp_session;   // single-thread state: KV + ARM + sieve + arch scratch
+```
+
+Construction is L1's responsibility (only L1 knows the internal
+layout). Destruction is the caller's responsibility but always via the
+matched destroyer; the caller never `free()`s a returned pointer
+directly.
+
+```c
+sp_status sp_model_load     (const char* sp_model_path,
+                             const char* sp_tokenizer_path,
+                             /*out*/ sp_model** out);
+void      sp_model_unload   (sp_model*);
+
+sp_status sp_session_create (const sp_model*,
+                             const sp_session_config*,
+                             volatile _Atomic bool* cancel_flag,   // L2-owned, see §5
+                             /*out*/ sp_session** out_session);
+void      sp_session_destroy(sp_session*);
+```
+
+**Cancel-flag lifetime contract.** The `cancel_flag` pointer must
+remain valid (and the memory backing it must not be freed) for the
+entire lifetime of the `sp_session` — i.e. until `sp_session_destroy`
+returns. L2 owns the atomic; L1 only reads it. There is no cancel
+handle that L1 allocates, so there is no UAF window between a session
+being destroyed on one thread and a stale cancel handle being used on
+another. The L2 wrapper holds the atomic inside an `Arc` (see §5 and
+§8) which guarantees the address stays live for as long as either the
+session or any cancel-clone is alive.
+
+## 2. Memory ownership — caller-allocates everywhere on the hot path
+
+Every buffer crossing the FFI on the per-step path is caller-allocated.
+L1 never `malloc`s anything L2 has to `free`. Sizing comes from
+`sp_model_arch` before session creation:
+
+```c
+sp_status sp_model_arch (const sp_model*, /*out*/ sp_arch_info*);
+```
+
+`sp_arch_info` carries `vocab_size`, `hidden_dim`, `n_layers`,
+`n_heads`, `n_kv_heads`, `head_dim`, `rope_base_microcents`,
+`swa_window`, `ffn_variant`, `norm_variant`, `tied_embeddings`, and
+the arch enum. L2 reads it once at load, sizes the logits buffer as
+`vocab_size * sizeof(float)`, and never re-queries.
+
+The `out` parameter is caller-stack-allocated by C convention; L1
+populates the struct in place. Rust bindings should declare this as
+`&mut MaybeUninit<sp_arch_info>` rather than `&mut sp_arch_info` so
+the borrow checker doesn't assume the struct is initialized on entry
+to the call (it isn't — L1 fills it). After `sp_status == SP_OK`, the
+binding may call `MaybeUninit::assume_init`.
+
+The only L1-allocated memory crossing the boundary is the three opaque
+handles above, each with a matched destroyer. There is no
+`sp_alloc` / `sp_free` pair in the public ABI — internal arenas
+(activation, ARM bank, sieve, Spinor pool) are session-private and
+released by `sp_session_destroy`.
+
+## 3. Forward pass — two-function ABI
+
+```c
+sp_status sp_prefill_chunk (sp_session*,
+                            const int32_t* tokens, size_t n_tokens,
+                            /*out, caller-allocated*/ float* logits_last,
+                            size_t logits_capacity);
+
+sp_status sp_decode_step   (sp_session*,
+                            int32_t token,
+                            /*out, caller-allocated*/ float* logits,
+                            size_t logits_capacity);
+```
+
+`sp_prefill_chunk` consumes `n_tokens` tokens, advances internal
+position by `n_tokens`, writes the last token's logits only.
+`sp_decode_step` consumes one token, advances by one, writes that
+token's logits. Two functions because their cost shape is asymmetric
+(compute-bound vs bandwidth-bound) and L2 must be free to interleave
+them across requests. `logits_capacity < vocab_size` returns
+`SP_EBADARG`.
+
+## 4. Session manipulation — speculative-decoding-shaped from day one
+
+```c
+sp_status sp_session_clone    (const sp_session*,
+                               volatile _Atomic bool* cancel_flag,    // L2-owned, see §5
+                               /*out*/ sp_session** out);
+sp_status sp_session_rewind   (sp_session*, size_t n_tokens);
+sp_status sp_session_position (const sp_session*, /*out*/ size_t* pos);
+```
+
+`sp_session_clone` is the spec-decode fork primitive: deep-copy KV +
+ARM + sieve, return an independent session. `sp_session_rewind` is the
+spec-decode reject primitive: roll back `n_tokens` of accepted state.
+ARM writes are journaled per-token so rewind is precise, not "drop the
+whole bank." Getting these in v0 is what makes spec-decode tractable.
+
+## 5. Cancellation — L2-owned atomic flag, no L1 call
+
+There is no `sp_session_cancel()` function. The cancel surface is the
+`volatile _Atomic bool* cancel_flag` pointer L2 passes into
+`sp_session_create` (§1). L2 owns the storage; L1 only reads it.
+
+```rust
+// L2 side — sketch
+let flag: Arc<AtomicBool> = Arc::new(AtomicBool::new(false));
+let flag_ptr: *const AtomicBool = &*flag;              // stable for the Arc's lifetime
+let sess = sp_session_create(model, &cfg, flag_ptr.cast(), &mut out_sess);
+
+// HTTP-handler thread holds a clone of the Arc and cancels by:
+flag_clone.store(true, Ordering::SeqCst);              // pure Rust, no FFI call
+```
+
+L1 reads the flag at every layer boundary in `sp_prefill_chunk` and
+every step in `sp_decode_step`. On observing `true`, the in-flight L1
+call unwinds to the last completed boundary and returns `SP_ECANCEL`.
+Session state at that point is consistent (last layer fully applied),
+not partial.
+
+**Why this shape is UAF-proof.** A naive design with an L1-allocated
+`sp_cancel*` paired to a session creates a window:
+
+1. Worker thread drops the Session, `sp_session_destroy` runs, frees the C-side cancel handle.
+2. Handler thread, milliseconds later, calls `sp_session_cancel(stale_ptr)` — dangling pointer dereference.
+
+Inverting ownership eliminates the window. The atomic lives inside an
+`Arc<AtomicBool>`; the heap allocation backing an Arc never moves and
+is only freed when the *last* clone drops. Both the Session wrapper
+and the Cancel wrapper hold a clone, so the address L1 reads from
+remains valid until both are gone. Setting the flag on a
+already-destroyed-session Arc is a harmless write to memory nobody is
+reading anymore.
+
+The cancel-flag read pattern in L1 is `__atomic_load_n(flag,
+__ATOMIC_RELAXED)` at boundaries (or `_InterlockedOr` on MSVC) — no
+fence required; the boundary itself is the synchronization point.
+
+## 6. Determinism
+
+Set at session create, immutable for the session's lifetime:
+
+```c
+typedef struct {
+    size_t   max_context;
+    bool     deterministic;       // serial reductions, single stream, no atomic-add
+    uint32_t arm_bank_kb;         // 0 = arch default
+    uint32_t sieve_capacity;      // 0 = arch default
+    uint32_t flags;
+} sp_session_config;
+```
+
+`deterministic=true` is what T_FRO_4 runs against (bit-exact gate).
+Production runs with `deterministic=false` (ULP-tolerance gate).
+Toggling mid-session is forbidden because reduction order and stream
+topology are baked into kernel selection at create time.
+
+## 7. Error surface
+
+`sp_status` is a signed int. `SP_OK = 0`. Negative = error. Positive
+reserved for future "soft" signals (e.g. "ARM bank approaching
+capacity, consider a write_stride bump"). All failing calls also set a
+thread-local error string retrievable via:
+
+```c
+const char* sp_last_error(void);    // pointer valid until next L1 call on this thread
+```
+
+Enum (covers the VHT2 / Spinor decompression surface explicitly):
+
+```c
+typedef enum {
+    SP_OK                =   0,
+
+    // Generic
+    SP_ENOMEM            =  -1,
+    SP_ECANCEL           =  -2,
+    SP_EBADARG           =  -3,
+    SP_EBADSTATE         =  -4,
+    SP_EUNSUPPORTED      =  -5,
+    SP_EIO               =  -6,
+
+    // Model load / arch
+    SP_EBADFORMAT        = -10,    // sp-model magic/version mismatch
+    SP_EBADARCH          = -11,    // arch_id not recognized
+    SP_ETOKENIZER_HASH   = -12,    // sp-tokenizer sha256 ≠ sp-model.tokenizer_hash
+    SP_EVOCAB            = -13,    // tokenizer vocab size ≠ model vocab size
+
+    // Discrete algebra layer — the "we lost the algebraic invariant" surface
+    SP_ESPINOR_BADBLOCK  = -20,    // 63-byte Spinor block parity/CRC mismatch
+    SP_EVHT2_DOMAIN      = -21,    // VHT2 inverse out-of-range
+    SP_EMOBIUS_PERM      = -22,    // Möbius reorder index invalid
+    SP_EOK_NORM          = -23,    // O_K element norm overflow
+    SP_EFROBENIUS_QUANT  = -24,    // Frobenius dequant scale/shift invalid
+    SP_ENTT_OVERFLOW     = -25,    // CRT NTT residue overflow (defensive — should be impossible)
+    SP_ERING_DEGREE      = -26,    // R_q polynomial degree mismatch
+
+    // Lattice / framework features
+    SP_ESIEVE_FULL       = -30,    // Friedman sieve full + eviction policy refused
+    SP_EARM_BANK_FULL    = -31,    // ARM HRR bank exhausted
+    SP_EDOMINANCE_CYCLE  = -32,    // ⪯_d encountered a non-wqo input (corrupt KSTE)
+    SP_ECONTEXT_FULL     = -33,    // sequence position == max_context; L2 should trigger
+                                   //   Fibonacci sub-sampling eviction and retry
+
+    // Backend
+    SP_ECUDA             = -40,    // wraps any cudaError_t; sp_last_error has the detail
+    SP_EVULKAN           = -41,
+    SP_EHVX              = -42,
+    SP_EBACKEND_OOM      = -43,    // device-side OOM, distinct from host SP_ENOMEM
+} sp_status;
+```
+
+The discrete-algebra block (−20..−26) is the one that matters for
+correctness verification. Every gate in PPT-LAT-Theory T1..T7 / E9.x /
+E10 maps to one of those return codes if it trips at runtime.
+
+`SP_ECONTEXT_FULL` is structurally distinct from `SP_ENOMEM`: the
+former is "the sequence position counter hit `max_context`", and L2's
+correct response is to trigger Fibonacci sub-sampling eviction (per
+Roadmap §20.x golden-ratio KV retention) on the session's KV + ARM
+arenas and reissue the prefill/decode call. The latter is "the host
+allocator returned NULL" and is a hard fatal. Collapsing them would
+make the eviction-on-context-full policy unimplementable from L2.
+
+## 8. Threading model — what L2's Rust wrapper looks like
+
+```rust
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+
+pub struct Model { ptr: *const sp_model }
+
+pub struct Session {
+    ptr:    *mut sp_session,
+    cancel: Arc<AtomicBool>,        // held so the storage L1 reads stays live
+}
+
+#[derive(Clone)]
+pub struct Cancel(Arc<AtomicBool>); // a clone of Session.cancel
+
+impl Cancel {
+    pub fn cancel(&self) { self.0.store(true, Ordering::SeqCst); }
+}
+
+impl Session {
+    pub fn cancel_handle(&self) -> Cancel { Cancel(self.cancel.clone()) }
+}
+
+unsafe impl Send for Model   {}   unsafe impl Sync for Model   {}
+unsafe impl Send for Session {}                                       // not Sync
+// Cancel is Send + Sync automatically (Arc<AtomicBool> is Send + Sync)
+```
+
+`Model` is `Send + Sync` because it is immutable after `sp_model_load`
+returns. `Session` is `Send` (workers can hand it between threads
+between calls) but **not** `Sync` (no two threads may be inside
+`sp_prefill_chunk` / `sp_decode_step` on the same session
+simultaneously — enforced by `&mut self` on every step method).
+`Cancel` derives `Send + Sync` from its `Arc<AtomicBool>` field — no
+unsafe impls required, and no FFI call inside `Cancel::cancel`.
+
+The HTTP handler thread holds a `Cancel`. The inference worker thread
+holds the `Session`. Both internally point at the same
+`Arc<AtomicBool>` storage, which L1 reads via the raw pointer it was
+given at `sp_session_create`. The Arc's allocation is stable for as
+long as either side holds a clone, so the L1-side pointer never
+dangles. Cancellation from L3 is a single relaxed atomic store; no
+lock, no context switch, no FFI crossing.
+
+## 9. What this contract does *not* commit to
+
+Out of scope for v0, deliberate:
+
+- **Streaming logits** — L2 may want token-by-token streaming
+  callbacks. For v0 the caller polls. A callback variant
+  (`sp_decode_step_cb`) can be added without breaking this ABI.
+- **Multi-session batching at L1** — v0 is one-session-per-call.
+  Cross-session prefill batching (vLLM-style continuous batching) is a
+  v1 concern and goes in a new function, not a modification of
+  `sp_prefill_chunk`.
+- **In-process sampler** — L1 emits logits and stops. Any sampler
+  (temperature, top-k, top-p, mirostat, grammar-constrained) is L2.
+- **Tokenization** — L2 owns the SentencePiece / BPE blob via the
+  `.sp-tokenizer` sibling file. L1 only verifies the hash.
+- **Telemetry** — no `sp_metrics()` in v0. L2 instruments around the
+  FFI boundary.
+
+## 10. Sign-off checklist
+
+Before this is locked, three reads against the tear-down axes:
+
+1. **Memory ownership.** Grep this doc for any `out` parameter that
+   isn't either an opaque-handle constructor (model/session/cancel)
+   or a caller-allocated buffer. There should be zero. If you find
+   one, name it.
+2. **Send/Sync compatibility.** Walk the four-line Rust block in §8.
+   Every L1 function called from each thread must be safe given the
+   marker traits asserted. Cancellation is the one that needs the
+   hardest stare.
+3. **Error surface vs failure modes.** Walk the eight load-bearing
+   theorems (T1..T7 + E10) and confirm every runtime failure path
+   from a theorem invariant has a named status code. Anything that
+   would currently return `SP_EBADSTATE` and lose information is a
+   gap.
+
+Once those three are clean, `.sp-model` byte layout becomes:
+
+```
+magic           "SPMD"                  // 4 bytes
+version         u32                     // major.minor packed
+arch_id         u32                     // sp_arch_info.arch_id
+arch_struct     u8[256]                 // memcpy'd into sp_arch_info
+tokenizer_hash  u8[32]                  // sha256 of paired .sp-tokenizer
+tensor_count    u32
+tensor_table    sp_tensor_entry[N]      // (offset, dtype_id, shape, name_hash)
+tensor_data     [64-byte aligned; Spinor blocks pad 63→64]
+```
+
+— and is ~30 minutes of work.
+
+---
+
+**Status.** v0 draft. Not yet integrated into PPT-LAT-Systems §1 or
+the per-backend Phase-2 tracks. Sign-off goes against §10's three
+checks; on green, this becomes Appendix A of PPT-LAT-Systems and the
+L1 ABI is frozen for the duration of Phase 2.
+
+
+---
+
+## Appendix B — `.sp-model` byte layout (PPT-LAT-SP-MODEL v0)
+
+The on-disk byte layout for `.sp-model` and the paired
+`.sp-tokenizer`, locked alongside Appendix A. Designed so
+`sp_model_load` is implementable as `open + mmap + parse header +
+set up pointers` with zero allocation proportional to tensor data
+size. The full standalone document lives at
+`papers/PPT-LAT-SP-MODEL-v0.md`; the body is reproduced verbatim
+below.
+
+
+Companion document to PPT-LAT-L1-ABI-v0. Defines the on-disk byte
+layout for `.sp-model` and the paired `.sp-tokenizer` such that
+`sp_model_load` is implementable as `open + mmap + parse header + set
+up tensor table pointers` with zero allocation beyond the opaque
+`sp_model` handle itself. Every structural decision here is driven by
+the locked ABI (caller-allocates, mmap-friendly, no per-call file IO).
+
+The Spinor 63→64 padding question — on-disk pad vs scatter-at-load —
+is decided in §6.
+
+---
+
+## 1. Goals and non-goals
+
+**Goals.**
+
+- `sp_model_load` is pure mmap + pointer setup. No `malloc` for tensor
+  data. No `memcpy` of tensor data. The file IS the in-memory layout.
+- Every byte the math kernels read at runtime is already at the
+  correct alignment the moment mmap returns.
+- Header parsing is a single `memcpy` into a fixed struct.
+- Tensor lookup is `O(log N)` via name-hash binary search on a fixed
+  256-byte tensor table entry.
+- The format is forward-compatible: v0 readers can refuse v1 files
+  cleanly via the version field; v1 readers can fall back to v0
+  semantics by ignoring reserved bytes.
+- Disk overhead is ≤ 2% vs the raw packed tensor data. Spinor padding
+  is the dominant contributor at ~1.5%.
+
+**Non-goals.**
+
+- Compression on disk. PPT weights are already compressed (Q8/Q4/Spinor);
+  zstd-on-top buys little and breaks mmap.
+- Encryption. Use OS-level (filesystem) encryption if needed.
+- Multi-version-in-one-file. Each `.sp-model` is one model snapshot.
+- Streaming load from network. Caller mmaps a local file; remote-fetch
+  is L2/L3's concern.
+- Tokenizer content. That's `.sp-tokenizer`'s file; here we only carry
+  its SHA-256.
+
+## 2. Byte order, alignment, file extension
+
+**Endianness.** All multi-byte integers and floats are little-endian.
+Target hardware (x86_64, ARM64, CUDA hosts, Hexagon V69) is uniformly
+little-endian in practice. Big-endian platforms must byte-swap at load
+or refuse the file. We do not pay portability cost for systems we will
+not ship to.
+
+**Alignment.**
+
+- **Header** lives at file offset 0, fixed 512 bytes (one sector).
+- **Tensor table** is 64-byte-aligned, fixed at file offset 512.
+- **Tensor data region** is 65536-byte-aligned (one Windows
+  `MapViewOfFile` granularity unit). Each individual tensor inside it
+  is 64-byte-aligned.
+
+The 65536-byte data-region alignment matters specifically on Windows:
+partial mmaps (`MapViewOfFile`) require the base offset to be a
+multiple of the allocation granularity (64 KB on Windows; 4 KB on
+Linux). Aligning the data region to the larger constant means a single
+`MapViewOfFile` call can map any tensor independently without
+header-region overhead.
+
+**File extension.** `.sp-model` for the weights + arch + tokenizer
+hash, `.sp-tokenizer` for the paired tokenizer blob. Both files
+together constitute a deployable PPT model.
+
+## 3. File header (fixed 512 bytes)
+
+```
+offset  size  field                 notes
+------  ----  --------------------  ----------------------------------------
+0       4     magic                 ASCII "SPMD" (0x44 0x4D 0x50 0x53 LE)
+4       2     version_major         u16, v0 = 0
+6       2     version_minor         u16, v0 = 1
+8       4     header_size           u32, total bytes of this header = 512
+12      4     arch_id               u32, sp_arch_info.arch_id enum
+                                    (LLAMA3=1, QWEN3=2, GEMMA3=3, DEEPSEEK_V4=4, ...)
+16      4     arch_struct_size      u32, in bytes; for v0, sizeof(sp_arch_info)
+20      4     arch_struct_capacity  u32, on-disk reservation = 256
+24      256   arch_struct           memcpy-direct payload for sp_arch_info;
+                                    unused tail zero-filled to 256
+280     32    tokenizer_hash        u8[32], SHA-256 of paired .sp-tokenizer
+                                    (entire .sp-tokenizer file, byte-by-byte)
+312     4     vocab_size            u32, mirrors arch_struct field for fast
+                                    pre-allocation; loader asserts equality
+316     4     tensor_count          u32, number of entries in tensor table
+320     8     tensor_table_offset   u64, byte offset of first tensor entry
+                                    (= 512 in v0)
+328     8     tensor_data_offset    u64, byte offset of first tensor byte
+                                    (multiple of 65536)
+336     8     file_size             u64, total file size in bytes; loader
+                                    asserts == stat(file).st_size
+344     8     created_unix_seconds  u64, wall-clock seconds since epoch at
+                                    transcode time
+352     8     transcoded_from       u64, hash of upstream file path (e.g.
+                                    fxhash of the GGUF source path); zero
+                                    if model was generated natively
+360     4     header_crc32          u32, CRC-32 of bytes [0, 360) using
+                                    standard IEEE polynomial; the field
+                                    itself is excluded from coverage
+364     148   reserved              zero-filled in v0
+512     ...   --                    tensor table starts here
+```
+
+All offsets and sizes are absolute byte offsets from file start.
+
+**Why header_size is explicit and the reserved tail exists.** v1 may
+extend the header by reusing reserved bytes. v0 readers `memcpy(512
+bytes)` and ignore tail-extension fields they don't recognize. v1
+readers compare `header_size == 512` and run v0-compat parsing on
+match, v1 parsing on mismatch (which implies new fields after byte
+512). This is forward-compat without a parser dispatch table.
+
+**Why CRC-32 of the header only.** Per-tensor integrity is covered by
+the BLAKE3 hash in each tensor entry (§4). The header CRC catches
+gross corruption of the header itself (page tear, partial write during
+transcode) before the loader tries to interpret tensor offsets.
+
+## 4. Tensor table (256-byte entries)
+
+Tensor table entries are fixed-size so the table is a flat array
+addressable as `entry[i] = tensor_table_offset + i * 256`. No string
+table, no variable-length records, no second-level indirection.
+
+```c
+typedef struct {
+    char     name[80];           // bytes 0-79:   null-terminated tensor name
+                                 //               (longest GGUF names are ~30 chars; 80 is safe margin)
+    uint32_t dtype_id;           // bytes 80-83:  enum, see §5
+    uint32_t n_dims;             // bytes 84-87:  rank, 1..8
+    uint64_t dims[8];            // bytes 88-151: shape in elements (not bytes);
+                                 //               unused entries are zero, NOT one
+    uint64_t offset_in_data;     // bytes 152-159: byte offset from tensor_data_offset;
+                                 //                multiple of 64
+    uint64_t size_bytes;         // bytes 160-167: on-disk byte length, including
+                                 //                any per-block padding (Spinor +1)
+    uint32_t block_size;         // bytes 168-171: on-disk granularity (64 for Spinor,
+                                 //                32 for Q4 row-block, 1 for fp16/fp32)
+    uint32_t block_count;        // bytes 172-175: size_bytes / block_size, sanity
+    uint8_t  blake3[32];         // bytes 176-207: BLAKE3-256 of the tensor's
+                                 //                on-disk bytes (size_bytes long,
+                                 //                starting at tensor_data_offset +
+                                 //                offset_in_data)
+    uint64_t name_hash;          // bytes 208-215: xxh3_64(name); table is sorted
+                                 //                by this for binary lookup
+    uint8_t  reserved[40];       // bytes 216-255: zero-filled in v0
+} sp_tensor_entry;
+// sizeof = 256
+```
+
+Entries are sorted by `name_hash` ascending. Loader binary-searches by
+hash, then verifies `name` equality on the match (defends against the
+1-in-2^64 hash collision). Sort + hash means lookup is O(log N + 1
+strcmp), which on a 2000-tensor model is ~11 hash comparisons and one
+string compare.
+
+**Why `name` is fixed at 80 bytes.** GGUF's longest tensor names
+(`blk.NN.ffn_gate_inps.weight` and variants) fit in 40 bytes; 80 gives
+headroom for compound names from MoE / SSM / hybrid architectures
+without going variable-length.
+
+**Why `dims` is `u64`.** Allows >4G-element tensors without ambiguity.
+For a vocab projection on a 32B model, `dims[0] * dims[1]` already
+exceeds 2^32.
+
+**Why per-tensor BLAKE3 rather than CRC.** BLAKE3 is fast on modern
+hardware (~5 GB/s/core), cryptographically strong, and catches the
+specific failure modes we care about (bit-rot, partial writes, model
+provenance). Verifying every tensor on load is opt-in via
+`sp_session_config.flags & SP_VERIFY_TENSORS`. The default load
+trusts the file and just checks the header CRC.
+
+## 5. dtype_id enum
+
+```c
+typedef enum {
+    // Continuous (parity with GGUF for direct transcode of unquantized tensors)
+    SP_DT_F32        =   1,    // 4 bytes/elem, block_size=1
+    SP_DT_F16        =   2,    // 2 bytes/elem, block_size=1
+    SP_DT_BF16       =   3,    // 2 bytes/elem, block_size=1
+
+    // PPT-native quant types
+    SP_DT_OK_Q8      =  10,    // O_K-lifted int8 + per-row Frobenius scale
+                               //   (scale lives in paired tensor with .scale suffix)
+                               //   block_size=1, 1 byte/elem
+    SP_DT_OK_Q4      =  11,    // O_K-lifted int4 packed two-per-byte
+                               //   block_size=32, 16 bytes per 32 elements
+    SP_DT_FROBENIUS_SCALE_FP32 =  12,
+                               // companion to Q8/Q4 weight tensor; one fp32 scalar
+                               //   per row of the weight; named "<weight>.scale"
+
+    // Discrete-algebra-native types
+    SP_DT_SPINOR63   =  20,    // 63-byte logical block, 64-byte on-disk block
+                               //   (see §6); block_size=64, block_count = N_blocks
+    SP_DT_RING_RESIDUE_CRT_30_30 = 30,
+                               // dual-prime CRT residue pair; two u32 per element
+                               //   block_size=8 (one (r1, r2) pair)
+    SP_DT_OK_INTEGER = 31,     // O_K[√-163] elements stored as (Re i32, Im i32)
+                               //   block_size=8
+} sp_dtype_id;
+```
+
+dtype_id space is partitioned: 0–9 reserved continuous, 10–19 quant,
+20–29 discrete-algebra block formats, 30–39 ring residues, 40+
+reserved for v1+ formats (Stern-Brocot tables, factored ARM bank,
+etc.).
+
+Each dtype's relationship between logical shape (`dims[]`) and on-disk
+byte length is mechanical:
+
+| dtype | logical elements per block | bytes per block on disk |
+|-------|-----------------------------|--------------------------|
+| F32 | 1 | 4 |
+| F16 / BF16 | 1 | 2 |
+| OK_Q8 | 1 | 1 |
+| OK_Q4 | 32 | 16 |
+| FROBENIUS_SCALE_FP32 | 1 | 4 |
+| SPINOR63 | (arch-defined; one Spinor signature) | 64 (63 + 1 pad) |
+| RING_RESIDUE_CRT_30_30 | 1 | 8 |
+| OK_INTEGER | 1 | 8 |
+
+`block_size` in the tensor entry is the on-disk bytes-per-block; the
+loader uses `block_size * block_count == size_bytes` as a sanity
+invariant.
+
+## 6. The Spinor 63→64 padding decision
+
+**Decision: on-disk padding to 64 bytes per Spinor block, byte 63 of
+each block holds the sentinel value `0xA5`.**
+
+Two alternatives were considered:
+
+**Option A — on-disk padding (chosen).** Each Spinor block occupies
+exactly 64 bytes on disk: bytes 0..62 are the Spinor payload, byte 63
+is the sentinel `0xA5`. The block_size field in the tensor entry is
+64. The mmap'd region presents 64-byte-aligned blocks; the loader does
+nothing; the file IS the in-memory layout.
+
+**Option B — scatter at load.** Spinor blocks are packed contiguously
+on disk (each 63 bytes), and the loader scatters them into a 64-byte-
+aligned arena at load time. Saves 1.5% of disk per Spinor tensor.
+
+Option A wins on three structural grounds, not just preference:
+
+1. **The ABI requires it.** PPT-LAT-L1-ABI-v0 §2 commits L1 to a
+   caller-allocates discipline with no L1-side `malloc` crossing the
+   FFI. A scatter-at-load step would have to allocate a fresh arena
+   inside `sp_model_load`, doubling RAM during load (mmap'd source +
+   destination arena) and adding an `O(N)` copy. That breaks the "the
+   file IS the load" property that justifies the format existing in
+   the first place.
+
+2. **Spinor blocks are read in 64-byte SIMD-friendly chunks anyway.**
+   AVX-512 / NEON loads are 64 bytes wide. Reading a 63-byte block via
+   `vmovdqu64` past the 63rd byte is undefined unless the byte at +63
+   is allocated and readable. On-disk padding makes the read
+   well-defined; scatter-at-load forces a per-block bounds check or a
+   slower 32+16+8+4+2+1 fallback.
+
+3. **The sentinel doubles as cheap integrity.** A 1.5% disk overhead
+   is the price; in exchange, byte 63 holds `0xA5` (0b10100101 — high
+   bit density, unlikely to arise from zero-fill or sparse-write
+   corruption). Any page tear, partial write, or filesystem
+   corruption that touches the Spinor block but leaves byte 63 alone
+   is impossible by construction. The verifier (opt-in,
+   `SP_VERIFY_TENSORS`) scans every Spinor block's byte 63 in a tight
+   AVX-512 stride; a mismatch returns `SP_ESPINOR_BADBLOCK` per the
+   ABI's error surface (PPT-LAT-L1-ABI §7).
+
+Disk-overhead math: a Gemma3-1B-class model with Spinor-formatted KV
+adjuncts carries ~50 M Spinor blocks. At 1 byte pad each, that's 50 MB
+of overhead on a model whose total `.sp-model` size is ~2 GB. 2.5% of
+the Spinor portion, ~1.5% of total file size. Acceptable.
+
+**On-disk sentinel value `0xA5` rationale.** Three constraints: (a)
+distinct from zero (catches zero-fill corruption), (b) distinct from
+the all-ones byte `0xFF` (catches "device returned -1 on read" errors
+that get memcpy'd in), (c) bit pattern that's unlikely to be produced
+by misaligned shifts of legitimate Spinor payload bytes. `0xA5` =
+`0b10100101` satisfies all three.
+
+## 7. Companion `.sp-tokenizer` file
+
+```
+offset  size  field             notes
+------  ----  ---------------- ----------------------------------------
+0       4     magic            ASCII "SPTK"
+4       2     version_major    v0 = 0
+6       2     version_minor    v0 = 1
+8       4     header_size      u32, v0 = 128
+12      4     type_id          enum: SENTENCEPIECE=0, BPE_LLAMA3=1,
+                               BPE_GPT2=2, TIKTOKEN_O200K=3, ...
+16      4     vocab_size       u32, must match .sp-model.vocab_size
+20      4     bos_token        u32, token id (or 0xFFFFFFFF if absent)
+24      4     eos_token        u32, token id (or 0xFFFFFFFF if absent)
+28      4     pad_token        u32, token id (or 0xFFFFFFFF if absent)
+32      4     unk_token        u32, token id (or 0xFFFFFFFF if absent)
+36      8     blob_offset      u64, byte offset of raw tokenizer blob
+44      8     blob_size        u64, length of raw tokenizer blob in bytes
+52      4     header_crc32     u32, CRC-32 of bytes [0, 52)
+56      72    reserved         zero-filled
+128     ...   blob             raw SentencePiece / BPE bytes, as-shipped
+```
+
+The blob is exactly what HuggingFace ships in `tokenizer.json` /
+`tokenizer.model` for the corresponding tokenizer type — we do not
+reformat or reparse it. L2 hands the blob to a SentencePiece /
+tokenizers crate at load time. L1 never touches it; L1 only verifies
+the SHA-256 of the entire `.sp-tokenizer` file matches the
+`tokenizer_hash` in the paired `.sp-model` header.
+
+This is what makes `.sp-tokenizer` reusable across fine-tunes: a
+Llama-3-Instruct, Llama-3-Code, and Llama-3-Chat fine-tune all share
+the same `.sp-tokenizer`, while each ships its own `.sp-model`. The
+mismatch case ("you loaded a Qwen3 model with the Llama-3 tokenizer")
+returns `SP_ETOKENIZER_HASH` per the ABI's error surface.
+
+## 8. Load procedure — `sp_model_load` reference implementation
+
+In pseudocode (a real implementation is ~200 lines of C):
+
+```
+fn sp_model_load(model_path, tokenizer_path, out_model) -> sp_status:
+    1. open(model_path), stat
+    2. mmap(file_size, READ, SHARED, fd, 0)              // single syscall
+    3. memcpy(&header, mmap_base, 512)
+    4. verify header.magic == "SPMD"
+    5. verify CRC32(mmap_base[0..360]) == header.header_crc32
+    6. verify header.file_size == stat.st_size
+    7. verify version_major == 0   (or dispatch v1 reader)
+    8. memcpy(&model.arch, header.arch_struct, header.arch_struct_size)
+    9. tensor_table_ptr = mmap_base + header.tensor_table_offset
+   10. tensor_data_ptr  = mmap_base + header.tensor_data_offset
+   11. verify (header.tensor_table_offset % 64) == 0
+   12. verify (header.tensor_data_offset % 65536) == 0
+   13. open(tokenizer_path), stat
+   14. compute SHA-256 of tokenizer file
+   15. verify SHA-256 matches header.tokenizer_hash
+        → on mismatch: return SP_ETOKENIZER_HASH
+   16. mmap tokenizer file separately (smaller, often shared
+        across many models)
+   17. *out_model = sp_model {
+            mmap_base, mmap_size,
+            arch,
+            tensor_table_ptr, tensor_count,
+            tensor_data_ptr,
+            tokenizer_mmap_base, tokenizer_blob_offset, tokenizer_blob_size,
+        }
+   18. return SP_OK
+```
+
+No `malloc` in the hot path; `sp_model` itself is a small heap-
+allocated struct holding pointers into the mmap regions. Total load
+time is dominated by SHA-256 of the tokenizer file (typically <50 ms
+for a 1-2 MB tokenizer) plus header CRC (microseconds). The mmap is
+lazy — pages fault in as tensors are first accessed, which is exactly
+what we want.
+
+## 9. `gguf-to-sp` transcoder responsibilities
+
+The transcoder is the *one-shot* path from upstream GGUF to PPT-
+native `.sp-model`. Run offline, once per model, on the workstation
+that has the source GGUF.
+
+Per-tensor transcoding:
+
+- **Unquantized tensors** (norms, biases, RoPE inverse-frequency
+  tables): copied bit-for-bit. dtype stays F32 / F16.
+- **GGUF quantized tensors** (Q8_0, Q4_K, etc.): dequantize to F32,
+  then re-quantize into `OK_Q8` or `OK_Q4` with per-row Frobenius
+  scale. The scale becomes a separate tensor named
+  `<original>.scale` of dtype `FROBENIUS_SCALE_FP32`.
+- **Attention / Spinor-eligible tensors**: optionally re-pack into
+  Spinor signatures during transcode if the source arch supports it.
+  If not, leave as F16/F32 and let the engine apply Spinor at runtime
+  via the KV cache hook.
+
+Arch detection: pull `general.architecture` from the GGUF metadata,
+map to `sp_arch_info.arch_id`. The transcoder owns the per-arch
+metadata extraction (RoPE base, GQA group count, SWA window, FFN
+variant), populates `sp_arch_info`, embeds it into the `arch_struct`
+field of the header.
+
+Tokenizer extraction: GGUF embeds the tokenizer; we strip it out and
+write `.sp-tokenizer`. SHA-256 of the resulting `.sp-tokenizer` goes
+into the `.sp-model` header.
+
+Transcoder is a separate binary, `sp-transcode`. Not part of
+`libshannonprime`. Lives in the engine repo alongside other tools.
+
+**Spatial-locality constraint on the data-region layout.** Sibling
+tensors MUST be written physically adjacent in the `.sp-model` data
+region — specifically, `<weight>.scale` immediately follows
+`<weight>`, with no other tensor's bytes interposed. The transcoder
+sorts the data region in this order before writing:
+
+1. Group tensors by their "base name" (everything before the
+   final `.scale`, `.bias`, etc. suffix).
+2. Within each group, write the parent first, then siblings in
+   suffix-alphabetical order.
+3. Write groups in topological order of access frequency (token
+   embeddings first, then per-layer blocks, then output projection).
+
+At inference time the kernel reads `weight` and immediately
+`weight.scale`. If they are physically separated by megabytes of
+unrelated tensors, mmap triggers two independent hard page faults and
+the OS prefetcher gets no hint that the second access is coming. If
+they are adjacent in the file (and therefore adjacent in the mmap
+region), the OS prefetcher pulls the scale page in with the weight
+page — a single 4 KB / 16 KB readahead window covers both. On a cold
+load this is the difference between ~10 µs and ~150 µs per Q8 layer's
+first decode step, multiplied across every layer in the model.
+
+The constraint is the transcoder's responsibility; the loader does
+not need to validate it (the format is correct either way, just
+slower without the locality property). However, `sp-transcode --verify`
+should emit a warning if any sibling pair is non-adjacent, since that
+indicates a transcoder bug or hand-edited file.
+
+## 10. Versioning and forward compatibility
+
+- **v0** (this document): everything above.
+- **v0.x** (no breaking change): new `dtype_id` values, new
+  `arch_id` values. v0 readers refuse with `SP_EUNSUPPORTED` on
+  unknown ids. Header bytes still occupy 512 bytes with `header_size
+  == 512`.
+- **v1** (potentially breaking): header may grow past 512 bytes. v0
+  readers refuse on `version_major != 0`. New fields go into the
+  current reserved tail before growing the header.
+
+Promotion criteria from v0 to v1: only when (a) the ABI requires a
+new field in `sp_arch_info` larger than the current 256-byte
+reservation, or (b) a structural property of the tensor data region
+changes (e.g. inline ARM bank initial state, KV warm-state
+snapshot). Neither is on the Phase-2 horizon.
+
+## 11. Open questions / Phase-2+ considerations
+
+- **Multi-file sharding for very large models.** A 200B model at
+  Q4 is ~100 GB. A single `.sp-model` works on 64-bit filesystems
+  but is unwieldy to distribute. v1 may add an optional shard-
+  manifest sibling file (`.sp-shards`) pointing at multiple
+  `.sp-model.NNNN-of-MMMM` parts. v0 assumes single file.
+- **Direct DMA from .sp-model into GPU memory.** NVIDIA's GDS
+  (GPUDirect Storage) reads from `O_DIRECT`-opened files into device
+  memory without host buffering. Requires the tensor data region to
+  be aligned to GPU page size (often 64 KB) and tensors to be at
+  least 64 KB. Our existing 65536 alignment is already compatible;
+  individual small tensors (norms, biases) below 64 KB still go
+  through host buffering. Phase-2+ optimization.
+- **In-file ARM bank seed.** Currently the ARM bank is initialized
+  empty at session create. A pre-baked ARM bank (seeded with the
+  golden-ratio key schedule from PPT-LAT-Systems §4.2) could ship
+  as a regular tensor in `.sp-model`. v0 leaves the bank session-
+  local; the spec accommodates this future addition without rev.
+- **Tokenizer-blob compression.** SentencePiece blobs are usually
+  small enough that compression is not worth it; HuggingFace
+  `tokenizer.json` for some BPE-heavy tokenizers can hit 10 MB. v0
+  ships uncompressed; v1 may add a `blob_compression` field in the
+  `.sp-tokenizer` header.
+
+## 12. Sign-off checklist
+
+Before this is locked alongside the ABI:
+
+1. **mmap correctness.** Walk the load procedure in §8; confirm no
+   step requires a `malloc` proportional to tensor data size. Each
+   step is either a syscall, a memcpy of header-sized bytes, or a
+   pointer assignment.
+2. **Alignment table.** For every dtype in §5, confirm `(tensor_data_offset +
+   offset_in_data) % required_align == 0` is enforceable by the
+   transcoder. The two non-trivial cases are SPINOR63 (block_size 64,
+   so the loader can stride by 64) and OK_Q4 (block_size 32, but
+   offset_in_data must still be 64-aligned because we want SIMD on the
+   first block).
+3. **Round-trip.** A model transcoded GGUF → `.sp-model` → loaded by
+   `sp_model_load` and run through `sp_prefill_chunk` produces logits
+   bit-identical (deterministic mode) to running the original GGUF
+   under `llama.cpp` with the same sampler off. This is the actual
+   T_FRO_4-class gate for the format itself, separable from the ABI
+   sign-off.
+
+On green, both PPT-LAT-L1-ABI-v0 and PPT-LAT-SP-MODEL-v0 fold into
+PPT-LAT-Systems as Appendices A and B respectively, in one commit,
+and freeze together for Phase 2.
+
+---
+
+**Status.** v0 draft. Co-locked with PPT-LAT-L1-ABI-v0 once both
+have signed off against their §12 checklists.
