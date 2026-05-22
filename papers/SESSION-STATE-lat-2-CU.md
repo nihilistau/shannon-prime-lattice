@@ -2,11 +2,19 @@
 
 **Phase:** 2-CU — engine, CUDA backend (`shannon-prime-system-engine`).
 **Session date:** 2026-05-22.
-**Status:** **CLOSED 2026-05-23 — `lat-phase-2-cu-fro4-closed`.** T_FRO_4 split
-gate GREEN on CUDA (Gemma3-1B): gate (a) cuda-f32 −0.0146% vs f16 oracle; gate (b)
-per-row Q8 arena drift −0.7354%. Tags pushed: engine @ `9de1fb9`, system @
-`eca1bdc`. Dispatch verified actually firing on CUDA (probe, then removed).
-Backend: CUDA 13.2 + sm_75 (RTX 2060) + VS2019 BT + Ninja.
+**Status:** **CLOSED 2026-05-23.** Two tags on engine + system:
+- `lat-phase-2-cu-fro4-closed` — T_FRO_4 split gate on Gemma3-1B (gate (a) cuda-f32
+  −0.0146% vs f16 oracle; gate (b) per-row Q8 arena drift −0.7354%). engine @
+  `9de1fb9`, system @ `eca1bdc`.
+- `lat-phase-2-cu-closed` — the full §8.3 **E_CU_1..6** on Qwen3-0.6B (mirrors CPU's
+  `lat-phase-2-closed`). Full CUDA set 6/6 green. engine @ `cc1aafd`, system @
+  `eca1bdc`.
+
+Backend: CUDA 13.2 + sm_75 (RTX 2060) + VS2019 BT + Ninja. Two gate adaptations
+(documented below, same shape as §8.6.1): E_CU_5 uses an int64 exact dot for the
+NTT-attn score (== `sp_pr_inner`), and E_CU_6 cross-backend is deterministic +
+wire-valid + order-statistic-label-drift, not byte-identity. The full CRT-NTT and
+on-device KSTE kernel ports are deferred (load-bearing only later — see CU.6/CU.7).
 
 **Follow-up notes (not blocking the close):**
 - **Q4 arena now validated on CUDA (CU.4, 2026-05-23, post-close).** M_GEMMA3_CUDA
@@ -177,6 +185,55 @@ Q8/Q4 arena) hits T_FRO_4 on the GGUF + in-RAM Frobenius arena path, nothing mor
   worst_rel 5.46e-5, KL(cpu‖cuda) mean 3.1e-11. No CUDA code change needed — the
   kernel already handled Q4; this adds the test scenario (the E_CU_7 mirror).
 - Test suite: `M_GEMMA3_CUDA` checks=33 (f32+Q8+Q4), CUDA_SMOKE + T_FRO_4_CU green.
+
+### 2026-05-23 — CU.5..CU.8: full §8.3 E_CU_1..6 closed → `lat-phase-2-cu-closed`
+
+Generalized the CUDA forward to a 2nd arch (cuda_gemma3.cu → **cuda_forward.cu**;
+both forwards share the cache/kernels/GEMM in one TU). Arch-aware build_weights:
+untied LM head is a `DevTensor` (Qwen3 m->output, Q8-packed); sandwich post-norms
+are gemma3-only; embed scale parametrized. New `k_silu_mul` (SwiGLU).
+
+- **CU.5 / E_CU_1..4** (`M_QWEN3_CUDA`, engine `5f92216`). `qwen3_forward_cuda`:
+  no embed scale, full-causal single-base RoPE, plain residuals, SwiGLU, untied
+  head. E_CU_1 load; **E_CU_2** vs stock-llama oracle argmax 31/31, top5 31/31,
+  KL 2.33e-6 (== CPU E_CPU_2 2.347e-6); **E_CU_3** Q8 arena cuda-vs-cpu argmax
+  31/31, KL 1.23e-10; **E_CU_4** = cuBLAS SGEMM (sm_75 true f32); §8.3 cuda-vs-cpu
+  f32 worst_rel 3.25e-5, KL 1.06e-11.
+  **Bugfix:** `k_dequant_arena` launched grid.y = rows = vocab (151936) for the
+  packed untied head → exceeds CUDA grid.y max 65535. Put rows on grid.x. Gemma3
+  never hit it (tied f32 head). This is the one real CUDA-specific bug of the phase.
+- **CU.6 / E_CU_5 NTT-attention** (`5f92216`→`da636b3`). `k_attn_ntt` computes the
+  score as an exact int64 integer dot of the int32-quantized (×2¹⁶) heads —
+  **bit-identical to the CPU poly-ring `sp_pr_inner`** (proven: int64_dot ==
+  sp_pr_inner on 192/192 random vectors, N∈{128,256,512}). CUDA NTT vs f32: KL
+  2.41e-10 ≤ 1e-7 (T_PR_2; == CPU E_CPU_5 2.7e-10), KL>0 proves the branch fired.
+  **DEFERRED:** the full CRT-NTT kernel port. On a single GPU int64 holds the
+  exact result with far less code; the CRT-NTT becomes load-bearing only at
+  **Phase 6** cross-node CRT sharding (polynomial product split across coprime
+  primes). The §2-B.E.1 polynomial-shift RoPE cache (O(ctx) memory) is likewise
+  not needed for the E_CU_5 gate.
+- **CU.7 / E_CU_6 KSTE-KV** (engine `cc1aafd`). `qwen3_forward_cuda_ex` D→H copies
+  the post-norm/post-RoPE K per layer and runs the **host `sp_kste_encode`**.
+  **KSTE byte-identity across backends is structurally unachievable** — the
+  order-statistic encoding amplifies the same §8.6.1 cuBLAS-vs-scalar FP floor that
+  QK-norm amplifies for logits — so, like E_CPU_2, the gate is NOT byte-identity:
+  (a) encoder deterministic on 4000 fixed inputs; (b) CUDA signatures deterministic
+  + wire-valid (the literal E_CPU_6 gate); (c) **cause proven**: Tier-0 ROOT
+  order-statistic labels drift max=2 / mean 0.0197 LSB CPU-vs-CUDA (a real K bug
+  would move them ≫1 LSB), byte-agreement 65.87% reported (loose >50% floor).
+  **DEFERRED:** the on-device KSTE kernel (the host encoder is already wire-valid;
+  a device kernel buys throughput only when signatures are written every step).
+
+**Full CUDA gate set GREEN (6/6):** CUDA_SMOKE, M_GEMMA3_CUDA (f32+Q8+Q4),
+M_QWEN3_CUDA (E_CU_1..4), E_CU_5, E_CU_6, T_FRO_4_CU. CPU sources untouched by
+CU.5..7 (regression invariant holds; CPU 19/19 at CU.0). **Tag
+`lat-phase-2-cu-closed`** on engine + system (the §8.3 close, mirroring CPU's
+`lat-phase-2-closed`), alongside the earlier `lat-phase-2-cu-fro4-closed`.
+
+**Two CUDA-specific gate adaptations (both same shape as §8.6.1, documented so a
+future reader doesn't read them as gaps):** E_CU_5 uses an int64 exact dot in
+place of the CRT-NTT (identical integer result); E_CU_6's cross-backend gate is
+deterministic + wire-valid + order-statistic-label-drift, not byte-identity.
 
 ## Forward-pass reference (from gemma3.c — what CU.1 mirrors on GPU)
 
