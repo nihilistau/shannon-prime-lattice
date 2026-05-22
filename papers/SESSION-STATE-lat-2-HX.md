@@ -237,10 +237,20 @@ STRUCTURAL REFERENCE ONLY (IDL/skel/stub/host-split/CMake patterns) — no code 
   buffer, host CRC-32 == DSP CRC-32 (0x85a11a5b). The weight-upload mechanism (`in sequence<uint8>`
   over rpcmem at exact length) is byte-exact; the exact-alloc/silent-zero-fill trap does NOT bite it.
 - **HX.3a step 2 GREEN (be0fb74): cDSP scalar f32 matmul BIT-EXACT to host** — sp_hex.matmul_f32
-  (y[j]=sum_i w[j*cols+i]*x[i]), 256x512, worst |dsp-host| = 0.000e+00. The core forward kernel +
-  float data path proven; the full scalar forward will match the CPU baseline by construction.
-- HX.3a (forward assembly) / HX.3b..HX.7 NOT STARTED. **NEXT: `sp_hex_upload_tensor` (retain per-slot) +
-  scalar-f32 `sp_hex_forward` on the cDSP, gated to match the
+  256x512, worst |dsp-host| = 0.000e+00.
+- **HX.3a FORWARD GREEN (82bbdb4): gemma3 layers on the cDSP match CPU Q8 (KL 9e-11)** — the full
+  26-layer transformer + final RMSNorm run on the V69 cDSP via FastRPC (Q8 arena weights, 700 MB blob
+  uploaded once; embed lookup + tied head host-side). test_hex_fwd on device: argmax 6/6, worst_rel
+  5.86e-5, KL(cpu||hex) mean 9.19e-11 -> HEX_FWD OK. Design: sp_hex_layout.h (shared host<->DSP blob
+  contract), sp_hex_imp.c hx_* kernels (Q8 matmul + scalar rmsnorm/QK-norm/NEOX-RoPE/GQA-softmax/GeGLU,
+  mirror gemma3.c), sp_hex_host.c gemma3_forward_hexagon (blob cached by model ptr; compiled into
+  sp_engine to avoid an lld lib cycle), ppl.c SP_BACKEND=hexagon dispatch + qwen3_free release hook.
+  Desktop CPU/CUDA/VK untouched (#ifdef SP_ENGINE_WITH_HEXAGON + dsp subdir early-returns off-android).
+  **The Hexagon forward is CORRECT on hardware (scalar f32).**
+- HX.3b / HX.5 / HX.6 / HX.7 NOT STARTED. **NEXT: HX.3b — swap hx_matmul_q8 to HVX qf32 (gotcha #7:
+  Q6_Vsf_* broken -> qf32 intermediates; 128-byte aligned; per-method qurt_hvx_lock at forward entry),
+  re-gate vs this scalar baseline; then T_FRO_4_HX PPL (the parity KL 9e-11 already implies it). The
+  scalar forward is correct but slow — HVX is the acceleration. (Old NEXT text:) gated to match the
   on-phone CPU PPL baseline (-0.0144%) BEFORE any HVX** (advisor discipline: this validates the
   per-tensor rpcmem upload + forward orchestration + exact-alloc with zero HVX risk; the silent-fallback
   trap lives here). Then HX.3b matmul→HVX qf32, then op-by-op, each PPL-gated. T_FRO_4_HX NOT reached.
