@@ -4,6 +4,8 @@
 **Session date:** 2026-05-21, extended 2026-05-22.
 **Status:** **Phase 2-CPU CLOSED 2026-05-22 — all six E-tests green (engine ctest 7/7 incl. MODEL_BIND).** E_CPU_1 loader, E_CPU_2 forward (distributional gate), E_CPU_3 Frobenius/Q8, E_CPU_4 AVX2, E_CPU_5 NTT-attention (meets literal T_PR_2), E_CPU_6 KSTE KV. Per §8.6 this is the canonical-anchor close → tag `lat-phase-2-closed`. Remaining for full Phase 2: T_FRO_4 (Gemma3-1B PPL) and the other backends (2-CU/VK/HX).
 
+> **NEXT SESSION PICKS UP HERE → Gemma3-1B CPU bring-up, SP1 Task 2.** This session (2026-05-22, cont.) landed: Piece 2 (persistent Spinor KV cache, engine `983a493`), Piece 3 (composability + format-lock), Piece 4 (load-bearing primitives ported to math-core, math-core `9a4e0ea` / engine `b00fbf1`), then **started Gemma3-1B** (the T_FRO_4 work, CPU-first). Decomposed SP1/SP2/SP3; **spec + 5-task plan committed in engine `docs/superpowers/{specs,plans}/2026-05-22-gemma3-cpu-forward*`**; **SP1 Task 1 DONE (engine `8aba0e2`)** — shared CPU kernels extracted to `kernels.{h,c}`, Qwen3 regression 16/16 unchanged. **Resume at SP1 Task 2 (Gemma3 loader + GEMMA3_BIND), then 3 (oracle gemma3_ref.bin + checkpoints), 4 (gemma3_forward), 5 (M_GEMMA3_CPU gate)** — the plan has the exact steps + pinned arch constants (plain RMSNorm, local rope 10000 / global 1e6, global `(il+1)%6==0`, query scale 1/√256, GELU-tanh, sandwich norms, tied head). Gemma3 arch detail also in auto-memory `project-shannon-prime-lattice-state`. Oracle (clean llama.cpp at `lattice-llama`) supports gemma3 (`src/models/gemma3.cpp` = the reference forward).
+
 ---
 
 ## Done this session
