@@ -2,7 +2,7 @@
 
 **Phase:** 2-HX — engine, Hexagon V69 HTP backend (`shannon-prime-system-engine`).
 **Session date:** 2026-05-23.
-**Status:** IN PROGRESS.
+**Status:** IN PROGRESS — HX.0/HX.1/HX.2-prep + **HX.2 (FastRPC round-trip) GREEN**; HX.3a (scalar-DSP forward) next.
 **Worktree:** `D:\F\shannon-prime-repos\shannon-prime-system-engine\.claude\worktrees\agent-ad9c9f2f466528372`
 **Branch:** `worktree-agent-ad9c9f2f466528372` (off `main` @ cc1aafd, the 2-CU close).
 **Device:** adb serial `R5CT22445JA`, SM-S908E (Galaxy S22 Ultra), board `taro` = SM8450, Hexagon V69.
@@ -213,10 +213,35 @@ The on-phone CPU f32 PPL 32.86464 (-0.0144%) is the REFERENCE a correct HVX back
 8. **HX.7** T_FRO_4_HX gate: (a) hexagon-f32 PPL vs f16 oracle 32.86939 <=0.05% OR document an HVX
    precision floor (analog of §8.6.1); (b) per-row Q8 drift <=2%.
 
+### 2026-05-23 — HX.2 GREEN: sp_hex FastRPC IDL round-trip on device (main, post-integration)
+Picked up on engine `main` (the 3-agent integration merged the HX foundation; worktree retired —
+SP_ENGINE now points at the real repo, no local hack). Used `C:\Qualcomm\Hexagon_IDE\S22U` as
+STRUCTURAL REFERENCE ONLY (IDL/skel/stub/host-split/CMake patterns) — no code copied; recreated fresh.
+- Fresh `sp_hex` interface: `inc/sp_hex.idl` (`ping(in long, rout long)` smoke; whole-forward-on-DSP
+  upload+forward methods land in HX.3a). `dsp/sp_hex_imp.c` + `dsp/CMakeLists.txt` → `build_cmake
+  hexagon` builds `libsp_hex_skel.so` (qaic generates skel/stub/header; hexagon-clang V69). Host:
+  `sp_hex_rt.c` + a qaic `add_custom_command` in `src/backends/hexagon/CMakeLists.txt` (qaic flags
+  from the SDK `build_idl`: `-mdll -o <dir> -I<sdk>/incs -I<sdk>/incs/stddef`) → `test_hex_rt` (NDK
+  aarch64) links the stub + rpcmem.a + libcdsprpc.so. `build-hexagon.bat android` builds it.
+- **ON DEVICE (R5CT22445JA, unsigned PD domain 3): `sp_hex_ping(41) -> 42 (rc=0x0)` → HX.2 ROUND-TRIP OK.**
+  OUR qaic/skel/stub/FastRPC/unsigned-PD wiring proven end-to-end before any HVX. Engine `4c5f6a2`.
+- qaic-generated files NOT committed (build artifacts); only `inc/sp_hex.idl` is. `.gitignore`: SDK
+  `build_cmake` output trees (`hexagon_*_toolv*/`, `android_*_aarch64/`).
+
 ## STATUS SUMMARY
-- HX.0 GREEN (committed c99f613): env + qaic/hexagon-clang/NDK/FastRPC hard gate.
-- HX.1 GREEN (committed da77dba): aarch64-android cross-compile + on-phone CPU PPL T_FRO_4 -0.0144%.
-- HX.2-prep GREEN (committed e6bc5b2): rpcmem capacity probe, 574 MB Q8 single-buffer FEASIBLE.
-- HX.2..HX.7 NOT STARTED (IDL/stub/DSP skel/HVX kernels/forward/NTT/KSTE/gate). T_FRO_4_HX NOT reached
-  (it's the DSP-backed gate). Engine sources unmodified except additive backend wiring; CPU/CUDA untouched.
-- Math-core submodule at eca1bdc (init'd locally, NOT bumped).
+- HX.0 GREEN (c99f613): env + qaic/hexagon-clang/NDK/FastRPC hard gate.
+- HX.1 GREEN (da77dba): aarch64-android cross-compile + on-phone CPU PPL T_FRO_4 -0.0144%.
+- HX.2-prep GREEN (e6bc5b2): rpcmem capacity probe, 574 MB Q8 single-buffer FEASIBLE.
+- **HX.2 GREEN (4c5f6a2): sp_hex FastRPC IDL round-trip on device (ping 41->42).**
+- HX.3..HX.7 NOT STARTED. **NEXT: HX.3a — scalar-f32 `sp_hex_forward` on the cDSP, gated to match the
+  on-phone CPU PPL baseline (-0.0144%) BEFORE any HVX** (advisor discipline: this validates the
+  per-tensor rpcmem upload + forward orchestration + exact-alloc with zero HVX risk; the silent-fallback
+  trap lives here). Then HX.3b matmul→HVX qf32, then op-by-op, each PPL-gated. T_FRO_4_HX NOT reached.
+- Math-core submodule at eca1bdc (NOT bumped).
+
+### IDL design (settled for HX.3a)
+Whole-forward-on-DSP. `sp_hex_upload_tensor(layer, slot, dtype, in buf, in len)` — per-tensor rpcmem
+buffer (exact-alloc: len == bytes; ~28 buffers for Gemma3-1B, all < the 2000 MB probed ceiling; same
+table for f32 gate (a) and Q8 gate (b)). `sp_hex_forward(in tokens[], n_tok, rout logits[])` — one
+FastRPC call per chunk; the DSP runs the full gemma3 forward, returns logits. Single
+`qurt_hvx_lock(QURT_HVX_MODE_128B)` at the top of `sp_hex_forward` (one method, one worker thread).
