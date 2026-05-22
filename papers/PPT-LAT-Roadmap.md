@@ -1372,13 +1372,22 @@ single-machine case; multi-machine MoE is a later phase.
 gets here, treat it as another incremental Qwen update; if it hasn't,
 defer this row.
 
-**Gemma 3 (and 2.5 / 4).** Different RoPE shape, different RMSNorm
-placement (pre + post on some sublayers), attention sliding window.
-Gemma 3 is the canonical research target.
-
-<!-- NOTE (2026-05-21): the Gemma 3 paragraph above was truncated mid-word
-in the Phase-0 bootstrap commit; only the obvious word "target." was
-restored. The rest of the §9.6 Gemma discussion remains to be written. -->
+**Gemma 3 (and 2.5 / 4).** The canonical research + PPL target — T_FRO_4
+runs on Gemma3-1B, and it is the first second-architecture both 2-CPU and
+2-CU closed. Architecture deltas vs the Qwen/Llama base, all exercised by
+`gemma3_forward` (`src/forward/gemma3.c`) and `gemma3_forward_cuda`:
+embedding scaled by √n_embd; **sandwich RMSNorm** — a post-attention and a
+post-FFN norm on the residual branch in addition to the pre-norms (the
+`(1+w)` is baked into the GGUF weights at conversion, so the norm is the
+plain `x/rms·w`, NOT `(1+w)` — adding 1 double-counts); per-head QK-RMSNorm
+over head_dim *before* RoPE; **dual RoPE base + sliding-window attention** —
+a `set_swa_pattern(6)` schedule alternates local layers (sliding window 512,
+base 10000) and global layers (full causal, base 1e6), global iff `L%6==5`
+(4 global / 22 local of 26 on 3-1B); **GeGLU** FFN (gelu-tanh(gate)·up), not
+SwiGLU; tied LM head; no final-logit softcap on 3-1B. Gemma 2.5 / 4 are
+incremental deltas on this shape (4 adds a vision tower the text path
+ignores). Per-cell gate = the same distributional + PPL checks as the
+reference model (`M_GEMMA3_*`, T_FRO_4).
 
 ---
 
@@ -1489,27 +1498,6 @@ Until one of these triggers fires, the production rel-attn cache is
 the §2-B.E.1 polynomial-shift cache (lossless on stock RoPE, gated by
 `SP_ENGINE_NTT_ATTN=1`), and the §20 items remain parked research notes —
 off the Phase 2..13 critical path.
-
----
-
-> **Roadmap restoration note (2026-05-22).** §8.2 above is truncated
-> mid-E_CPU_5 due to an incomplete restore in commit `7fbf153`. The
-> sections §8.3 (Phase 2-CU, CUDA backend), §8.4 (Phase 2-VK, Vulkan
-> backend), §8.5 (Phase 2-HX, Hexagon backend), §8.6 (Phase 2 exit
-> criteria + §8.6.1 precision-floor rationale), §8.7 (per-backend
-> picking-up notes), §9 (Phase 3 — Model-family expansion), the Phase
-> log, and §20 (Research Track — φ-RoPE / Three-Gap frequency-sort
-> restructuring) are all currently missing from the document. Their
-> last-known-good content lives at commits `623b26e` (§8.3–§9 + Phase
-> log) and `2111362` (§20 Research Track). A separate session is
-> queued to do a careful semantic merge of those two timelines back
-> onto the current HEAD without losing the polynomial-shift reframe
-> and per-row Q8 split-gate amendments that landed after each.
->
-> The Phase 2-FMT section below is appended as a new top-level §10 to
-> avoid getting tangled in that restoration. When the restoration
-> session runs, §10 below will be slotted in as §8.6 (renumbering the
-> existing §8.6 → §8.7, §8.7 → §8.8).
 
 ---
 
