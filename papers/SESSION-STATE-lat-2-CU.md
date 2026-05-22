@@ -9,9 +9,14 @@ per-row Q8 arena drift −0.7354%. Tags pushed: engine @ `9de1fb9`, system @
 Backend: CUDA 13.2 + sm_75 (RTX 2060) + VS2019 BT + Ninja.
 
 **Follow-up notes (not blocking the close):**
-- **Q4 device path compiled but UNEXERCISED.** `k_dequant_arena`'s `row_prec!=8`
-  (Q4 nibble) branch is correct-by-construction but T_FRO_4 only uses Q8. A future
-  **E_CU_7** should add a `SP_ARENA=q4` scenario to M_GEMMA3_CUDA.
+- **Q4 arena now validated on CUDA (CU.4, 2026-05-23, post-close).** M_GEMMA3_CUDA
+  gained a `SP_ARENA=q4` scenario: CPU `matmul_arena` vs CUDA `k_dequant_arena` on
+  the same mixed-precision codes — **11292/459264 rows promoted to Q8** (2.46%), so
+  both decode branches (Q4 two-per-byte nibble + promoted Q8) are exercised. argmax
+  15/15, worst_rel 5.46e-5, KL(cpu‖cuda) 3.1e-11. So **both Q8 and Q4 arena device
+  decode are correct.** (Q4-vs-f32 PPL stays lossy-by-design — not a tight gate;
+  T_FRO_4 gate (b) intentionally uses Q8.) The `fro4-closed` tag marks the T_FRO_4
+  (Q8) close; CU.4 lands on top in a follow-on engine commit.
 - **`.gitignore` fix is forward-only:** the CPU close tag `lat-phase-2-cpu-fro4-closed`
   (engine `3431cf8`) predates the fix, so a fresh clone at that tag has NO build
   scripts (they were ignored). `lat-phase-2-cu-fro4-closed` onward is buildable.
@@ -163,6 +168,15 @@ call scripts\env\env-cuda.bat && ctest --test-dir build-cuda -R T_FRO_4_CU
 NOTE: `.sp-model` (Appendix B) is NOT implemented by this phase — deferred to
 Phase 2-FMT (see scope decision above). This close means the CUDA forward (f32 +
 Q8/Q4 arena) hits T_FRO_4 on the GGUF + in-RAM Frobenius arena path, nothing more.
+
+### 2026-05-23 — CU.4 (post-close): Q4 mixed-precision arena validated on CUDA
+- M_GEMMA3_CUDA now runs three scenarios: f32, Q8 arena, **Q4 arena**. The Q4
+  (`SP_ARENA=q4`) mixed-precision path promotes high-error rows to Q8
+  (11292/459264 = 2.46% on Gemma3-1B), exercising both `k_dequant_arena` branches.
+  CUDA device-decode vs CPU `matmul_arena` (same codes): argmax 15/15,
+  worst_rel 5.46e-5, KL(cpu‖cuda) mean 3.1e-11. No CUDA code change needed — the
+  kernel already handled Q4; this adds the test scenario (the E_CU_7 mirror).
+- Test suite: `M_GEMMA3_CUDA` checks=33 (f32+Q8+Q4), CUDA_SMOKE + T_FRO_4_CU green.
 
 ## Forward-pass reference (from gemma3.c — what CU.1 mirrors on GPU)
 
