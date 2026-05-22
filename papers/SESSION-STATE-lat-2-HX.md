@@ -233,7 +233,11 @@ STRUCTURAL REFERENCE ONLY (IDL/skel/stub/host-split/CMake patterns) — no code 
 - HX.1 GREEN (da77dba): aarch64-android cross-compile + on-phone CPU PPL T_FRO_4 -0.0144%.
 - HX.2-prep GREEN (e6bc5b2): rpcmem capacity probe, 574 MB Q8 single-buffer FEASIBLE.
 - **HX.2 GREEN (4c5f6a2): sp_hex FastRPC IDL round-trip on device (ping 41->42).**
-- HX.3..HX.7 NOT STARTED. **NEXT: HX.3a — scalar-f32 `sp_hex_forward` on the cDSP, gated to match the
+- **HX.3a step 1 GREEN (12af2dd): per-tensor rpcmem upload BYTE-EXACT on device** — 32 MB SYSTEM-heap
+  buffer, host CRC-32 == DSP CRC-32 (0x85a11a5b). The weight-upload mechanism (`in sequence<uint8>`
+  over rpcmem at exact length) is byte-exact; the exact-alloc/silent-zero-fill trap does NOT bite it.
+- HX.3a (forward) / HX.3b..HX.7 NOT STARTED. **NEXT: HX.3a — `sp_hex_upload_tensor` (retain per-slot) +
+  scalar-f32 `sp_hex_forward` on the cDSP, gated to match the
   on-phone CPU PPL baseline (-0.0144%) BEFORE any HVX** (advisor discipline: this validates the
   per-tensor rpcmem upload + forward orchestration + exact-alloc with zero HVX risk; the silent-fallback
   trap lives here). Then HX.3b matmul→HVX qf32, then op-by-op, each PPL-gated. T_FRO_4_HX NOT reached.
