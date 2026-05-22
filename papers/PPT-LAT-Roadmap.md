@@ -1489,3 +1489,137 @@ Until one of these triggers fires, the production rel-attn cache is
 the §2-B.E.1 polynomial-shift cache (lossless on stock RoPE, gated by
 `SP_ENGINE_NTT_ATTN=1`), and the §20 items remain parked research notes —
 off the Phase 2..13 critical path.
+
+---
+
+> **Roadmap restoration note (2026-05-22).** §8.2 above is truncated
+> mid-E_CPU_5 due to an incomplete restore in commit `7fbf153`. The
+> sections §8.3 (Phase 2-CU, CUDA backend), §8.4 (Phase 2-VK, Vulkan
+> backend), §8.5 (Phase 2-HX, Hexagon backend), §8.6 (Phase 2 exit
+> criteria + §8.6.1 precision-floor rationale), §8.7 (per-backend
+> picking-up notes), §9 (Phase 3 — Model-family expansion), the Phase
+> log, and §20 (Research Track — φ-RoPE / Three-Gap frequency-sort
+> restructuring) are all currently missing from the document. Their
+> last-known-good content lives at commits `623b26e` (§8.3–§9 + Phase
+> log) and `2111362` (§20 Research Track). A separate session is
+> queued to do a careful semantic merge of those two timelines back
+> onto the current HEAD without losing the polynomial-shift reframe
+> and per-row Q8 split-gate amendments that landed after each.
+>
+> The Phase 2-FMT section below is appended as a new top-level §10 to
+> avoid getting tangled in that restoration. When the restoration
+> session runs, §10 below will be slotted in as §8.6 (renumbering the
+> existing §8.6 → §8.7, §8.7 → §8.8).
+
+---
+
+## 10. Phase 2-FMT — Format implementation (parallel sub-phase)
+
+The `.sp-model` byte layout was frozen as Appendix B of PPT-LAT-Systems
+at tag `lat-phase2-contract-frozen` (commit `e4f78ae`). The format is
+specified but **not implemented** in the engine — `sp_model_load`,
+`sp-transcode`, and the §12.3 round-trip gate are all green-field work.
+
+Phase 2-FMT is the sub-phase that implements them. It is structurally
+**parallel to** the per-backend tracks (2-CPU, 2-CU, 2-VK, 2-HX) rather
+than serially blocking them, because:
+
+- `.sp-model` and `sp-transcode` are pure CPU code that runs *before*
+  any backend dispatch. They have no dependency on which math
+  backend(s) are wired up.
+- T_FRO_4 in each per-backend track runs against the GGUF + in-RAM
+  Frobenius arena path, not against `.sp-model`. Phase 2-CPU has
+  already closed T_FRO_4 (`3431cf8`) without `.sp-model` existing.
+- The §12.3 round-trip gate (GGUF → `.sp-model` → bit-identical logits)
+  is the format's own validation gate, separate from any backend's
+  T_FRO_4.
+
+Therefore 2-FMT can run concurrently with 2-CU, 2-VK, 2-HX, sequenced
+only by reviewer bandwidth and not by code dependencies. Recommended
+landing order: **2-FMT closes before 2-VK and 2-HX start**, so those
+two have a stable on-disk path to test against. 2-CU is already in
+flight and need not wait.
+
+### 10.1 Deliverables
+
+- **E_FMT_1 — `sp_model_load` reference implementation.** Pure mmap +
+  header parse + tensor table pointer setup. Zero allocation
+  proportional to tensor data size. Implements the verification path
+  of Appendix B §3 (magic / version / header CRC-32 / tokenizer_hash
+  → SHA-256 vs paired `.sp-tokenizer`). Lives in
+  `shannon-prime-system-engine/src/io/sp_model_load.c`. Maximum 250
+  LOC; if it grows past that, something is wrong.
+
+- **E_FMT_2 — `sp-transcode` CLI binary (GGUF → `.sp-model`).**
+  Separate binary at `shannon-prime-system-engine/tools/sp_transcode/`.
+  Reads upstream GGUF, dequantizes any quantized tensors to f32, then
+  re-quantizes into the PPT-native dtype space (`OK_Q8` + sibling
+  `FROBENIUS_SCALE_FP32`, `OK_Q4`, or `SPINOR63` per the engine's
+  arch-specific dispatch). Owns the per-arch `sp_arch_info`
+  population (arch_id, RoPE base, GQA groups, SWA window, FFN
+  variant, norm variant, tied_embeddings). Writes the 512-byte header
+  + sorted-by-name-hash tensor table + 65536-aligned data region.
+  Enforces the spatial-locality constraint of Appendix B §9
+  (sibling tensors physically adjacent — parent first, then
+  `.scale`).
+
+- **E_FMT_3 — `.sp-tokenizer` extraction.** Pulls the SentencePiece /
+  BPE blob out of GGUF metadata, writes the 128-byte `.sp-tokenizer`
+  header + blob per Appendix B §7. The 4-byte CRC-32 covers bytes
+  [0, 52). Two-file output: `model.sp-model` + `model.sp-tokenizer`,
+  the latter reusable across fine-tunes of the same base.
+
+- **E_FMT_4 — §12.3 round-trip gate.** The format's own T_FRO_4-class
+  validation: load Gemma3-1B via the GGUF path, then via the
+  `.sp-model` path (post-`sp-transcode`), run `sp_prefill_chunk` on
+  the same corpus, assert bit-identical logits in deterministic mode
+  (or ≤ 0.05% drift in production mode, mirroring T_FRO_4 gate (a)).
+  Lives in `tests/test_sp_model_roundtrip.c`. **This is the closure
+  gate for 2-FMT.**
+
+### 10.2 Build env
+
+Same `scripts/env/env-cpu-msvc.bat` as Phase 2-CPU — 2-FMT is pure CPU
+code. No CUDA / Vulkan / Hexagon toolchains required. The transcoder
+binary builds against the same VS2019 BuildTools + Ninja pin as the
+engine library.
+
+### 10.3 Exit
+
+`sp-transcode` produces a valid `.sp-model` + `.sp-tokenizer` pair for
+each in-scope reference model (Gemma3-1B is the bedrock target;
+Qwen3-0.6B as cross-arch validation). E_FMT_1..4 are all green. Tag
+`lat-phase-2-fmt-closed` on `shannon-prime-system-engine` and on
+`shannon-prime-system` if any math-core changes were required.
+
+After this closes, `.sp-model` is the *recommended* (not *required*)
+load path for the engine in 2-VK and 2-HX bring-ups. 2-CU may
+continue on the GGUF path until convenient to switch — switching is
+not a 2-CU closure dependency.
+
+### 10.4 Sequencing constraints
+
+- **2-FMT depends on `lat-phase2-contract-frozen` (`e4f78ae`).** ✓ Met.
+- **2-FMT does NOT depend on 2-CU closure.** Can start immediately.
+- **2-VK and 2-HX should not start before 2-FMT closes.** Soft
+  recommendation, not a hard block — those agents can pick either
+  the GGUF or `.sp-model` load path. The recommendation exists
+  because a stable on-disk format means the backend agent isn't
+  fighting two moving targets simultaneously.
+- **`.sp-model` v1 (any breaking change) requires re-tagging
+  `lat-phase2-contract-frozen` → `lat-phase2-contract-v2` and updating
+  Appendix B.** v0 should not need to evolve during Phase 2; if it
+  does, that's evidence the contract was missing a load-bearing
+  field, and the agent surfacing the gap should call it out
+  explicitly before patching the spec.
+
+### 10.5 Non-goals for 2-FMT v0
+
+- Multi-file sharding (`.sp-model.NNNN-of-MMMM`). Deferred to v1; see
+  Appendix B §11 open questions.
+- GPU-direct storage (NVIDIA GDS) ingestion. Phase-2+ optimization.
+- Pre-baked ARM bank seeds in the file. v0 sessions initialize ARM
+  empty at `sp_session_create`.
+- Tokenizer-blob compression. v0 ships the SentencePiece / BPE blob
+  uncompressed.
+
