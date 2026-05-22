@@ -953,14 +953,35 @@ backends; math-core `T_FRO_Q4`). Three pieces, dependency-ordered:
     would diverge/crash) + `gguf_tensor_data` NULL post-release + owning tokenizer
     still decodes. **T_FRO_4 is next** — the arena is the production layout it
     validates (Gemma3-1B PPL within 0.1%; needs the 2nd arch + SentencePiece).
-  - **Piece 2 — persistent Spinor KV cache.** Store the cache as
-    `sp_spinor_block_t[]` (3 blocks/head, decode on read) rather than f32 + a
-    round-trip, for the real §4.9 ~6× KV memory drop.
-  - **Piece 3 — composability + format-lock.** All gates on together
-    (`SP_ARENA` + `SP_KV_SPINOR` + `qwen3_generate_kv`) + `_Static_assert`/version
-    gates freezing the arena and KV byte layouts as the cross-backend contract.
+  - **Piece 2 — persistent Spinor KV cache (DONE).** `qwen3_generate_kv` with
+    `SP_KV_SPINOR=1` now stores the cache as `sp_spinor_block_t[]` (NBLK =
+    ceil(head_dim/55) blocks/head; 3 for Qwen3) and decodes on read into a
+    per-LAYER f32 scratch — resident KV memory is the packed blocks + one layer of
+    scratch, not the full f32 cache. `decode(encode(x))` is arithmetically the same
+    as the in-place round-trip, so the block cache is **sequence-identical** to the
+    f32 round-trip parity reference, exposed as `SP_KV_SPINOR_REF=1` (the §4.9 "fp32
+    cache for parity tests only"). **Gate `GEN_KV_SPINOR`** (in `test_gen_kv`)
+    asserts that identity. **Measured drop: 2.71×** (block 2.96 MB vs f32 8.03 MB on
+    Qwen3-0.6B, P=44) — the honest figure for the *frozen* 63-byte / 55-anchor block
+    at head_dim=128 (3 blocks). The earlier "~6×" was aspirational; the frozen
+    layout gives 512 B → 189 B per head = 2.71×. Larger drops would require changing
+    the frozen block (out of scope; would bump `SP_SPINOR_LAYOUT_VERSION`).
+  - **Piece 3 — composability + format-lock (DONE).** **`COMPOSE`** gate
+    (`test_compose`): with the arena ACTIVE (`SP_ARENA=q8`), the Spinor-block KV
+    cache is still sequence-identical to the f32 KV reference — i.e. the weight
+    source (arena Q8) and the KV layout (blocks vs f32) are orthogonal axes that
+    compose without interference (all three gates on: `SP_ARENA` + `SP_KV_SPINOR` +
+    `qwen3_generate_kv`). **Format-lock:** file-scope `_Static_assert`s freeze the
+    cross-backend byte contract — arena (`arena.c`): `SP_ARENA_LAYOUT_VERSION==1`,
+    Q8 qmax 127 / Q4 qmax 7 dequant convention, 4-byte f32 row scale; KV
+    (`forward.c`): 63-byte block, 55-anchor body, `SP_SPINOR_LAYOUT_VERSION==1`. A
+    silent layout drift is now a compile error until the version is bumped with a
+    migration.
 
-2-CU starts only once the load-bearing layout is solid (user direction 2026-05-22).
+The load-bearing layout (arena + persistent Spinor KV + format-lock) is solid.
+2-CU may start (user direction 2026-05-22). T_FRO_4 (Gemma3-1B PPL) remains the
+production-quality validation of the arena, deferred to its own session (2nd arch
++ SentencePiece + PPL loop).
 
 ### 8.3 Phase 2-CU (CUDA backend)
 
