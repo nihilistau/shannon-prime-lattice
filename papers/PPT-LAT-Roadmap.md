@@ -972,16 +972,33 @@ backends; math-core `T_FRO_Q4`). Three pieces, dependency-ordered:
     source (arena Q8) and the KV layout (blocks vs f32) are orthogonal axes that
     compose without interference (all three gates on: `SP_ARENA` + `SP_KV_SPINOR` +
     `qwen3_generate_kv`). **Format-lock:** file-scope `_Static_assert`s freeze the
-    cross-backend byte contract — arena (`arena.c`): `SP_ARENA_LAYOUT_VERSION==1`,
-    Q8 qmax 127 / Q4 qmax 7 dequant convention, 4-byte f32 row scale; KV
-    (`forward.c`): 63-byte block, 55-anchor body, `SP_SPINOR_LAYOUT_VERSION==1`. A
-    silent layout drift is now a compile error until the version is bumped with a
-    migration.
+    cross-backend byte contract — arena: `SP_FROB_ARENA_LAYOUT_VERSION==1`,
+    Q8 qmax 127 / Q4 qmax 7 dequant convention, 4-byte f32 row scale; KV: 63-byte
+    block, 55-anchor body, `SP_SPINOR_LAYOUT_VERSION==1`. A silent layout drift is
+    now a compile error until the version is bumped with a migration.
+  - **Piece 4 — port the load-bearing primitives into the math core (DONE,
+    2026-05-22; user direction "more load-bearing in math-core before 2-CU").**
+    The packed-weight arena FORMAT and the multi-block KV head split were initially
+    written in the engine (`src/forward/{arena,forward}.c`); since they are
+    cross-backend byte contracts (every backend reads the same bytes, §4.8/§4.9),
+    they were ported into `shannon-prime-system` so CUDA/Vulkan/Hexagon share one
+    implementation rather than re-deriving them. **`core/frobenius`** (math-core
+    commit `9a4e0ea`): `sp_frob_packed_tensor` (the mixed-precision per-row Q8/Q4
+    arena layout) + `sp_frob_pack_tensor(rows, cols, prec, promote, get_row_cb, ctx,
+    out, *promoted)` (callback-based so GGUF reading stays engine-side, no full-tensor
+    f32 spike) + `sp_frob_packed_dequant_row` + `SP_FROB_ARENA_LAYOUT_VERSION` (the
+    single source of truth — the engine's duplicate macro was deleted). Gate `T_FRO_5`.
+    **`core/vht2`**: `sp_spinor_blocks_for` / `sp_spinor_encode_vec` /
+    `sp_spinor_decode_vec` (the frozen 43/43/42 head split). Gate `T_VHT_7` (split is
+    byte-identical to an explicit per-chunk encode/decode). Engine (`b00fbf1`) bumps
+    the submodule and consumes them; behavior byte-identical (CPU regression 16/16).
 
-The load-bearing layout (arena + persistent Spinor KV + format-lock) is solid.
-2-CU may start (user direction 2026-05-22). T_FRO_4 (Gemma3-1B PPL) remains the
-production-quality validation of the arena, deferred to its own session (2nd arch
-+ SentencePiece + PPL loop).
+The load-bearing layout (arena + persistent Spinor KV + format-lock), and the
+primitives that realize it, now live in the math core; all four backends will share
+one implementation. 2-CU may start (user direction 2026-05-22) — its kernels read
+the `SP_FROB_ARENA_LAYOUT_VERSION=1` arena bytes and the `SP_SPINOR_LAYOUT_VERSION=1`
+KV blocks directly. T_FRO_4 (Gemma3-1B PPL) remains the production-quality validation
+of the arena, deferred to its own session (2nd arch + SentencePiece + PPL loop).
 
 ### 8.3 Phase 2-CU (CUDA backend)
 
