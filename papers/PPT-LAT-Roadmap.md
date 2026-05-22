@@ -810,17 +810,47 @@ For each backend B ∈ {CPU, CU, VK, HX}:
   subgroup ops, HVX vectorisation for Hexagon.
 - **2-B.E — NTT-attention path wired in.** Sieve OFF. PPL must remain
   within Phase 1C's T_PR_2 tolerance.
-- **2-B.E.1 — RoPE Three-Step optimisation.** Implement the discrete
-  3-gap lookup for relative-attention offsets (PPT-LAT-Theory T7;
-  PPT-LAT-Systems §1.6). Align Q/K-projection dimension ordering to map
-  contiguous sorted frequencies to the VHT2 + Möbius squarefree
-  anchors so the continuous phase rotation natively aligns with the
-  discrete structural lattice — no second sort required. Gated by
-  `SP_ROPE_THREE_STEP=1`; default OFF; regression invariant binds.
-  Acceptance: rel-attn cache size ≤ ctx × 3 entries (~43× memory
-  reduction at D=128, ctx=4096); per-backend argmax + KL parity with
-  the non-gated path within E_B_2 tolerance. High-leverage memory and
-  compute win, applies to every backend.
+- **2-B.E.1 — RoPE Three-Step optimisation (split).** Three-Gap (T7)
+  applies to *linear* irrational sequences $\{k\alpha\}$. Standard RoPE
+  uses *geometric* $\theta_d = \mathrm{base}^{-2d/D}$, which is **not**
+  three-gap-distributed. The original single-gate framing conflated two
+  separable claims; this corrected version splits them:
+
+  - **2-B.E.1.a — Lossless rel-attn cache restructuring (φ-RoPE
+    conditional).** Applies *only when the model's RoPE frequencies are
+    three-gap-distributed* — i.e. the model was trained or fine-tuned
+    with φ-derived (linear-multiple-of-φ) positional frequencies. Under
+    that precondition, the sorted phase differences across dimensions
+    have ≤ 3 distinct increments, and the rel-attn cache compresses
+    from $O(\mathrm{ctx} \cdot D)$ to $O(\mathrm{ctx} \cdot 3)$ entries
+    losslessly (the ~43× figure at $D=128$). Gate `SP_ROPE_3STEP_CACHE=1`;
+    activates only when the loader reports `rope.style=phi`. **On stock
+    geometric-RoPE models this gate is a no-op.** Acceptance:
+    argmax + KL parity within E_B_2 tolerance, conditional on a φ-RoPE
+    model being loaded; on stock models the gate must round-trip
+    bit-identical (the no-op invariant).
+
+  - **2-B.E.1.b — RoPE frequency-schedule swap (quality-trading).**
+    Replaces the model's geometric $\theta_d$ with a φ-derived linear
+    sequence $\theta_d = \{d \cdot \alpha\} \cdot 2\pi$. This is a
+    genuine positional-basis change — the model was trained with one
+    schedule and is being asked to infer with another. On stock
+    pretrained models this **degrades quality** at long context until
+    fine-tuned. Validation gate is therefore a **PPL-drift sweep** on a
+    calibration corpus (mirroring Phase 4 Fibonacci-KV), NOT
+    argmax/KL parity. Gate `SP_ROPE_PHI=1`; default OFF; lands as
+    research infrastructure for E9.1-style φ-RoPE-finetuned models, not
+    as a production switch for stock models. When both gates are on
+    (`SP_ROPE_PHI=1` + `SP_ROPE_3STEP_CACHE=1`), 2-B.E.1.a's
+    precondition is satisfied and the ~43× rel-attn cache compression
+    becomes lossless — but downstream quality has already been traded
+    by the schedule swap.
+
+  This split closes the inconsistency a previous session flagged: a
+  single gate can't be simultaneously *bit-identical to stock RoPE*
+  AND deliver the ~43× compression — the compression requires a
+  precondition stock RoPE does not satisfy. The split surfaces the
+  precondition and gives each piece its own gate.
 - **2-B.F — KSTE-encoded KV cache.** Gated by `SP_KSTE_KV=1`. Off by
   default. Phase 2 only requires that the encode path produces
   identical signatures across backends and that decode reproduces the
@@ -845,11 +875,18 @@ that land in different phases of the roadmap but share one substrate
 (golden-ratio rotation in phase space). Cross-reference summary so a
 session picking up any one of these knows where the others live:
 
-- **2-B.E.1 — RoPE Three-Step** (this phase, all backends). Discrete
-  3-gap lookup replaces continuous trig in relative attention. ~43×
-  rel-attn cache memory reduction. Gated by `SP_ROPE_THREE_STEP=1`.
-  Dimension-ordering aligns to the VHT2 + Möbius squarefree anchors
-  (no second sort).
+- **2-B.E.1.a — Lossless rel-attn cache restructuring** (φ-RoPE
+  conditional, all backends). Discrete 3-gap lookup replaces
+  continuous trig **iff** the model's RoPE frequencies are linear
+  multiples of φ. ~43× rel-attn cache memory reduction when the
+  precondition holds. Gated by `SP_ROPE_3STEP_CACHE=1`; no-op on
+  stock geometric-RoPE models. Dimension-ordering aligns to the
+  VHT2 + Möbius squarefree anchors (no second sort).
+- **2-B.E.1.b — RoPE frequency-schedule swap** (quality-trading,
+  research path). Replaces geometric $\theta_d$ with $\{d\varphi\}$.
+  Gated by `SP_ROPE_PHI=1`; PPL-drift sweep is the validation gate,
+  not argmax parity. Required precondition for 2-B.E.1.a to engage
+  on a model that was not pretrained with φ-RoPE.
 - **Phase 4 amendment — Fibonacci KV sub-sampling.** When KV cache
   exceeds memory bounds, retain tokens at positions $\lfloor k\varphi
   \cdot N \rfloor \mod N$ instead of FIFO/LRU. Bounded discrepancy on
@@ -878,38 +915,4 @@ infrastructure is green.
 
 ### 8.2 Phase 2-CPU (the canonical track)
 
-- **Build env.** `scripts/env/env-cpu-msvc.bat` (Windows) and
-  `scripts/env/env-cpu-gcc.sh` (Linux).
-- **Reference model.** Qwen3-0.6B Q8.
-- **Tests.**
-  - E_CPU_1 — GGUF loader round-trips header bytes.
-  - E_CPU_2 — Forward pass reproduces the stock-llama.cpp **distribution**
-    on identical token IDs (see §8.6.1 for why a per-logit tolerance is the
-    wrong gate). Three properties, default pure-f32 path:
-    (a) top-1 argmax agrees at every position; (b) ggml's top-1 lies inside
-    the engine's top-5 and vice versa at every position; (c) mean
-    `KL(ggml ‖ engine)` over positions `< 1e-5` nats (measured ~2.3e-6 on
-    Tier-1; override via `SP_KL_MAX`).
-  - E_CPU_3 — Frobenius/Q8 weight path. (a) **Lift faithfulness** (the
-    "identical logits to a reference fp32 matmul"): the inline-lift matmul
-    (`SP_ENGINE_FROB=1`, accumulate `q·x` then scale once) and the
-    dequant-then-f32-dot of the *same* Q8 weights (`SP_ENGINE_FROB=2`) agree
-    to float-associativity (max |Δlogit| < 1e-2; measured ~1e-4). (b) **Q8
-    quality** vs the engine's own pure-f32 path (NOT ggml, §8.6.1): mean
-    `KL(f32‖q8)` below a regression gate (default 5e-2; measured ~2e-2).
-    Per-row Frobenius Q8 is lossy by design (one scale per wide row, vs
-    ggml's per-32-block Q8_0), so it legitimately flips a few low-margin
-    argmaxes — argmax is reported, not gated. Real PPL quality is T_FRO_4.
-  - E_CPU_4 — AVX2 matmul (8-wide FMA, `dot_f32`) vs the scalar reference
-    (`SP_CPU_SCALAR=1`): argmax agreement at every position + max |Δlogit|
-    below the float-reassociation floor (default 1e-3; measured ~1.7e-4).
-    The original "1e-6 elementwise" is unachievable on *final* logits — FMA
-    and 8-wide accumulation reassociate the dot, and QK-RMSNorm amplifies
-    that over 28 layers exactly as in §8.6.1 (1e-6 would only hold per single
-    matmul output). AVX512 shares the gate when built.
-  - E_CPU_5 — NTT-attention (`SP_ENGINE_NTT_ATTN=1`, sieve OFF): each
-    attention score `<q,k>` is recovered EXACTLY as coefficient 0 of the
-    negacyclic poly-ring product (`sp_pr_inner`, head_dim=128=ring N) after
-    int32 quantization (scale 2^16) of the post-norm/post-RoPE head vectors;
-    softmax + V-sum stay f32. Gate: argmax agreement + mean end-to-end
-    `KL(softmax-baseline�
+- **Build env.** `scripts/env/env-cpu-msvc.bat` 

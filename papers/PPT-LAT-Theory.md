@@ -417,7 +417,7 @@ We now state the load-bearing theorems with proof sketches and validation status
 **Corollaries.**
 
 1. *Stern-Brocot RoPE inherits Three-Gap.* The Stern-Brocot mediant construction enumerates the convergents of any irrational; when the seed is $\varphi$, the resulting positional frequencies are Three-Gap-optimal at every truncation depth. This formalises E9.1.
-2. *Three-step relative attention.* When the RoPE frequencies are Three-Gap-derived, the phase shifts $\Delta\cdot\theta_d$ for fixed relative offset $\Delta$ take only three distinct adjacent-difference values across dimensions $d$. A continuous trigonometric relative-position calculation collapses to a combinatorial lookup of three precomputed rotation matrices. See PPT-LAT-Systems §1.6.
+2. *Three-step relative attention (conditional).* **Precondition:** the RoPE frequencies $\{\theta_d\}$ are linear multiples of an irrational (specifically, $\theta_d = d\alpha + c$ for some irrational $\alpha$). Under that precondition, the phase shifts $\Delta\cdot\theta_d$ for fixed relative offset $\Delta$ take only three distinct adjacent-difference values across dimensions $d$, and a continuous trigonometric relative-position calculation collapses to a combinatorial lookup of three precomputed rotation matrices. **The standard pretrained-model RoPE schedule $\theta_d = \mathrm{base}^{-2d/D}$ is geometric, not linear, and does not satisfy the precondition.** Engineering implication: the cache collapse only applies to models that ship (or have been fine-tuned) with a φ-RoPE schedule; on stock models it is a no-op. See PPT-LAT-Systems §1.6.a / §1.6.b for the implementation split.
 3. *Fibonacci hashing on the prime-factored lattice.* The Three-Gap guarantee on $\{k\varphi\}$ extends to the prime-factored lattice via composition: pick the prime-factor coordinate by semantic adjacency, then resolve within-slab by Fibonacci hashing. Both axes have provable distribution properties. See PPT-LAT-Systems §4.4.
 4. *Bounded sub-sampling of any temporal sequence.* Retaining elements at indices $\lfloor k\varphi \cdot N \rfloor \pmod N$ gives provably maximal coverage of an $N$-length context for any $k \le N$. See PPT-LAT-Systems §2.3.
 5. *Near-orthogonal HRR keys without random projection.* Golden-ratio-spaced phases in $R_q$ give near-orthogonal keys for ARM binding, with the orthogonality bound following from Three-Gap on the phase coordinate. See PPT-LAT-Systems §4.2.
@@ -627,8 +627,4 @@ The rule going forward: math is shared, byte formats are shared, algorithms at t
 
 **Validation.** Bit-identical at 6 significant figures on Gemma3-1B: PPL 13.11 native Frobenius-quantised path vs 13.12 fp32 reference. Delta of 0.08% is below the noise floor of any practical PPL measurement, well within the variance from a single different seed in the corpus tokenisation.
 
-### T5 — Deuring lift and CM Sato–Tate asymmetry
-
-**Statement.** The distribution of attention scores, viewed as traces of Frobenius across the CRT primes, follows the CM Sato–Tate law rather than the classical Sato–Tate law. Specifically, the distribution is concentrated on the bimodal split/inert pattern: $a_p = 0$ for inert $p$ and $a_p = \pi + \bar\pi$ for split $p$ where $\pi \bar\pi = p$.
-
-**Proof sketch.** Deuring's theorem says that CM elliptic curves have asymmetric Sato–Tate distributions: inert primes contribute $a_
+### T5 — Deuring lift and CM Sato�
