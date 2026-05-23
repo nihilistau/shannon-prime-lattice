@@ -577,6 +577,50 @@ None of these has been pinned down formally.
 
 ---
 
+## Section 11.5. Theorem T8 — MTP as Step-10 Activation Oracle Prefetch (added 2026-05-23)
+
+### Statement
+
+Multi-token prediction (MTP) in the lattice maps structurally to Step 10 of the 13-step PPT canonical table (Section 7) — the Activation Oracle Update (Cramér prime-gap prefetch). A K-step MTP draft is the explicit construction of the next K positions of the Poncelet orbit *in the negacyclic cyclotomic ring* $R_q = \mathbb{Z}_q[x]/(x^N+1)$, prior to any verification or commitment.
+
+Formally: let $S_t = (x_t, K_t, V_t, A_t)$ denote the full session state at position $t$ — token, key-cache slab, value-cache slab, ARM bank snapshot — and let $\Phi: S_t \to (S_{t+1}, x_{t+1})$ be the sequential single-token forward operator. Let $\Phi^{(K)}_{\text{batch}}$ denote the K-wide batched forward through the same architecture but with the auxiliary MTP heads producing $K$ draft tokens in a single pass.
+
+**T8 (MTP exactness in $R_q$).** For any session state $S_t$, the batched draft + verify operation
+$$\Phi^{(K)}_{\text{batch}}(S_t) = (S_{t+K}, x_{t+1}, \ldots, x_{t+K})$$
+is bit-identical to the K-fold sequential composition
+$$\Phi \circ \Phi \circ \cdots \circ \Phi \, (S_t)$$
+provided (a) the MTP draft heads produce token candidates whose verification under the main forward passes acceptance, and (b) all rejected drafts are followed by an exact ring-pointer rewind of the speculative Spinor blocks from the cache.
+
+### Proof sketch
+
+Three ingredients:
+
+1. **Batched matmul = K sequential matmuls in $R_q$.** The negacyclic ring operations $\mathbb{Z}_q[x]/(x^N+1)$ are bilinear over the base ring $\mathbb{Z}_q$. Stacking K query vectors into a $K \times d$ matrix and running one matrix-matrix multiplication against the weight matrix is mathematically identical to running K matrix-vector multiplications against the same weight matrix, in $\mathbb{Z}_q$. Theorem T4 (Frobenius lift exactness) carries the bit-identity through the inline-lift Q4 / Q8 paths. There is no floating-point reordering tolerance because the operations are integer in $\mathbb{Z}_q$.
+
+2. **Spinor block writes are positional and idempotent on commit.** The 63-byte Spinor block at cache position $t+k$ is a deterministic function of $(K_{t+k}, V_{t+k})$. Writing it at draft time and re-reading it at verify time produces the same bytes. Marking the block "committed" is a single-bit flag flip; the payload does not change.
+
+3. **Rewind = ring-pointer decrement, not memory release.** When the verifier rejects draft tokens at positions $t+j, t+j+1, \ldots, t+K-1$, the cache's *write index* (the position at which the next Spinor block lands) decrements from $t+K$ to $t+j$. The uncommitted Spinor blocks at $[t+j, t+K)$ are not freed; they are simply overwritten by the next draft. Because the algebra is exact in $\mathbb{Z}_q$, there is no floating-point "residual" left in the cache — the bytes at $[t+j, t+K)$ in the rewound state are *meaningless*, not subtly wrong, and the next write erases them deterministically.
+
+The composition of (1) + (2) + (3) establishes $\Phi^{(K)}_{\text{batch}} \equiv \Phi^{\circ K}$ on the accepted prefix.
+
+### Corollary T8.1 — No ghost contamination after rollback
+
+Unlike a continuous-float MTP implementation, where a rejected speculative pass may leave numerical residue in the KV cache (un-normalized activations, partially-accumulated softmax denominators, FMA reassociation artifacts), the lattice's $\mathbb{Z}_q$ arithmetic guarantees that *the state at position $t+j$ after rewind from $t+K$ is byte-identical to the state at position $t+j$ never having visited $t+K$ at all*. The rejection algebra is clean.
+
+This is the structural property that makes `sp_session_rewind(sess, n_rejected)` from the L1 ABI (Appendix A of PPT-LAT-Systems) implementable as an O(1) pointer decrement rather than as a full cache scrub.
+
+### Corollary T8.2 — VRAM scaling of the speculative state
+
+Continuous-float MTP implementations (DeepSeek V3/V4, Gemma 4, llama.cpp's beta MTP merge) carry the full $K$-step draft KV in float16 or bfloat16. At Gemma3-1B scale with $K=4$ draft tokens at $n_\text{ctx} = 4096$, this is ~270 MB × 4 = ~1 GB of speculative KV beyond the committed cache.
+
+The lattice's KV is already compressed ~130× by VHT2 + Möbius reordering + Spinor packing (Theorem T2 + Section 3 + E_CPU_6's 63-byte Spinor signatures). The same compression applies to speculative blocks. A 4-token draft adds ~8 MB of speculative KV on the same model — two orders of magnitude smaller than the continuous-float baseline. This is the "we don't pay the MTP VRAM tax" claim, and it is a direct consequence of the cache substrate, not a separate optimization.
+
+### Practical realization
+
+T8 is *theoretical*. Its realization in code is queued as **Phase 4-MTP** in the Roadmap (Section 18, deferred behind `lat-phase-3-closed`). The L1 ABI surface required to implement it (`sp_session_clone`, `sp_session_rewind`, atomic cancel flag) is *already frozen* at `lat-phase2-contract-frozen` — the contract anticipated this without naming the use case. T8 is the named use case.
+
+---
+
 ## Section 12. Anti-Contamination — What This Project Rebuilds from Scratch
 
 This document was drafted under a binding anti-contamination rule: no source files from `shannon-prime/` or `shannon-prime-engine/` were read. The math papers under `papers/PPT-ARM/` were available as *conceptual* reference only and were not cited as primary sources. Every formula, every byte layout, every algorithm sketch was restated fresh from first principles.

@@ -93,6 +93,7 @@ environment-variable gates until they are individually proven.
 | 2-L1 | L1 ABI implementation in math-core | RELOCATE → VALIDATE → HANDLE → SESSION | Each sub-phase has its own gate; umbrella `lat-phase-2-l1-closed` | RELOCATE done; VALIDATE next |
 | 3 | Model-family expansion | All four backends host all seven model families | M_*×B_* matrix green | 8–12 weeks |
 | 4 | Inline cache compression validated | PPL drift and memory savings measured per backend × model | Drift ≤ 1% on calibrated families | 4 weeks |
+| 4-MTP | Multi-token prediction (speculative decoding) | Transactional Spinor blocks + draft/verify/rewind via frozen L1 ABI primitives | M_MTP_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4 | 3 weeks; blocked by Phase 3 close |
 | 5 | Lattice features (sieve, ARM, dominance) | Off-by-default ENV-gated overlays | Regression suite green when gates off | 6 weeks |
 | 6 | Two-node CRT-sharded inference demo | Dual-prime forward pass across two boxes | End-to-end demo run | 3 weeks |
 | 7 | DHT crawler skeleton | Kademlia-like routing, single-node first | Two-node lookup works | 3 weeks |
@@ -1989,6 +1990,115 @@ and the empirical `thermal_pause_us` for the S22U.
 - Halide JIT compilation on-device. v0 is AOT-only; the
   per-arch static archives ship in the engine library. Runtime
   JIT requires Halide runtime on Android which we don't pay for.
+
+---
+
+## 12. Phase 4-MTP — Multi-token prediction (speculative decoding)
+
+DeepSeek V3/V4, Gemma 4, and llama.cpp's beta MTP merge all
+implement MTP on continuous-float architectures with the
+associated VRAM tax. The lattice maps MTP structurally to Step 10
+of the 13-step PPT canonical table (the Activation Oracle / Cramér
+prime-gap prefetch). Theorem T8 (PPT-LAT-Theory §11.5) formalises
+the exactness claim; PPT-LAT-Systems §4.6 specifies the runtime
+contract (`SP_MTP_DRAFTER=1` gate + transactional Spinor blocks).
+The L1 ABI primitives required to implement it (`sp_session_clone`,
+`sp_session_rewind`, atomic cancel flag) are already frozen at
+`lat-phase2-contract-frozen` — the contract anticipated this
+without naming the use case.
+
+This sub-phase realises T8 in code.
+
+**Dependencies.** `lat-phase-3-closed` — strictly blocked. The
+base architectures (Gemma 4, DeepSeek V3/V4, MTP-enabled Qwen 3
+variants) must be green across all four hardware backends before
+the MTP path is wired. Forcing MTP into Phase 2 or Phase 3
+contaminates the minimum-viable backend gates with a speedup
+overlay; gate it strictly.
+
+### 12.1 Deliverables
+
+- **E_MTP_1 — MTP head dispatch in math-core.** The relocated
+  reference forward gains an MTP path that, conditioned on
+  `sp_arch_info.mtp_variant`, dispatches to the model's auxiliary
+  draft heads after the main forward emits the committed
+  position's logits. K draft tokens land per call to a new math-
+  core entry point `sp_qwen3_draft_k` / `sp_gemma3_draft_k` etc.
+  The K-token draft pass is one batched matmul through the
+  cyclotomic ring per Theorem T8's batched-matmul-equals-sequential
+  argument.
+
+- **E_MTP_2 — Transactional Spinor block commit/rewind.** The KV
+  cache gains a one-bit-per-block "committed" flag. Draft writes
+  set the flag to 0; verifier acceptance flips it to 1. The cache
+  write index decrements on `sp_session_rewind`, discarding the
+  uncommitted blocks at the tail in O(1). Gate: 100-step
+  decode with K=4 draft tokens at varying acceptance rates
+  (planted prompts with 0%, 25%, 50%, 75%, 100% acceptance)
+  produces bit-identical output to the baseline single-token
+  path at every accepted-token position.
+
+- **E_MTP_3 — Speculative `sp_session_clone` correctness.** For
+  scheduler-driven multi-branch speculation, a session can be
+  cloned, drafted-from independently, and either accepted (clone
+  becomes primary) or dropped (clone destroyed, original
+  primary continues). Gate: a 10-fork speculative tree produces
+  bit-identical final output to the corresponding linear decode.
+
+- **E_MTP_4 — VRAM scaling.** Measure speculative-KV memory
+  overhead at K∈{2, 4, 8} on Gemma3-1B (post-MTP fine-tune) and
+  Qwen3-coder at n_ctx=4096. Target: ~8 MB / K=4 (per T8.2's
+  ~130× compression projection). The number reported is the
+  delta between `SP_MTP_DRAFTER=0` peak RSS and
+  `SP_MTP_DRAFTER=1` peak RSS, on the same prompt.
+
+- **E_MTP_5 — Bit-identity invariant when off.**
+  `SP_MTP_DRAFTER=0` produces output bit-identical to the
+  baseline pre-MTP decode path. Required because MTP is a
+  speedup overlay, not a quality trade-off; the gate exists to
+  catch any inadvertent state-mutation regression introduced
+  during the MTP wiring.
+
+- **E_MTP_6 / M_MTP_1 — Tokens-per-second speedup (the closure
+  gate).** On code-heavy prompts (Python / C / Rust corpora —
+  high token-locality benchmarks where draft acceptance is
+  typically 70%+), measure tokens/sec with `SP_MTP_DRAFTER=1` vs
+  `SP_MTP_DRAFTER=0` on the same backend / model / prompt
+  combination. Target: **> 1.5× speedup** at K=4, sustained over
+  a 500-token decode. Measured per backend (CPU / CU / VK / HX
+  — though HX may have a different K cap due to FastRPC
+  dispatch overhead per draft pass).
+
+### 12.2 Anti-contamination
+
+The continuous-float MTP implementations (upstream `llama.cpp`'s
+beta merge, DeepSeek's open-source V3/V4 reference, Gemma 4's
+HuggingFace release) inform the **concept** but not the **code**.
+The lattice's MTP path is constructed fresh against Theorem T8 and
+the frozen L1 ABI. The Spinor-block transactional commit/rewind
+mechanism has no upstream equivalent — it is specific to the
+lattice's compressed-cache substrate and Theorem T8.1's clean
+rejection algebra.
+
+### 12.3 Closure
+
+E_MTP_1..6 green on at least the CPU + CU backends (HX and VK
+optional for closure but expected). Tag `lat-phase-4-mtp-closed`
+on engine + system. Phase log entry names the per-backend
+speedup numbers, the K cap per backend, the acceptance rate
+distribution measured on the code-heavy corpus, and the VRAM
+scaling delta.
+
+### 12.4 Non-goals for Phase 4-MTP v0
+
+- Self-speculative MTP (the model drafts from its own earlier
+  layers). v0 requires explicit MTP head weights; self-drafting
+  is a follow-on optimisation.
+- Multi-target speculation (one draft, multiple model verifiers).
+  v0 is single-model, draft-verify-commit.
+- Adaptive K (varying the draft length per prompt). v0 takes K
+  as a session-config knob (`sp_session_config.mtp_k`); adaptive
+  selection is a follow-on.
 
 
 ## Phase log
