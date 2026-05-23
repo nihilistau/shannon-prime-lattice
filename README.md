@@ -12,6 +12,8 @@ This repo contains:
 Math core lives in [shannon-prime-system](../shannon-prime-system).
 Inference engine lives in [shannon-prime-system-engine](../shannon-prime-system-engine).
 
+Discord: https://discord.gg/rre9XZmvV
+
 ## Status
 
 **Phase 0 — bootstrap.** Papers and prompt landed; clean rebuild of math core and engine starts at Phase 1. See `papers/PPT-LAT-Roadmap.md`.
