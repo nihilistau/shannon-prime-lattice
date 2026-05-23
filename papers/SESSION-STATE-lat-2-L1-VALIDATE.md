@@ -210,8 +210,17 @@ path within the 1e-5 floor. The integration also surfaced and fixed-at-root a la
 bug (the test-exe target-name collision; now gated on `SP_SYSTEM_BUILD_TESTS`) — the kind of latent
 issue VALIDATE exists to catch.
 
-**CU / VK / HX — PENDING.** Each builds its own device-backend overlay (consuming the same relocated
-infrastructure) and re-runs its existing regression, with a results entry added here. The `model.c`
+**CU — CLOSED (2026-05-24).** Build green (CUDA backend consumes the cutover; math-core nvcc/C++-safe);
+regression 31/33, M_QWEN3_CUDA full f32/Q8/Q4 green, CUDA_SMOKE green. Load-bearing gate: per-row Q4
+mixed-precision cross-backend identity (cuda-vs-cpu) on the production arena — KL(cpu‖cuda) ~1e-11 —
+proving the relocated math-core ≡ engine-local copies. M_GEMMA3_CUDA scoped to that Q4 path (VRAM
+hygiene). T_FRO_4_CU gate (a) f32-vs-oracle deferred → §8.7.5 Phase 2-L1.FP16 (f32 working precision
+retiring for fp16; reproducing it isn't load-bearing); gate (b) Q4 cross-backend identity = the close.
+Engine 3fe16a8.
+
+**VK / HX — PENDING.** Each builds its own device-backend overlay (consuming the same relocated
+infrastructure) and re-runs its existing regression, with a results entry added here. Disposition:
+VK runs the identical Q4 cross-backend identity gate; HX is Q8-only anchored already (2-HX). The `model.c`
 device-release `#ifdef` hooks — dropped with the deleted engine `model.c` — are re-homed into the
 engine's backend teardown as those legs build (CPU-inert, so it did not block the CPU leg). Device env
 scripts are fixed-at-root if a clean checkout exposes breakage; the HX leg is live (S22U on USB). The
