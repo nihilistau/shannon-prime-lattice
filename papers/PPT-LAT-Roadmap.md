@@ -85,10 +85,12 @@ environment-variable gates until they are individually proven.
 |-------|-------|------------------|-----------------------------------|---------------------|
 | 0 | Bootstrap | Repos, papers, env scripts, workspace | DONE | DONE |
 | 1 | Math core foundations | O_K, CRT-NTT, poly-ring, VHT2, Frobenius, KSTE built and tested in isolation | All T_* unit tests green on Win+Linux | 3–4 weeks |
-| 2-CPU | Engine, CPU backend | Reference forward pass + compressed weights + NTT attention on x86 | E_CPU_1..E_CPU_6 green | 4–6 weeks |
-| 2-CU | Engine, CUDA backend | Same scope as 2-CPU on NVIDIA GPU | E_CU_1..E_CU_6 green | 4–6 weeks |
-| 2-VK | Engine, Vulkan backend | Same scope as 2-CPU on cross-platform GPU | E_VK_1..E_VK_6 green | 6–8 weeks |
-| 2-HX | Engine, Hexagon backend | Same scope as 2-CPU on Snapdragon HTP V69 | E_HX_1..E_HX_6 green | 8–10 weeks |
+| 2-CPU | Engine, CPU backend | Reference forward pass + compressed weights + NTT attention on x86 | E_CPU_1..E_CPU_6 green | **CLOSED 2026-05-22** |
+| 2-CU | Engine, CUDA backend | Same scope as 2-CPU on NVIDIA GPU | E_CU_1..E_CU_6 green | **CLOSED 2026-05-22** |
+| 2-VK | Engine, Vulkan backend | Same scope as 2-CPU on cross-platform GPU | E_VK_1..E_VK_6 green | **CLOSED 2026-05-23** |
+| 2-HX | Engine, Hexagon backend | Same scope as 2-CPU on Snapdragon HTP V69 | E_HX_1..E_HX_6 green | **ESSENTIALLY CLOSED 2026-05-23 (formal tag pending E_HX_5/E_HX_6)** |
+| 2-FMT | Engine, .sp-model on-disk format | Loader + transcoder + round-trip gate | E_FMT_1..E_FMT_4 green | **CLOSED 2026-05-23** |
+| 2-L1 | L1 ABI implementation in math-core | RELOCATE → VALIDATE → HANDLE → SESSION | Each sub-phase has its own gate; umbrella `lat-phase-2-l1-closed` | RELOCATE done; VALIDATE next |
 | 3 | Model-family expansion | All four backends host all seven model families | M_*×B_* matrix green | 8–12 weeks |
 | 4 | Inline cache compression validated | PPL drift and memory savings measured per backend × model | Drift ≤ 1% on calibrated families | 4 weeks |
 | 5 | Lattice features (sieve, ARM, dominance) | Off-by-default ENV-gated overlays | Regression suite green when gates off | 6 weeks |
@@ -926,6 +928,15 @@ infrastructure is green.
 
 ### 8.2 Phase 2-CPU (the canonical track)
 
+**STATUS: CLOSED 2026-05-22.** All six E_CPU gates + T_FRO_4 split-gate green.
+Engine commits through `3431cf8` (SP2 `41c5e19` SentencePiece encode/decode, SP3
+`3431cf8` `sp_perplexity` + `test_ppl`). T_FRO_4: engine-f32 vs f16 oracle
+`−0.0146%` (gate ≤ 0.05%); per-row Q8 arena drift `−0.74%` (gate ≤ 2%). Full CPU
+regression 20/20 green incl. T_FRO_4. Tag `lat-phase-2-cpu-fro4-closed`,
+`lat-phase-2-closed`. Offload: `SESSION-CLOSED-lat-2-CPU.md`.
+
+Original spec, retained for historical context:
+
 - **Build env.** `scripts/env/env-cpu-msvc.bat` (Windows) and
   `scripts/env/env-cpu-gcc.sh` (Linux).
 - **Reference model.** Qwen3-0.6B Q8.
@@ -1126,6 +1137,16 @@ of the arena — CLOSED 2026-05-22 (SP3 commit `3431cf8`); see the §8.2 closure
 
 ### 8.3 Phase 2-CU (CUDA backend)
 
+**STATUS: CLOSED 2026-05-22.** Full CUDA gate set GREEN (6/6): CUDA_SMOKE,
+M_GEMMA3_CUDA (f32+Q8+Q4), M_QWEN3_CUDA (E_CU_1..4), E_CU_5, E_CU_6, T_FRO_4_CU.
+Engine HEAD `cc1aafd`. E_CU_2 KL 2.33e-6 (== CPU 2.347e-6). E_CU_5 NTT-attention
+via int64 exact dot (== CPU `sp_pr_inner` on 192/192 random vectors). E_CU_6 KSTE
+host-encode three-part gate (cross-backend byte-identity structurally unachievable
+per `reference-kste-cross-backend-gate`). Tag `lat-phase-2-cu-closed`,
+`lat-phase-2-cu-fro4-closed`. Offload: `SESSION-STATE-lat-2-CU.md`.
+
+Original spec, retained for historical context:
+
 - **Build env.** `scripts/env/env-cuda.bat`. **Pin update (2026-05-22):** the dev
   host now has **CUDA 13.2** on PATH and the GPU is an **RTX 2060 (sm_75)** — so
   the 2-CU bring-up targets **CUDA 13.2 + sm_75** (still a §8.3 supported arch),
@@ -1142,6 +1163,16 @@ of the arena — CLOSED 2026-05-22 (SP3 commit `3431cf8`); see the §8.2 closure
 
 ### 8.4 Phase 2-VK (Vulkan backend)
 
+**STATUS: CLOSED 2026-05-23.** T_FRO_4_VK exit gate GREEN. Mirrors closed 2-CU
+on Vulkan compute via SPIR-V; SPIR-V shaders glslc-compiled at build time, not
+runtime. Engine HEAD `0c243eca` / merge `99ccb04d` (`lat-2-VK` branch).
+Gemma3-1B n_ctx=168 via SP_BACKEND=vulkan: (a) vulkan-f32 PPL **32.86458** vs
+oracle f16 PPL 32.86939 → `−0.0146%` (gate 0.05%) PASS; (b) per-row Q8 arena PPL
+32.62294, drift `−0.7353%` (gate 2%) PASS. Tag `lat-phase-2-vk-closed`,
+`lat-phase-2-vk-fro4-closed`. Offload: `SESSION-STATE-lat-2-VK.md`.
+
+Original spec, retained for historical context:
+
 - **Build env.** `scripts/env/env-vulkan.bat`. Vulkan SDK 1.3.x. glslc
   for shader compilation.
 - **Reference model.** Same Qwen3-0.6B Q8.
@@ -1154,6 +1185,21 @@ of the arena — CLOSED 2026-05-22 (SP3 commit `3431cf8`); see the §8.2 closure
   them.
 
 ### 8.5 Phase 2-HX (Hexagon backend)
+
+**STATUS: ESSENTIALLY CLOSED 2026-05-23.** HVX-accelerated Gemma3 forward on V69
+cDSP matches CPU Q8 at KL 8.9e-11 (HX.3b green). Engine commits through `654c6a68`
+(`lat-2-HX` branch): HX.0 env+toolchain hard-gate, HX.1 aarch64-android cross-
+compile + on-phone CPU PPL `−0.0144%`, HX.2-prep 574 MB rpcmem capacity probe,
+HX.2 FastRPC IDL round-trip `ping(41)→42` on device, HX.3a per-tensor rpcmem upload
+byte-exact (CRC match) + cDSP scalar f32 matmul bit-exact + scalar gemma3 forward
+KL 9.19e-11, HX.3b HVX matmul + HVX gemma3 forward worst_rel 7.9e-5 KL 8.9e-11.
+T_FRO_4_HX met transitively: on-phone hexagon-Q8 PPL **32.62290** vs f16 oracle
+32.86939 → `−0.75%` (gate 2%) PASS. Remaining for the formal
+`lat-phase-2-hx-closed` tag: E_HX_5 (host int64-dot identity test) + E_HX_6 (host
+`sp_kste_encode` 3-part gate). Bounded continuation. Offload:
+`SESSION-STATE-lat-2-HX.md`.
+
+Original spec, retained for historical context:
 
 - **Build env.** `scripts/env/env-hexagon.bat`. Hexagon SDK 5.x on the
   Knack Windows host. Git sh.exe prepended to PATH. The
@@ -1170,14 +1216,235 @@ of the arena — CLOSED 2026-05-22 (SP3 commit `3431cf8`); see the §8.2 closure
   freethedsp shim when `SP_FREETHEDSP=1`; it is opt-in. QNN HTP V69 is
   the target accelerator for matmul on this platform.
 
-### 8.6 Phase 2 exit
+### 8.6 Phase 2-FMT — Format implementation (parallel sub-phase)
+
+**STATUS: CLOSED 2026-05-23.** All four E_FMT gates green. `sp_model_load`
+(mmap zero-copy) + `sp-transcode` (GGUF → .sp-model) + `.sp-tokenizer`
+extraction + §12.3 round-trip gate all shipped on the `lat-2-FMT` branch
+(engine commits `1cfb85a2`..`3e553fcc`). Gemma3-1B round-trip:
+`bit_exact=YES, worst_abs=0, L2-drift=0.000000%, argmax 8/8`. Qwen3-0.6B
+cross-arch: identical numbers. Tag `lat-phase-2-fmt-closed`.
+
+Original spec, retained for historical context:
+
+The `.sp-model` byte layout was frozen as Appendix B of PPT-LAT-Systems
+at tag `lat-phase2-contract-frozen` (commit `e4f78ae`). The format is
+specified but **not implemented** in the engine — `sp_model_load`,
+`sp-transcode`, and the §12.3 round-trip gate are all green-field work.
+
+Phase 2-FMT is the sub-phase that implements them. It is structurally
+**parallel to** the per-backend tracks (2-CPU, 2-CU, 2-VK, 2-HX) rather
+than serially blocking them, because:
+
+- `.sp-model` and `sp-transcode` are pure CPU code that runs *before*
+  any backend dispatch. They have no dependency on which math
+  backend(s) are wired up.
+- T_FRO_4 in each per-backend track runs against the GGUF + in-RAM
+  Frobenius arena path, not against `.sp-model`. Phase 2-CPU has
+  already closed T_FRO_4 (`3431cf8`) without `.sp-model` existing.
+- The §12.3 round-trip gate (GGUF → `.sp-model` → bit-identical logits)
+  is the format's own validation gate, separate from any backend's
+  T_FRO_4.
+
+Therefore 2-FMT can run concurrently with 2-CU, 2-VK, 2-HX, sequenced
+only by reviewer bandwidth and not by code dependencies. Recommended
+landing order: **2-FMT closes before 2-VK and 2-HX start**, so those
+two have a stable on-disk path to test against. 2-CU is already in
+flight and need not wait.
+
+### 10.1 Deliverables
+
+- **E_FMT_1 — `sp_model_load` reference implementation.** Pure mmap +
+  header parse + tensor table pointer setup. Zero allocation
+  proportional to tensor data size. Implements the verification path
+  of Appendix B §3 (magic / version / header CRC-32 / tokenizer_hash
+  → SHA-256 vs paired `.sp-tokenizer`). Lives in
+  `shannon-prime-system-engine/src/io/sp_model_load.c`. Maximum 250
+  LOC; if it grows past that, something is wrong.
+
+- **E_FMT_2 — `sp-transcode` CLI binary (GGUF → `.sp-model`).**
+  Separate binary at `shannon-prime-system-engine/tools/sp_transcode/`.
+  Reads upstream GGUF, dequantizes any quantized tensors to f32, then
+  re-quantizes into the PPT-native dtype space (`OK_Q8` + sibling
+  `FROBENIUS_SCALE_FP32`, `OK_Q4`, or `SPINOR63` per the engine's
+  arch-specific dispatch). Owns the per-arch `sp_arch_info`
+  population (arch_id, RoPE base, GQA groups, SWA window, FFN
+  variant, norm variant, tied_embeddings). Writes the 512-byte header
+  + sorted-by-name-hash tensor table + 65536-aligned data region.
+  Enforces the spatial-locality constraint of Appendix B §9
+  (sibling tensors physically adjacent — parent first, then
+  `.scale`).
+
+- **E_FMT_3 — `.sp-tokenizer` extraction.** Pulls the SentencePiece /
+  BPE blob out of GGUF metadata, writes the 128-byte `.sp-tokenizer`
+  header + blob per Appendix B §7. The 4-byte CRC-32 covers bytes
+  [0, 52). Two-file output: `model.sp-model` + `model.sp-tokenizer`,
+  the latter reusable across fine-tunes of the same base.
+
+- **E_FMT_4 — §12.3 round-trip gate.** The format's own T_FRO_4-class
+  validation: load Gemma3-1B via the GGUF path, then via the
+  `.sp-model` path (post-`sp-transcode`), run `sp_prefill_chunk` on
+  the same corpus, assert bit-identical logits in deterministic mode
+  (or ≤ 0.05% drift in production mode, mirroring T_FRO_4 gate (a)).
+  Lives in `tests/test_sp_model_roundtrip.c`. **This is the closure
+  gate for 2-FMT.**
+
+### 10.2 Build env
+
+Same `scripts/env/env-cpu-msvc.bat` as Phase 2-CPU — 2-FMT is pure CPU
+code. No CUDA / Vulkan / Hexagon toolchains required. The transcoder
+binary builds against the same VS2019 BuildTools + Ninja pin as the
+engine library.
+
+### 10.3 Exit
+
+`sp-transcode` produces a valid `.sp-model` + `.sp-tokenizer` pair for
+each in-scope reference model (Gemma3-1B is the bedrock target;
+Qwen3-0.6B as cross-arch validation). E_FMT_1..4 are all green. Tag
+`lat-phase-2-fmt-closed` on `shannon-prime-system-engine` and on
+`shannon-prime-system` if any math-core changes were required.
+
+After this closes, `.sp-model` is the *recommended* (not *required*)
+load path for the engine in 2-VK and 2-HX bring-ups. 2-CU may
+continue on the GGUF path until convenient to switch — switching is
+not a 2-CU closure dependency.
+
+### 10.4 Sequencing constraints
+
+- **2-FMT depends on `lat-phase2-contract-frozen` (`e4f78ae`).** ✓ Met.
+- **2-FMT does NOT depend on 2-CU closure.** Can start immediately.
+- **2-VK and 2-HX should not start before 2-FMT closes.** Soft
+  recommendation, not a hard block — those agents can pick either
+  the GGUF or `.sp-model` load path. The recommendation exists
+  because a stable on-disk format means the backend agent isn't
+  fighting two moving targets simultaneously.
+- **`.sp-model` v1 (any breaking change) requires re-tagging
+  `lat-phase2-contract-frozen` → `lat-phase2-contract-v2` and updating
+  Appendix B.** v0 should not need to evolve during Phase 2; if it
+  does, that's evidence the contract was missing a load-bearing
+  field, and the agent surfacing the gap should call it out
+  explicitly before patching the spec.
+
+### 10.5 Non-goals for 2-FMT v0
+
+- Multi-file sharding (`.sp-model.NNNN-of-MMMM`). Deferred to v1; see
+  Appendix B §11 open questions.
+- GPU-direct storage (NVIDIA GDS) ingestion. Phase-2+ optimization.
+- Pre-baked ARM bank seeds in the file. v0 sessions initialize ARM
+  empty at `sp_session_create`.
+- Tokenizer-blob compression. v0 ships the SentencePiece / BPE blob
+  uncompressed.
+
+
+---
+
+
+---
+
+### 8.7 Phase 2-L1 — L1 ABI implementation (math-core consolidation + session surface)
+
+The frozen L1 ABI (Systems Appendix A, tag `lat-phase2-contract-frozen`)
+specifies the C/Rust boundary as `sp_model` + `sp_session` opaque handles
+with `sp_prefill_chunk` / `sp_decode_step` / `sp_session_clone` /
+`sp_session_rewind` / atomic cancel flag. Making that contract real in
+code is a four-sub-phase journey — the algorithmic core was relocated
+into the math core; the session-surface construction comes next.
+
+This sub-phase runs **after** Phase 2-CPU/CU/VK/HX closed because the
+relocation validates against their existing regression suites; it runs
+**before** Phase 3 (model-family expansion) because Phase 3 calls
+`sp_session_*` on a `sp_model *` that must exist.
+
+#### 8.7.1 Phase 2-L1.RELOCATE — relocate reference inference path into math-core (CLOSED)
+
+**STATUS: CLOSED 2026-05-23.** Twelve gated increments on the `lat-l1`
+branch of `shannon-prime-system` relocated the full reference inference
+path into the math core: GGUF parser + weight-dtype dequant + .sp-model
+loader half (`core/io_format`) + .sp-model hash primitives + model-
+representation header + packed-weight arena (T_ARENA 14/14) + GGUF
+load/free/release lifecycle (T_MODEL) + model-coupled weight-lift
+kernels (T_FWD_DISPATCH, bit-exact parity) + Qwen3 forward orchestration
+(T_FORWARD, end-to-end smoke) + Gemma3 reference forward (T_FORWARD,
+end-to-end smoke) + Qwen3 KV-decode + greedy generate (T_FORWARD 2/2).
+
+System HEAD `222e252c`. Engine still has its (now-redundant) copies of
+the relocated files; the engine's regression suite hasn't yet been
+re-run against the math-core sources — that is sub-phase 8.7.2's
+explicit gate.
+
+#### 8.7.2 Phase 2-L1.VALIDATE — engine integration bump (NEXT)
+
+Point each backend's CMake at the relocated math-core library, delete
+the engine's now-redundant copies of every file the lat-l1 relocation
+moved, run the existing regression: CPU 20/20 incl `T_FRO_4`, CU 6/6,
+VK gates, HX HX.0–HX.3b. Heavy cross-repo work but it is the ONLY
+validation that proves the twelve relocations are bit-exact against
+four already-closed backends — and the §8.8.1 distributional-gate
+discipline applies (argmax + top-5 + KL ≤ existing thresholds; no
+new per-logit tolerance can be required).
+
+**Gate.** All previously-green backend gates remain green when the
+backend consumes the relocated math-core sources rather than the
+engine-side copies. Bisect any regression to the specific relocation
+increment that introduced it.
+
+**Closure tag.** `lat-phase-2-l1-validate-closed` on engine + system.
+This is the prerequisite for sub-phases 8.7.3 and 8.7.4.
+
+#### 8.7.3 Phase 2-L1.HANDLE — `.sp-model` handle adapter into math-core
+
+Build the `.sp-model` handle half inside math-core: migrate the
+GGUF → `.sp-model` transcoder from engine-side (currently in
+`shannon-prime-system-engine`, where Phase 2-FMT closed it); build the
+`sp_model_to_qwen3` and `sp_model_to_gemma3` adapters that bridge the
+loader output to the relocated forward path; commit a small `.sp-model`
+fixture to math-core test data (Gemma3-1B Q8 or Qwen3-0.6B Q8 —
+whichever is smaller after transcode).
+
+**Gate.** Bit-identical logits via the GGUF-load path vs the
+`.sp-model`-load path on the same fixture (Systems Appendix B §12.3,
+the round-trip gate that's separate from `T_FRO_4`).
+
+**Closure tag.** `lat-phase-2-l1-handle-closed`.
+
+#### 8.7.4 Phase 2-L1.SESSION — `sp_session` ABI surface
+
+Construct the frozen session API in math-core: `sp_session_create` (on
+`const sp_model *m`) + `sp_session_destroy` + `sp_session_arch` +
+`sp_prefill_chunk` + `sp_decode_step` + `sp_session_clone` +
+`sp_session_rewind` + the atomic-bool cancel flag wiring per Systems
+Appendix A §5. The algorithmic core lives inside the relocated
+`qwen3_generate_kv` (and the corresponding Gemma3 equivalent); the
+session shape — persistent handle, chunk/step decomposition, clone/
+rewind/cancel semantics — is new construction.
+
+**Spec discipline.** The session ABI takes `const sp_model *m`. Do NOT
+build a temporary veneer wrapping the GGUF-loaded `qwen3_model`
+directly; that deviates from the frozen entry point. If sub-phase 8.7.3
+isn't closed yet, this sub-phase BLOCKS on it.
+
+**Gate (first parity).** `sp_prefill_chunk` returns last-position logits
+bit-exact to the reference forward's last-position logits in
+deterministic mode. The reference forward is the relocated
+`gemma3_forward` / `qwen3_forward` from sub-phase 8.7.1.
+
+**Gate (full).** `sp_decode_step` advances the session-owned KV by one
+token, producing logits whose argmax-trajectory over a 100-step decode
+matches the reference greedy `qwen3_generate_kv` / `gemma3_generate_kv`
+output exactly.
+
+**Closure tag.** `lat-phase-2-l1-session-closed` → triggers the
+umbrella `lat-phase-2-l1-closed` on engine + system.
+
+
+### 8.8 Phase 2 exit
 
 Phase 2 closes when at least one backend (CPU is the minimum) has all
 six E-tests green. Other backends close independently and are tagged
 `lat-phase-2-<backend>-closed`. The CPU backend close also produces
 `lat-phase-2-closed` since CPU is the canonical anchor.
 
-#### 8.6.1 Why E_CPU_2 is a distributional gate, not a per-logit tolerance
+#### 8.8.1 Why E_CPU_2 is a distributional gate, not a per-logit tolerance
 
 The original gate (forward pass "within tolerance" — read as 1e-4 abs /
 0.1% rel per logit) is **unachievable** for a correct scalar f32 forward
@@ -1228,7 +1495,7 @@ never against the oracle. See the **§8.2 T_FRO_4 closure clause** for the
 mechanism and the measured numbers — it is the phase-close PPL gate this
 exit index points at.
 
-### 8.7 Notes for the picking-up session (per backend)
+### 8.9 Notes for the picking-up session (per backend)
 
 **CPU.** Start from a blank `engine/cpu/forward.c`. Wire the GGUF
 loader first, get tensors materialised into row-major-by-token layout,
@@ -1391,6 +1658,177 @@ reference model (`M_GEMMA3_*`, T_FRO_4).
 
 ---
 
+## 10. Phase 3-HX-MODE-C — HTP-augmented Hexagon backend
+
+The Mode B baseline (Phase 2-HX) closes T_FRO_4 on HVX-only kernels.
+Mode C layers a QNN HTP dispatch on top: the heavy QK^T matmuls
+run on the V69 Hexagon Tensor Processor while the FFN stays on
+HVX. The two execute in parallel — HTP on layer N+1's QK^T while
+HVX is computing FFN of layer N.
+
+**Dependencies.** `lat-phase-2-hx-closed` (Mode B baseline). All
+six E_HX gates green, including T_FRO_4 split-gate.
+
+### 10.1 Deliverables
+
+- **E_HXC_1 — QNN HTP runtime initialization.** `libQnnHtp.so`
+  loaded at session create; QnnGraph created with the model's
+  attention head dimensions baked in; weights uploaded to the
+  HTP's local memory at `sp_model_load` time (not per-step).
+  Reference: existing 2-CU work on QNN HTP runtime graphs
+  (`project_phase25_runtime_graph_validated`) is the closest
+  precedent but cannot be copied per anti-contamination.
+
+- **E_HXC_2 — QK^T HTP dispatch in `sp_decode_step`.** The
+  attention kernel calls into the HTP for QK^T (and only QK^T —
+  softmax, mask, V-sum stay on HVX). HTP receives Q and K in
+  SVM ION buffers (already allocated at session create); writes
+  the score matrix back to ION; HVX picks up. Cost target: HTP
+  dispatch ≤ 100 µs per layer on Gemma3-1B.
+
+- **E_HXC_3 — HTP/HVX overlap correctness.** While HVX is doing
+  FFN of layer N, HTP is doing QK^T of layer N+1. Synchronization
+  via a FastRPC semaphore. Gate: 100-step decode produces
+  bit-identical logits between Mode B (no overlap) and Mode C
+  (with overlap) — proves the parallel execution is race-free.
+
+- **E_HXC_4 — T_FRO_4 split gate on Mode C.** Same gate as Mode B
+  with `SP_HX_MODE=C` engaged: (a) engine-hexagon-C-f32 vs
+  engine-cpu-f32 ≤ 0.05% PPL drift; (b) per-row Q8 drift ≤ 2%.
+
+### 10.2 Build env
+
+Existing `scripts/env/env-hexagon.bat` plus QNN SDK pin —
+documented in BUILD-ENV.md once 2-HX (Mode B) closes and the
+agent can write authoritatively about the QNN dependency.
+
+### 10.3 Anti-contamination
+
+The old cohort's QNN integration lives in
+`D:\F\shannon-prime-repos\shannon-prime-engine\src\qnn\` and the
+related `project_phase25_qnn_in_llama_cli` work was explicitly
+RETRACTED per memory. The Mode C agent will reimplement QNN
+dispatch fresh inside
+`shannon-prime-system-engine/src/backends/hexagon/qnn/`. Reference
+the prior work for what NOT to do (the runtime gate that blocked
+engagement); do not copy code.
+
+### 10.4 Exit
+
+E_HXC_1..4 green. Tag `lat-phase-3-hx-mode-c-closed` on engine +
+system. SESSION-STATE entry names dispatch latencies, overlap
+correctness numbers, and the Mode B vs Mode C wall-clock delta.
+
+---
+
+## 11. Phase 3-HX-MODE-D — ISP-augmented Hexagon backend
+
+The Mode C baseline (Phase 3-HX-MODE-C) overlaps HTP and HVX. Mode
+D adds a third compute resource: the Spectra 680 ISP runs the
+fused FFN at 18-bit fixed-point via Halide AOT-compiled kernels.
+ISP + HTP + HVX all run in parallel — ISP on FFN layer N, HTP on
+QK^T layer N+1, HVX on residual fixup + norms.
+
+**Dependencies.** `lat-phase-3-hx-mode-c-closed`. The Mode C
+parallel-dispatch correctness gate (E_HXC_3) is what makes the
+three-way overlap of Mode D tractable.
+
+### 11.1 Deliverables
+
+- **E_HXD_1 — Halide generator + AOT compilation.** Halide C++
+  generator emits per-arch `ffn_skeleton_<arch>.a` static archives
+  (one per arch_id: llama3, qwen3, gemma3, deepseek_v4). Each
+  archive carries its own activation polynomial — HardSwish-SwiGLU
+  for SwiGLU archs, piecewise polynomial GeGLU for Gemma3 (per
+  Systems Appendix C §C.3 / §C.4). Halide schedule uses
+  `compute_at(ffn_out, xi)` (NOT `compute_at(ffn_out, x)`) to
+  keep accumulation inside the vectorized inner loop.
+
+- **E_HXD_2 — IDL + FastRPC bridge.** `ffn_fusion.idl` declares
+  `run_ffn_skeleton` with `rout` (not `inout`) for the output
+  buffer — saves the copy-in of uninitialized state.
+  `rpcmem_alloc` sizes match IDL `*Len` parameters exactly (per
+  `feedback_fastrpc_exact_alloc`). Scales are pre-converted to
+  int32 Q-point at session create time and passed as `int32*`
+  (NOT `float*`) over the bus.
+
+- **E_HXD_3 — Per-arch activation parity.** For each arch:
+  E_HX_D_SWIGLU_KL ≤ 2e-3 vs f32 SwiGLU oracle (Llama 3.x,
+  Qwen 3, DeepSeek V4); E_HX_D_GEGLU_KL ≤ 2e-3 vs f32 GELU-tanh
+  oracle (Gemma 3). Gate fails if HardSwish formula is missing
+  the `· gate / 6` term (the documented early-implementation bug
+  per Appendix C §C.3).
+
+- **E_HXD_4 — Three-way parallel correctness.** A 100-step decode
+  with ISP + HTP + HVX all engaged produces bit-identical logits
+  to Mode C (HTP + HVX only). Proves the ISP dispatch doesn't
+  race against the other two.
+
+- **E_HXD_5 — Thermal-pause auto-tune.** Default
+  `thermal_pause_us=1500` on the S22U. The agent profiles to
+  confirm the value rides the firmware's throttle limit without
+  triggering it during a 5-minute sustained decode. Records the
+  empirical value in BUILD-ENV.md.
+
+- **E_HXD_6 — T_FRO_4 split gate on Mode D.** With `SP_HX_MODE=D`
+  engaged: (a) engine-hexagon-D-f32 vs engine-cpu-f32 ≤ 0.05%
+  PPL drift; (b) per-row Q8 drift ≤ 2%. May tighten the gate to
+  account for the 18-bit fixed-point activation precision floor;
+  document as a §8.6.1-style distributional gate with explicit
+  KL bound (target: ≤ 5e-5 vs Mode C; the 18-bit precision floor
+  is approximately one decimal digit looser than HVX's int32).
+
+- **E_HXD_7 — Two new sp_status codes wired through.**
+  `SP_EHX_ISP_DISPATCH` and `SP_EHX_THERMAL_TRIP` per Appendix C
+  §C.8. L2's error-handling for `SP_EHX_THERMAL_TRIP` is a soft
+  retry with bumped `thermal_pause_us`; that retry logic lives in
+  the Rust engine driver (L2), not in L1.
+
+### 11.2 Build env
+
+- Halide ≥ 17.0 on the Windows host (host-side AOT compilation).
+- Hexagon SDK 5.4.0.x with `hexagon-clang` for DSP-side compile.
+- Git `sh.exe` in PATH (per `reference_hexagon_build_recipe`).
+- `qaic.exe` from `WinNT/` subdirectory (per same memory).
+- Reference design (Halide generator, IDL, CMake glue,
+  `deploy-s22u.bat`): `papers/MODE_D_DESIGN_DRAFT.md`.
+
+### 11.3 Anti-contamination
+
+The old cohort's Halide work lives at
+`D:\F\shannon-prime-repos\shannon-prime-llama\backends\halide\`
+and the related `reference_halide_windows_build` memory. The
+freethedsp shim lives at the same path under `backends/freethedsp/`.
+**Semantic** patterns carry forward (Halide AOT to static archive,
+hexagon-clang for DSP side, LD_PRELOAD for unsigned PD,
+ADSP_LIBRARY_PATH trailing semicolon, 1500µs thermal pause).
+**Code** must be reimplemented fresh inside
+`shannon-prime-system-engine/src/backends/hexagon/halide/` and
+`shannon-prime-system-engine/src/backends/hexagon/freethedsp/`.
+
+### 11.4 Exit
+
+E_HXD_1..7 green on the S22U with all per-arch activation parity
+gates passing. Tag `lat-phase-3-hx-mode-d-closed`. SESSION-STATE
+entry includes: per-arch KL drift numbers, ISP dispatch latency,
+three-way parallel correctness, sustained-decode thermal profile,
+and the empirical `thermal_pause_us` for the S22U.
+
+### 11.5 Non-goals for Mode D v0
+
+- On-chip Snapdragon X Elite / 8 Gen 2 / 8 Gen 3 variants. v0
+  targets S22U (Snapdragon 8 Gen 1) only because that's the
+  validated hardware. Newer generations land as Phase 4+.
+- ISP for non-FFN ops. v0 routes only the fused FFN through the
+  ISP. QK^T and attention stay on HTP / HVX even though the ISP
+  could in principle do them too — adding ops to the ISP path
+  multiplies the schedule-tuning surface and is deferred until
+  the FFN path proves stable.
+- Halide JIT compilation on-device. v0 is AOT-only; the
+  per-arch static archives ship in the engine library. Runtime
+  JIT requires Halide runtime on Android which we don't pay for.
+
+
 ## Phase log
 
 One paragraph per closed phase (§3.3). Most recent last.
@@ -1447,6 +1885,99 @@ them. Other backends (2-CU/VK/HX, §8.3–8.5) remain open. Tag:
 
 ---
 
+
+
+### 2026-05-23 — Phase 2-FMT closed (`lat-phase-2-fmt-closed`)
+
+`sp_model_load` (mmap zero-copy header parse, ≤250 LOC) + `sp-transcode`
+CLI (GGUF → .sp-model with per-row Frobenius Q8 + Spinor-format-lock
+adherence + sibling-tensor spatial-locality) + `.sp-tokenizer` extraction
+(128-byte header + raw SentencePiece/BPE blob, SHA-256 paired against
+model header) + Appendix B §12.3 round-trip gate all green. Engine
+commits `1cfb85a2`..`3e553fcc` on the `lat-2-FMT` branch.
+
+E_FMT_4 on Gemma3-1B (transcode → load → gemma3_forward bit-identical vs
+GGUF arena-q8): `bit_exact=YES, worst_abs=0, L2-drift=0.000000%,
+argmax 8/8 PASS`. E_FMT_4_QWEN3 cross-arch on Qwen3-0.6B: identical
+numbers. Format is round-trip-safe on both reference architectures.
+
+Offload: `SESSION-STATE-lat-2-FMT.md`.
+
+### 2026-05-23 — Phase 2-VK closed (`lat-phase-2-vk-closed`,
+`lat-phase-2-vk-fro4-closed`)
+
+T_FRO_4_VK split gate GREEN: (a) vulkan-f32 PPL 32.86458 vs oracle f16
+PPL 32.86939, rel-diff `−0.0146%` (gate 0.05%) PASS; (b) per-row Q8
+arena PPL 32.62294, drift `−0.7353%` (gate 2%) PASS. Mirrors 2-CU
+exactly on Vulkan compute. SPIR-V shaders glslc-compiled at build time.
+f64 accumulator in matmul keeps Vulkan logits at the f32 floor of CPU
+(KL ~1e-11). KSTE host-encode 3-part gate green per
+`reference-kste-cross-backend-gate`.
+
+Engine HEAD `0c243eca` / merge `99ccb04d` on the `lat-2-VK` branch.
+Offload: `SESSION-STATE-lat-2-VK.md`.
+
+### 2026-05-23 — Phase 2-HX essentially closed (HVX-accelerated Gemma3
+forward on V69 GREEN; formal close tag pending E_HX_5/E_HX_6)
+
+HX.0 env+toolchain hard-gate → HX.1 aarch64-android cross-compile +
+on-phone CPU PPL `−0.0144%` baseline → HX.2-prep 574 MB rpcmem capacity
+probe (single-buffer Q8 arena feasible) → HX.2 FastRPC IDL round-trip
+on device (`sp_hex_ping(41)→42(rc=0x0)`, unsigned PD domain 3) → HX.3a
+step 1 per-tensor rpcmem upload byte-exact (host CRC-32 == DSP CRC-32) →
+HX.3a step 2 cDSP scalar f32 matmul bit-exact to host
+(`worst |dsp-host| = 0`) → HX.3a forward green (scalar f32 gemma3 layers
+on cDSP match CPU Q8 at KL 9.19e-11) → HX.3b HVX matmul on V69 + HVX
+gemma3 forward (`worst_rel 7.9e-5, KL mean 8.9e-11`).
+
+T_FRO_4_HX met transitively: on-phone hexagon-Q8 PPL 32.62290 vs f16
+oracle 32.86939 → `−0.75%` (gate 2%) PASS — exactly the cross-backend
+Q8 PPL. The hex forward is Q8-arena-only by design (no hex-f32 path);
+gate (a) inherits the HX.1 on-phone CPU-f32 baseline.
+
+Engine commits through `654c6a68` on the `lat-2-HX` branch. Remaining
+for the formal `lat-phase-2-hx-closed` tag: E_HX_5 (host int64-dot
+identity test — already proven on CPU) + E_HX_6 (host `sp_kste_encode`
+3-part gate — needs a D→H copy of cDSP post-norm K). Bounded
+continuation.
+
+Offload: `SESSION-STATE-lat-2-HX.md`.
+
+### 2026-05-23 — Phase 2-L1.RELOCATE closed (twelve increments, math-core consolidation)
+
+The entire reference inference path migrated from engine-side into
+the math core via twelve gated commits on `shannon-prime-system`'s
+`lat-l1` branch:
+
+1. ABI contract surface + reference forward kernels (`8c228e86`)
+2. `.sp-model` hash primitives (`c7958459`)
+3. `.sp-model` format/loader layer — `core/io_format` (`cced325e`)
+4. GGUF weight-dtype dequant (`bd601633`)
+5. GGUF v3 model parser (`3fdf874b`)
+6. Model-representation header (`5cafbb16`)
+7. Packed-weight arena — `T_ARENA 14/14` (`8167b34b`)
+8. GGUF load/free/release lifecycle — `T_MODEL` (`5c6dc72b`)
+9. Model-coupled weight-lift kernels — `T_FWD_DISPATCH`,
+   bit-exact parity (`c99cb301`)
+10. Qwen3 forward orchestration — `T_FORWARD`, end-to-end
+    real-model smoke (`61557f95`)
+11. Gemma3 reference forward — `T_FORWARD`, end-to-end smoke
+    (`eed45361`)
+12. Qwen3 KV-decode + greedy generate — `T_FORWARD 2/2`
+    (`222e252c`)
+
+System HEAD `222e252c`. The engine still has its (now-redundant) copies
+of the relocated files; the engine's regression suite has NOT yet
+been re-run against the math-core sources. That is the explicit gate
+of sub-phase 8.7.2 (Phase 2-L1.VALIDATE) — the only thing that proves
+the relocations are bit-exact.
+
+Closure tag deferred to the umbrella `lat-phase-2-l1-closed` after
+sub-phases 8.7.2 / 8.7.3 / 8.7.4 close in order.
+
+
+---
+
 ## 20. Research Track — φ-RoPE / Three-Gap frequency-sort restructuring
 
 Demoted from the Phase 2 critical path 2026-05-22 after the Phase 2-CPU
@@ -1500,287 +2031,3 @@ the §2-B.E.1 polynomial-shift cache (lossless on stock RoPE, gated by
 off the Phase 2..13 critical path.
 
 ---
-
-## 10. Phase 2-FMT — Format implementation (parallel sub-phase)
-
-The `.sp-model` byte layout was frozen as Appendix B of PPT-LAT-Systems
-at tag `lat-phase2-contract-frozen` (commit `e4f78ae`). The format is
-specified but **not implemented** in the engine — `sp_model_load`,
-`sp-transcode`, and the §12.3 round-trip gate are all green-field work.
-
-Phase 2-FMT is the sub-phase that implements them. It is structurally
-**parallel to** the per-backend tracks (2-CPU, 2-CU, 2-VK, 2-HX) rather
-than serially blocking them, because:
-
-- `.sp-model` and `sp-transcode` are pure CPU code that runs *before*
-  any backend dispatch. They have no dependency on which math
-  backend(s) are wired up.
-- T_FRO_4 in each per-backend track runs against the GGUF + in-RAM
-  Frobenius arena path, not against `.sp-model`. Phase 2-CPU has
-  already closed T_FRO_4 (`3431cf8`) without `.sp-model` existing.
-- The §12.3 round-trip gate (GGUF → `.sp-model` → bit-identical logits)
-  is the format's own validation gate, separate from any backend's
-  T_FRO_4.
-
-Therefore 2-FMT can run concurrently with 2-CU, 2-VK, 2-HX, sequenced
-only by reviewer bandwidth and not by code dependencies. Recommended
-landing order: **2-FMT closes before 2-VK and 2-HX start**, so those
-two have a stable on-disk path to test against. 2-CU is already in
-flight and need not wait.
-
-### 10.1 Deliverables
-
-- **E_FMT_1 — `sp_model_load` reference implementation.** Pure mmap +
-  header parse + tensor table pointer setup. Zero allocation
-  proportional to tensor data size. Implements the verification path
-  of Appendix B §3 (magic / version / header CRC-32 / tokenizer_hash
-  → SHA-256 vs paired `.sp-tokenizer`). Lives in
-  `shannon-prime-system-engine/src/io/sp_model_load.c`. Maximum 250
-  LOC; if it grows past that, something is wrong.
-
-- **E_FMT_2 — `sp-transcode` CLI binary (GGUF → `.sp-model`).**
-  Separate binary at `shannon-prime-system-engine/tools/sp_transcode/`.
-  Reads upstream GGUF, dequantizes any quantized tensors to f32, then
-  re-quantizes into the PPT-native dtype space (`OK_Q8` + sibling
-  `FROBENIUS_SCALE_FP32`, `OK_Q4`, or `SPINOR63` per the engine's
-  arch-specific dispatch). Owns the per-arch `sp_arch_info`
-  population (arch_id, RoPE base, GQA groups, SWA window, FFN
-  variant, norm variant, tied_embeddings). Writes the 512-byte header
-  + sorted-by-name-hash tensor table + 65536-aligned data region.
-  Enforces the spatial-locality constraint of Appendix B §9
-  (sibling tensors physically adjacent — parent first, then
-  `.scale`).
-
-- **E_FMT_3 — `.sp-tokenizer` extraction.** Pulls the SentencePiece /
-  BPE blob out of GGUF metadata, writes the 128-byte `.sp-tokenizer`
-  header + blob per Appendix B §7. The 4-byte CRC-32 covers bytes
-  [0, 52). Two-file output: `model.sp-model` + `model.sp-tokenizer`,
-  the latter reusable across fine-tunes of the same base.
-
-- **E_FMT_4 — §12.3 round-trip gate.** The format's own T_FRO_4-class
-  validation: load Gemma3-1B via the GGUF path, then via the
-  `.sp-model` path (post-`sp-transcode`), run `sp_prefill_chunk` on
-  the same corpus, assert bit-identical logits in deterministic mode
-  (or ≤ 0.05% drift in production mode, mirroring T_FRO_4 gate (a)).
-  Lives in `tests/test_sp_model_roundtrip.c`. **This is the closure
-  gate for 2-FMT.**
-
-### 10.2 Build env
-
-Same `scripts/env/env-cpu-msvc.bat` as Phase 2-CPU — 2-FMT is pure CPU
-code. No CUDA / Vulkan / Hexagon toolchains required. The transcoder
-binary builds against the same VS2019 BuildTools + Ninja pin as the
-engine library.
-
-### 10.3 Exit
-
-`sp-transcode` produces a valid `.sp-model` + `.sp-tokenizer` pair for
-each in-scope reference model (Gemma3-1B is the bedrock target;
-Qwen3-0.6B as cross-arch validation). E_FMT_1..4 are all green. Tag
-`lat-phase-2-fmt-closed` on `shannon-prime-system-engine` and on
-`shannon-prime-system` if any math-core changes were required.
-
-After this closes, `.sp-model` is the *recommended* (not *required*)
-load path for the engine in 2-VK and 2-HX bring-ups. 2-CU may
-continue on the GGUF path until convenient to switch — switching is
-not a 2-CU closure dependency.
-
-### 10.4 Sequencing constraints
-
-- **2-FMT depends on `lat-phase2-contract-frozen` (`e4f78ae`).** ✓ Met.
-- **2-FMT does NOT depend on 2-CU closure.** Can start immediately.
-- **2-VK and 2-HX should not start before 2-FMT closes.** Soft
-  recommendation, not a hard block — those agents can pick either
-  the GGUF or `.sp-model` load path. The recommendation exists
-  because a stable on-disk format means the backend agent isn't
-  fighting two moving targets simultaneously.
-- **`.sp-model` v1 (any breaking change) requires re-tagging
-  `lat-phase2-contract-frozen` → `lat-phase2-contract-v2` and updating
-  Appendix B.** v0 should not need to evolve during Phase 2; if it
-  does, that's evidence the contract was missing a load-bearing
-  field, and the agent surfacing the gap should call it out
-  explicitly before patching the spec.
-
-### 10.5 Non-goals for 2-FMT v0
-
-- Multi-file sharding (`.sp-model.NNNN-of-MMMM`). Deferred to v1; see
-  Appendix B §11 open questions.
-- GPU-direct storage (NVIDIA GDS) ingestion. Phase-2+ optimization.
-- Pre-baked ARM bank seeds in the file. v0 sessions initialize ARM
-  empty at `sp_session_create`.
-- Tokenizer-blob compression. v0 ships the SentencePiece / BPE blob
-  uncompressed.
-
-
----
-
-## 11. Phase 3-HX-MODE-C — HTP-augmented Hexagon backend
-
-The Mode B baseline (Phase 2-HX) closes T_FRO_4 on HVX-only kernels.
-Mode C layers a QNN HTP dispatch on top: the heavy QK^T matmuls
-run on the V69 Hexagon Tensor Processor while the FFN stays on
-HVX. The two execute in parallel — HTP on layer N+1's QK^T while
-HVX is computing FFN of layer N.
-
-**Dependencies.** `lat-phase-2-hx-closed` (Mode B baseline). All
-six E_HX gates green, including T_FRO_4 split-gate.
-
-### 11.1 Deliverables
-
-- **E_HXC_1 — QNN HTP runtime initialization.** `libQnnHtp.so`
-  loaded at session create; QnnGraph created with the model's
-  attention head dimensions baked in; weights uploaded to the
-  HTP's local memory at `sp_model_load` time (not per-step).
-  Reference: existing 2-CU work on QNN HTP runtime graphs
-  (`project_phase25_runtime_graph_validated`) is the closest
-  precedent but cannot be copied per anti-contamination.
-
-- **E_HXC_2 — QK^T HTP dispatch in `sp_decode_step`.** The
-  attention kernel calls into the HTP for QK^T (and only QK^T —
-  softmax, mask, V-sum stay on HVX). HTP receives Q and K in
-  SVM ION buffers (already allocated at session create); writes
-  the score matrix back to ION; HVX picks up. Cost target: HTP
-  dispatch ≤ 100 µs per layer on Gemma3-1B.
-
-- **E_HXC_3 — HTP/HVX overlap correctness.** While HVX is doing
-  FFN of layer N, HTP is doing QK^T of layer N+1. Synchronization
-  via a FastRPC semaphore. Gate: 100-step decode produces
-  bit-identical logits between Mode B (no overlap) and Mode C
-  (with overlap) — proves the parallel execution is race-free.
-
-- **E_HXC_4 — T_FRO_4 split gate on Mode C.** Same gate as Mode B
-  with `SP_HX_MODE=C` engaged: (a) engine-hexagon-C-f32 vs
-  engine-cpu-f32 ≤ 0.05% PPL drift; (b) per-row Q8 drift ≤ 2%.
-
-### 11.2 Build env
-
-Existing `scripts/env/env-hexagon.bat` plus QNN SDK pin —
-documented in BUILD-ENV.md once 2-HX (Mode B) closes and the
-agent can write authoritatively about the QNN dependency.
-
-### 11.3 Anti-contamination
-
-The old cohort's QNN integration lives in
-`D:\F\shannon-prime-repos\shannon-prime-engine\src\qnn\` and the
-related `project_phase25_qnn_in_llama_cli` work was explicitly
-RETRACTED per memory. The Mode C agent will reimplement QNN
-dispatch fresh inside
-`shannon-prime-system-engine/src/backends/hexagon/qnn/`. Reference
-the prior work for what NOT to do (the runtime gate that blocked
-engagement); do not copy code.
-
-### 11.4 Exit
-
-E_HXC_1..4 green. Tag `lat-phase-3-hx-mode-c-closed` on engine +
-system. SESSION-STATE entry names dispatch latencies, overlap
-correctness numbers, and the Mode B vs Mode C wall-clock delta.
-
----
-
-## 12. Phase 3-HX-MODE-D — ISP-augmented Hexagon backend
-
-The Mode C baseline (Phase 3-HX-MODE-C) overlaps HTP and HVX. Mode
-D adds a third compute resource: the Spectra 680 ISP runs the
-fused FFN at 18-bit fixed-point via Halide AOT-compiled kernels.
-ISP + HTP + HVX all run in parallel — ISP on FFN layer N, HTP on
-QK^T layer N+1, HVX on residual fixup + norms.
-
-**Dependencies.** `lat-phase-3-hx-mode-c-closed`. The Mode C
-parallel-dispatch correctness gate (E_HXC_3) is what makes the
-three-way overlap of Mode D tractable.
-
-### 12.1 Deliverables
-
-- **E_HXD_1 — Halide generator + AOT compilation.** Halide C++
-  generator emits per-arch `ffn_skeleton_<arch>.a` static archives
-  (one per arch_id: llama3, qwen3, gemma3, deepseek_v4). Each
-  archive carries its own activation polynomial — HardSwish-SwiGLU
-  for SwiGLU archs, piecewise polynomial GeGLU for Gemma3 (per
-  Systems Appendix C §C.3 / §C.4). Halide schedule uses
-  `compute_at(ffn_out, xi)` (NOT `compute_at(ffn_out, x)`) to
-  keep accumulation inside the vectorized inner loop.
-
-- **E_HXD_2 — IDL + FastRPC bridge.** `ffn_fusion.idl` declares
-  `run_ffn_skeleton` with `rout` (not `inout`) for the output
-  buffer — saves the copy-in of uninitialized state.
-  `rpcmem_alloc` sizes match IDL `*Len` parameters exactly (per
-  `feedback_fastrpc_exact_alloc`). Scales are pre-converted to
-  int32 Q-point at session create time and passed as `int32*`
-  (NOT `float*`) over the bus.
-
-- **E_HXD_3 — Per-arch activation parity.** For each arch:
-  E_HX_D_SWIGLU_KL ≤ 2e-3 vs f32 SwiGLU oracle (Llama 3.x,
-  Qwen 3, DeepSeek V4); E_HX_D_GEGLU_KL ≤ 2e-3 vs f32 GELU-tanh
-  oracle (Gemma 3). Gate fails if HardSwish formula is missing
-  the `· gate / 6` term (the documented early-implementation bug
-  per Appendix C §C.3).
-
-- **E_HXD_4 — Three-way parallel correctness.** A 100-step decode
-  with ISP + HTP + HVX all engaged produces bit-identical logits
-  to Mode C (HTP + HVX only). Proves the ISP dispatch doesn't
-  race against the other two.
-
-- **E_HXD_5 — Thermal-pause auto-tune.** Default
-  `thermal_pause_us=1500` on the S22U. The agent profiles to
-  confirm the value rides the firmware's throttle limit without
-  triggering it during a 5-minute sustained decode. Records the
-  empirical value in BUILD-ENV.md.
-
-- **E_HXD_6 — T_FRO_4 split gate on Mode D.** With `SP_HX_MODE=D`
-  engaged: (a) engine-hexagon-D-f32 vs engine-cpu-f32 ≤ 0.05%
-  PPL drift; (b) per-row Q8 drift ≤ 2%. May tighten the gate to
-  account for the 18-bit fixed-point activation precision floor;
-  document as a §8.6.1-style distributional gate with explicit
-  KL bound (target: ≤ 5e-5 vs Mode C; the 18-bit precision floor
-  is approximately one decimal digit looser than HVX's int32).
-
-- **E_HXD_7 — Two new sp_status codes wired through.**
-  `SP_EHX_ISP_DISPATCH` and `SP_EHX_THERMAL_TRIP` per Appendix C
-  §C.8. L2's error-handling for `SP_EHX_THERMAL_TRIP` is a soft
-  retry with bumped `thermal_pause_us`; that retry logic lives in
-  the Rust engine driver (L2), not in L1.
-
-### 12.2 Build env
-
-- Halide ≥ 17.0 on the Windows host (host-side AOT compilation).
-- Hexagon SDK 5.4.0.x with `hexagon-clang` for DSP-side compile.
-- Git `sh.exe` in PATH (per `reference_hexagon_build_recipe`).
-- `qaic.exe` from `WinNT/` subdirectory (per same memory).
-- Reference design (Halide generator, IDL, CMake glue,
-  `deploy-s22u.bat`): `papers/MODE_D_DESIGN_DRAFT.md`.
-
-### 12.3 Anti-contamination
-
-The old cohort's Halide work lives at
-`D:\F\shannon-prime-repos\shannon-prime-llama\backends\halide\`
-and the related `reference_halide_windows_build` memory. The
-freethedsp shim lives at the same path under `backends/freethedsp/`.
-**Semantic** patterns carry forward (Halide AOT to static archive,
-hexagon-clang for DSP side, LD_PRELOAD for unsigned PD,
-ADSP_LIBRARY_PATH trailing semicolon, 1500µs thermal pause).
-**Code** must be reimplemented fresh inside
-`shannon-prime-system-engine/src/backends/hexagon/halide/` and
-`shannon-prime-system-engine/src/backends/hexagon/freethedsp/`.
-
-### 12.4 Exit
-
-E_HXD_1..7 green on the S22U with all per-arch activation parity
-gates passing. Tag `lat-phase-3-hx-mode-d-closed`. SESSION-STATE
-entry includes: per-arch KL drift numbers, ISP dispatch latency,
-three-way parallel correctness, sustained-decode thermal profile,
-and the empirical `thermal_pause_us` for the S22U.
-
-### 12.5 Non-goals for Mode D v0
-
-- On-chip Snapdragon X Elite / 8 Gen 2 / 8 Gen 3 variants. v0
-  targets S22U (Snapdragon 8 Gen 1) only because that's the
-  validated hardware. Newer generations land as Phase 4+.
-- ISP for non-FFN ops. v0 routes only the fused FFN through the
-  ISP. QK^T and attention stay on HTP / HVX even though the ISP
-  could in principle do them too — adding ops to the ISP path
-  multiplies the schedule-tuning surface and is deferred until
-  the FFN path proves stable.
-- Halide JIT compilation on-device. v0 is AOT-only; the
-  per-arch static archives ship in the engine library. Runtime
-  JIT requires Halide runtime on Android which we don't pay for.
-
