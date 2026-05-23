@@ -935,6 +935,23 @@ Engine commits through `3431cf8` (SP2 `41c5e19` SentencePiece encode/decode, SP3
 regression 20/20 green incl. T_FRO_4. Tag `lat-phase-2-cpu-fro4-closed`,
 `lat-phase-2-closed`. Offload: `SESSION-CLOSED-lat-2-CPU.md`.
 
+**T_FRO_4 amendment (2026-05-23, §8.7.5 supersession).** The split-gate
+above ran at f32 working precision — the path the project is moving
+off of due to host-RAM ceilings on production-context inference. Under
+§8.7.5 Phase 2-L1.FP16, T_FRO_4 is redefined:
+
+- gate (a) → engine-**fp16** PPL vs f16 oracle ≤ 0.05% (tighter than
+  the f32 original by construction; same precision both sides).
+- gate (b) → per-row Q4 mixed-precision cross-backend at fp16,
+  bounded by fp16's intrinsic floor (expected zero by SP
+  Frobenius-lift identity; see §8.8.1 generalization paragraph).
+
+The −0.0146% / −0.7353% numbers above remain the historical record of
+the f32-working-precision pre-shift path. New runs under
+§8.7.5-and-beyond use the redefined gate. Section 8.7.5's E_FP16_1
+deliverable lands the fp16-vs-oracle measurement; E_FP16_2 lands the
+cross-backend fp16 identity measurement.
+
 Original spec, retained for historical context:
 
 - **Build env.** `scripts/env/env-cpu-msvc.bat` (Windows) and
@@ -1433,8 +1450,118 @@ token, producing logits whose argmax-trajectory over a 100-step decode
 matches the reference greedy `qwen3_generate_kv` / `gemma3_generate_kv`
 output exactly.
 
-**Closure tag.** `lat-phase-2-l1-session-closed` → triggers the
+**Closure tag.** `lat-phase-2-l1-session-closed`. The umbrella
+`lat-phase-2-l1-closed` triggers after §8.7.5 Phase 2-L1.FP16 also
+closes.
+
+#### 8.7.5 Phase 2-L1.FP16 — fp16 working precision
+
+The deferred desktop-GPU f32-vs-oracle legs from §8.7.2 closure
+(blocked on host-RAM saturation, not capacity) land here. Working
+precision moves from f32 to fp16 across CPU / CU / VK; HX stays
+qf32; math-core scalar reference stays f32 as the bit-exact
+absolute-correctness anchor.
+
+**Why this is its own sub-phase.** The fp16 conversion fans out
+across every backend's matmul, attention, FFN, and KV-cache
+allocation paths. Doing it before §8.7.4 SESSION would mean
+re-touching all the kernels twice (once on math-core, once on the
+session wrappers). Doing it after SESSION consolidates the precision
+shift into a single backend-wide kernel pass on top of an
+ABI-stable surface.
+
+**The "bit exact" framing.** The user-direction binding rule (see
+`reference-fp16-working-precision`): the Frobenius-lift identity is
+algebraic, not precision-dependent. Per-row Q4 mixed-precision
+weights → fp16 activations through the inline-lift path produce
+cross-backend-identical fp16 outputs by construction. Measurement
+confirms the math; it does not discover the precision floor. If
+cross-backend fp16 KL is non-zero on the production Q4-arena path,
+the bug is in the backend's fp16 dispatch, not in the SP math.
+
+**Per-backend precision layout.**
+
+| Backend       | Activations | KV cache   | Matmul accumulator | Notes                                                |
+|---------------|-------------|------------|--------------------|------------------------------------------------------|
+| CPU           | fp16        | fp16       | f32                | F16C / AVX-512-FP16; matmul widens to f32            |
+| CU            | `__half`    | `__half`   | f32                | cuBLAS HGEMM (sm_75 compatible)                      |
+| VK            | `float16_t` | `float16_t`| f32                | VK_KHR_shader_float16_int8 extension                 |
+| HX            | qf32        | qf32       | qf32               | V69 Q6_Vsf_* IEEE-fp16 broken (gotcha #7); qf32 only |
+| Math-core ref | f32         | f32        | f32                | Bit-exact absolute-correctness anchor (untouched)    |
+
+The matmul accumulator staying at f32 is deliberate: fp16 × fp16 →
+f32 widening is the standard accuracy-preserving idiom for tensor-
+core / SIMD-FP16 hardware, and the f32 accumulator floor is well
+below fp16's representation precision so the visible result is
+fp16 anyway.
+
+**Deliverables.**
+
+- **E_FP16_1 — CPU fp16 forward.** Activation buffers, KV cache,
+  norms, RoPE, attention all on fp16; matmul accumulator f32.
+  Engine-cpu-fp16 PPL vs f16 oracle ≤ 0.05% (naturally tight, same
+  precision both sides). Extends the existing E_CPU_10 fp16-source-
+  release work from "source release" to "production activation
+  precision."
+
+- **E_FP16_2 — Cross-backend fp16 identity.** CPU-fp16 vs CU-fp16
+  vs VK-fp16 bit-identical at fp16 precision on the production
+  Q4 mixed-precision arena. By SP Frobenius-lift identity this
+  should be zero KL (or within fp16's ULP). Measured by running
+  the same Gemma3-1B + Qwen3-0.6B fixture on the three backends
+  and asserting bit-equivalent logits at every position.
+
+- **E_FP16_3 — HX qf32 precision-floor.** HX-qf32 vs CPU-fp16 KL
+  bounded by qf32-vs-fp16 representation floor; argmax + top-5
+  agreement holds. Same shape as §8.8.1's reassociation-floor
+  pattern — see §8.8.1's extension for the generalized
+  precision-floor formulation.
+
+- **E_FP16_4 — Memory ceiling.** Peak working-set RAM at production
+  context (Gemma3-1B at n_ctx=4096, Qwen3-0.6B at the same)
+  fits within the project's resource envelope. The exact ceiling
+  is the binding constraint that drove this sub-phase; the
+  measurement records the headline number (full
+  weights + activations + KV cache + arena, peak RSS) and demonstrates
+  the headroom the f32 path lacked. The deferred f32-vs-oracle
+  desktop-GPU legs from §8.7.2 close re-run here under the fp16
+  path and are expected to pass (the host-RAM saturation that
+  blocked them disappears with fp16 activations + KV).
+
+- **E_FP16_5 — fp8 forward-compatibility.** The fp16 path doesn't
+  preclude a later fp8 sub-phase. `sp_arch_info.preferred_precision`
+  (or a session-config equivalent) enum exposes fp16 + qf32 + f32
+  as current values; reserves fp8 + fp4 + ternary (qint2) as
+  future values. The session-create dispatch reads this and selects
+  the right kernel set. Hopper/Ada/B100 NVIDIA, Lunar Lake Intel,
+  M4+ Apple Silicon ship native fp8; RTX 2060 (sm_75) does not.
+  Phase 2-L1.FP16 establishes the plumbing; the fp8 follow-on
+  becomes backend kernel additions, not architectural redesign.
+
+**Gate redefinition for §8.2 T_FRO_4 under FP16.**
+
+The original T_FRO_4 split-gate (engine-f32 PPL vs f16 oracle + per-
+row Q8 drift) was a pre-fp16-shift artifact. Under §8.7.5:
+
+- T_FRO_4 gate (a) → engine-fp16 PPL vs f16 oracle ≤ 0.05% (same
+  precision both sides; tighter than the f32 original).
+- T_FRO_4 gate (b) → per-row Q4 cross-backend at fp16, bounded by
+  fp16's intrinsic floor (expected zero by SP identity).
+
+§8.2 carries the amendment block at its head; the original
+−0.0146% / −0.7353% close numbers remain the historical record of
+the f32-working-precision pre-shift path. New runs use the
+redefined gate.
+
+**Closure tag.** `lat-phase-2-l1-fp16-closed` → triggers the
 umbrella `lat-phase-2-l1-closed` on engine + system.
+
+**Anti-contamination check.** The fp16 work in the old cohort
+(E_CPU_10 fp16 source release in the lat-2-CPU branch, plus any
+fp16 references in `D:\F\shannon-prime-repos\shannon-prime-engine`
+or its siblings) is reference-only. Reimplement fresh inside
+`shannon-prime-system-engine`'s per-backend kernel sources. The
+mathematical guarantee carries forward; the code does not.
 
 
 ### 8.8 Phase 2 exit
@@ -1494,6 +1621,41 @@ the per-row Q8 arena is judged only against the engine's own f32 PPL (≤ 2%),
 never against the oracle. See the **§8.2 T_FRO_4 closure clause** for the
 mechanism and the measured numbers — it is the phase-close PPL gate this
 exit index points at.
+
+**Generalization — precision-floor bounded cross-backend gates (amended
+2026-05-23, in support of §8.7.5 Phase 2-L1.FP16).** The
+"distributional-gate-not-per-logit-tolerance" pattern this section
+formalizes for the F16-act reassociation floor generalizes to *any*
+cross-backend comparison where the two paths run at different
+representational precisions. Three concrete cases the project has now
+encountered:
+
+- **f32-vs-F16-act**: ~1e-6 matmul-precision floor, amplified by
+  QK-RMSNorm across layers to ~1e-3..1e-4 worst-case per logit
+  (the original §8.6.1 case). Gate is argmax + top-5 + KL ≤ 2.3e-6
+  mean.
+- **fp16-vs-f32**: the §8.7.5 case. fp16's ULP is ~1e-3 absolute
+  near unity; the working precision shift introduces a precision
+  floor at that level. HX-qf32-vs-CPU-fp16 falls under this case
+  (qf32 is fp16-equivalent representational precision on the HVX
+  side). Gate is argmax + top-5 + KL ≤ fp16-floor (typically
+  documented as a constant per arch, established by running the
+  same Q4 fixture on the two backends and measuring the converged
+  KL — that becomes the gate threshold).
+- **Cross-backend at same precision (fp16-vs-fp16)**: zero KL by
+  SP Frobenius-lift identity. Not a precision-floor case at all;
+  this is the bit-identity case where any non-zero KL indicates a
+  backend bug, not a precision floor. The §8.7.5 E_FP16_2 gate
+  measures this.
+
+The shared pattern: **identify the representation floor binding the
+two backends; gate the cross-backend KL at that floor; never propose
+a tighter gate because doing so would be a falsifiable claim about
+physics, not the engine.** Argmax + top-5 agreement is the structural
+guard that the distribution shape is preserved across the precision
+floor; KL is the numerical measure of how close the floor was
+achieved. The original §8.6.1 numbers are one instance of this rule;
+the §8.7.5 fp16 gates are the next instance.
 
 ### 8.9 Notes for the picking-up session (per backend)
 
