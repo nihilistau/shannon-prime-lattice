@@ -1349,3 +1349,223 @@ and freeze together for Phase 2.
 
 **Status.** v0 draft. Co-locked with PPT-LAT-L1-ABI-v0 once both
 have signed off against their §12 checklists.
+
+
+---
+
+## Appendix C — Heterogeneous Compute Pipeline (HVX / HTP / ISP via Halide AOT)
+
+The Hexagon backend is the only target in the lattice with three
+independent compute resources on-die: the Hexagon Vector eXtensions
+(HVX) on the cDSP, the Hexagon Tensor Processor (HTP, V69), and the
+Spectra 680 Image Signal Processor (ISP). Naive use treats them
+sequentially. Optimal use runs them in parallel via three composable
+modes — B (baseline), C (HTP-augmented), D (ISP-augmented).
+
+This appendix documents the end-state decomposition. Phase 2-HX
+delivers Mode B; Modes C and D are queued as Phase 3 sub-phases
+(see Roadmap §11). The other three backends (CPU, CUDA, Vulkan) do
+not need this appendix — they have a single compute path each.
+
+### C.1 The three modes
+
+**Mode B — HVX baseline.** All forward-pass compute runs on the cDSP
+via HVX intrinsics, dispatched from L1 via FastRPC. Frobenius arena
+decoded on-device, matmul + attention + FFN all on HVX. This is the
+minimum-viable backend that closes T_FRO_4 on the S22U. Tag
+`lat-phase-2-hx-closed`. **Status: queued (Phase 2-HX agent).**
+
+**Mode C — HTP-augmented.** The heavy QK^T matmul is dispatched to
+the V69 HTP via QNN; FFN stays on HVX. The HTP and cDSP overlap —
+while HVX is computing FFN of layer N, HTP is computing QK^T of
+layer N+1. Engages `SP_HX_MODE=C` (a new session-config flag).
+**Status: queued (Phase 3-HX-MODE-C agent, blocked by Mode B).**
+
+**Mode D — ISP-augmented.** The FFN is fused (up + gate + activation
++ down) at 18-bit fixed-point and dispatched to the Spectra 680 ISP
+via Halide AOT-compiled kernels. ISP, HTP, and HVX all run in
+parallel: ISP on FFN layer N, HTP on QK^T layer N+1, HVX on
+residual fixup + norms. Engages `SP_HX_MODE=D`. **Status: queued
+(Phase 3-HX-MODE-D agent, blocked by Mode C).**
+
+### C.2 Activation data types per mode
+
+The activation precision floor differs by mode because each compute
+resource has its own native arithmetic preference:
+
+| Mode | Matmul accumulator | Activation buffer | FFN accumulator | Norm precision |
+|------|--------------------|-------------------|-----------------|----------------|
+| B    | int32 (HVX)        | int16             | int32 (HVX)     | f32 (HVX FMA)  |
+| C    | int32 (HTP)        | int16             | int32 (HVX)     | f32 (HVX FMA)  |
+| D    | int32 (HTP)        | int16             | int32 fixed-Q8 (ISP/Halide) | f32 (HVX FMA) |
+
+The fixed-Q8 in Mode D's FFN accumulator means 8 fractional bits in
+an int32, giving 24 bits of integer headroom for the accumulator —
+enough margin for a 4096-wide dot product of int8 × int8 with the
+Frobenius scale applied per-row at the boundary. The Q-point scaling
+constants are baked into the Halide AOT pipeline at build time.
+
+### C.3 Activation function dispatch per architecture
+
+The FFN's nonlinearity is arch-specific. The Hexagon backend MUST
+dispatch on `sp_arch_info.ffn_variant` (and on
+`sp_arch_info.arch_id` where the variant alone is ambiguous):
+
+| arch_id     | ffn_variant | Mode B/C kernel        | Mode D fixed-point approximation                                                                  |
+|-------------|-------------|------------------------|---------------------------------------------------------------------------------------------------|
+| LLAMA3      | SwiGLU      | true SiLU + multiply   | HardSwish-SwiGLU: `up · gate · clamp(gate+3, 0, 6) / 6`                                            |
+| QWEN3       | SwiGLU      | true SiLU + multiply   | HardSwish-SwiGLU: `up · gate · clamp(gate+3, 0, 6) / 6`                                            |
+| GEMMA3      | GeGLU       | GELU-tanh + multiply   | Piecewise polynomial GeGLU (see §C.4)                                                              |
+| DEEPSEEK_V4 | SwiGLU      | true SiLU + multiply   | HardSwish-SwiGLU                                                                                   |
+
+**The HardSwish-SwiGLU formula must include the `· gate / 6` term.**
+A common early-implementation bug is to write `up · clamp(gate+3, 0,
+6)` and call it HardSwish; that's actually `up · 6 · HardSigmoid(gate)`,
+which is numerically very different and tanks PPL. The correct
+formula is `up · gate · clamp(gate+3, 0, 6) / 6`. Every Mode D
+implementation MUST verify against the f32 SwiGLU oracle before
+shipping (gate `E_HX_D_SWIGLU_KL ≤ 2e-3` on Qwen3-0.6B chunked
+prefill).
+
+### C.4 GeGLU piecewise polynomial approximation (Gemma3 only)
+
+True GELU on the DSP would emit emulated `exp` / `tanh` and stall
+the HVX pipeline. The fixed-point Mode D path uses the standard
+tanh approximation:
+
+```
+gelu(x) ≈ 0.5 · x · (1 + tanh_approx(0.7978 · (x + 0.044715 · x³)))
+```
+
+where `tanh_approx(y)` is a 5th-order odd polynomial fit over
+`y ∈ [-2.5, 2.5]` with hard-clamp outside that range:
+
+```
+tanh_approx(y) = clamp(y, -2.5, 2.5)
+              · (1 - (y² · (a₁ + y² · (a₂ + y² · a₃))))
+```
+
+with the coefficients `a₁, a₂, a₃` fit by least-squares against
+exact tanh on the clamped range. The gate is `E_HX_D_GEGLU_KL ≤
+2e-3` on Gemma3-1B chunked prefill against the f32 GELU-tanh oracle.
+The actual coefficients are baked into the Halide AOT pipeline; the
+Mode D agent will publish them in the closure SESSION-STATE.
+
+### C.5 `sp_session_config.thermal_pause_us` — config knob
+
+Hexagon-specific: the S22U thermal-soaks in 30-60 seconds of
+sustained ISP + HTP + HVX parallel operation, after which the
+firmware throttles cDSP throughput by ~40%. A 1-2 ms pause between
+layers lets the thermal sensor ride the limit without triggering
+the throttle.
+
+This is a session-config knob, not hardcoded:
+
+```c
+typedef struct {
+    size_t   max_context;
+    bool     deterministic;
+    uint32_t arm_bank_kb;
+    uint32_t sieve_capacity;
+    uint32_t flags;
+    uint32_t thermal_pause_us;   // NEW: per-layer pause in microseconds
+                                  //   0 = none (CPU/CUDA/Vulkan default)
+                                  //   1500 = Hexagon Mode D default
+                                  //   ignored when deterministic == true
+} sp_session_config;
+```
+
+`thermal_pause_us` slots into the reserved tail of `sp_session_config`
+introduced in PPT-LAT-L1-ABI-v0 §6, so this is a non-breaking ABI
+addition — v0 binaries reading the new field get a zero (matching old
+behavior on non-Hexagon backends). Determinism mode forces the value
+to 0 because wall-clock affects nothing about the math; the pauses
+exist only for thermal management.
+
+The Mode D agent will profile to determine the optimal default per
+target hardware. The S22U baseline is 1500 µs; tablets with active
+cooling can drop to 0; fanned dev kits (Snapdragon X Elite reference
+boards) likewise 0.
+
+### C.6 The Halide AOT compilation pipeline
+
+Halide is a build-time tool, not a runtime dependency. The Mode D
+agent runs the Halide generator on the Windows host to emit
+architecture-specific static archives:
+
+```
+generate_ffn_skeleton.exe -g ffn_skeleton -e static_library,h \
+    -o . target=hexagon-v69-no_asserts
+```
+
+This emits `ffn_skeleton.a` (HVX object code) and `ffn_skeleton.h`
+(the C ABI). The `.a` is linked into `libffn_fusion_skel.so` on the
+DSP side via `hexagon-clang` (the Hexagon SDK's compiler, NOT the
+Android NDK).
+
+Per-arch dispatch is handled at Halide generator time, not at
+runtime: the agent emits `ffn_skeleton_llama3.a`,
+`ffn_skeleton_gemma3.a`, etc. The L1 backend selects the right
+archive by `arch_id` at link time, not via a runtime switch. This
+keeps the hot path branch-free and lets each archive carry only
+its own activation polynomial.
+
+### C.7 FastRPC / SVM lifecycle
+
+Per the L1 ABI's no-malloc-on-hot-path rule, all
+`rpcmem_alloc` calls happen inside `sp_session_create` on the
+Hexagon backend, sized against `sp_session_config.max_context`. The
+zero-copy ION-heap pointers are stashed in the opaque `sp_session`
+struct and reused step-by-step in `sp_prefill_chunk` and
+`sp_decode_step`. `sp_session_destroy` calls `rpcmem_free` on
+every pointer it owns.
+
+Activation scales (per-row Frobenius f32) are pre-converted to
+int32 Q-point at session create and stored alongside the ION
+buffers, so the hot path never crosses the float → fixed
+boundary. Passing raw `float* scales` over FastRPC every layer
+would emulated-cast on the DSP at significant latency cost —
+prohibited by this appendix.
+
+The IDL contract uses `rout` (not `inout`) for buffers that the
+DSP only writes; this saves the copy-in of uninitialized output
+state on every call. The full IDL is in MODE_D_DESIGN_DRAFT.md.
+
+### C.8 Mode-D-specific error codes
+
+Two new status codes slot into the existing `sp_status` enum from
+PPT-LAT-L1-ABI-v0 §7 in the backend-specific block:
+
+```c
+SP_EHX_ISP_DISPATCH  = -44,    // ISP failed to dispatch the Halide kernel
+                               //   (typically: ADSP_LIBRARY_PATH unset or
+                               //   libffn_fusion_skel.so missing on device)
+SP_EHX_THERMAL_TRIP  = -45,    // firmware throttled while in flight;
+                               //   L2 should increase thermal_pause_us and retry
+```
+
+`SP_EHX_THERMAL_TRIP` is a soft error — L2's correct response is to
+bump the session's `thermal_pause_us` by 500 µs and reissue, not to
+fail the request. This is the same recovery pattern as
+`SP_ECONTEXT_FULL` (eviction-then-retry).
+
+### C.9 Anti-contamination check for Mode D implementation
+
+The proposal that this appendix codifies originates partly in the
+old cohort's work — specifically `D:\F\shannon-prime-repos\
+shannon-prime-engine` (the `freethedsp/` backend, the
+`backends/halide/` build driver) and the prior phone-running
+ISP-fusion experiments. Per the project's anti-contamination
+rule, those artifacts CANNOT be copied into the lattice cohort:
+
+- **Semantic** patterns carry forward: yes use Halide AOT, yes
+  bind rpcmem allocation to session lifecycle, yes pause 1500 µs
+  between layers on S22U, yes set the ADSP_LIBRARY_PATH trailing
+  semicolon.
+- **Code** must be reimplemented fresh inside
+  `shannon-prime-system-engine/src/backends/hexagon/` and the
+  associated Halide generators.
+
+Both the Mode C and Mode D agents will be briefed on this boundary
+explicitly when they spawn.
+

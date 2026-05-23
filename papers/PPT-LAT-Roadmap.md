@@ -1611,3 +1611,176 @@ not a 2-CU closure dependency.
 - Tokenizer-blob compression. v0 ships the SentencePiece / BPE blob
   uncompressed.
 
+
+---
+
+## 11. Phase 3-HX-MODE-C — HTP-augmented Hexagon backend
+
+The Mode B baseline (Phase 2-HX) closes T_FRO_4 on HVX-only kernels.
+Mode C layers a QNN HTP dispatch on top: the heavy QK^T matmuls
+run on the V69 Hexagon Tensor Processor while the FFN stays on
+HVX. The two execute in parallel — HTP on layer N+1's QK^T while
+HVX is computing FFN of layer N.
+
+**Dependencies.** `lat-phase-2-hx-closed` (Mode B baseline). All
+six E_HX gates green, including T_FRO_4 split-gate.
+
+### 11.1 Deliverables
+
+- **E_HXC_1 — QNN HTP runtime initialization.** `libQnnHtp.so`
+  loaded at session create; QnnGraph created with the model's
+  attention head dimensions baked in; weights uploaded to the
+  HTP's local memory at `sp_model_load` time (not per-step).
+  Reference: existing 2-CU work on QNN HTP runtime graphs
+  (`project_phase25_runtime_graph_validated`) is the closest
+  precedent but cannot be copied per anti-contamination.
+
+- **E_HXC_2 — QK^T HTP dispatch in `sp_decode_step`.** The
+  attention kernel calls into the HTP for QK^T (and only QK^T —
+  softmax, mask, V-sum stay on HVX). HTP receives Q and K in
+  SVM ION buffers (already allocated at session create); writes
+  the score matrix back to ION; HVX picks up. Cost target: HTP
+  dispatch ≤ 100 µs per layer on Gemma3-1B.
+
+- **E_HXC_3 — HTP/HVX overlap correctness.** While HVX is doing
+  FFN of layer N, HTP is doing QK^T of layer N+1. Synchronization
+  via a FastRPC semaphore. Gate: 100-step decode produces
+  bit-identical logits between Mode B (no overlap) and Mode C
+  (with overlap) — proves the parallel execution is race-free.
+
+- **E_HXC_4 — T_FRO_4 split gate on Mode C.** Same gate as Mode B
+  with `SP_HX_MODE=C` engaged: (a) engine-hexagon-C-f32 vs
+  engine-cpu-f32 ≤ 0.05% PPL drift; (b) per-row Q8 drift ≤ 2%.
+
+### 11.2 Build env
+
+Existing `scripts/env/env-hexagon.bat` plus QNN SDK pin —
+documented in BUILD-ENV.md once 2-HX (Mode B) closes and the
+agent can write authoritatively about the QNN dependency.
+
+### 11.3 Anti-contamination
+
+The old cohort's QNN integration lives in
+`D:\F\shannon-prime-repos\shannon-prime-engine\src\qnn\` and the
+related `project_phase25_qnn_in_llama_cli` work was explicitly
+RETRACTED per memory. The Mode C agent will reimplement QNN
+dispatch fresh inside
+`shannon-prime-system-engine/src/backends/hexagon/qnn/`. Reference
+the prior work for what NOT to do (the runtime gate that blocked
+engagement); do not copy code.
+
+### 11.4 Exit
+
+E_HXC_1..4 green. Tag `lat-phase-3-hx-mode-c-closed` on engine +
+system. SESSION-STATE entry names dispatch latencies, overlap
+correctness numbers, and the Mode B vs Mode C wall-clock delta.
+
+---
+
+## 12. Phase 3-HX-MODE-D — ISP-augmented Hexagon backend
+
+The Mode C baseline (Phase 3-HX-MODE-C) overlaps HTP and HVX. Mode
+D adds a third compute resource: the Spectra 680 ISP runs the
+fused FFN at 18-bit fixed-point via Halide AOT-compiled kernels.
+ISP + HTP + HVX all run in parallel — ISP on FFN layer N, HTP on
+QK^T layer N+1, HVX on residual fixup + norms.
+
+**Dependencies.** `lat-phase-3-hx-mode-c-closed`. The Mode C
+parallel-dispatch correctness gate (E_HXC_3) is what makes the
+three-way overlap of Mode D tractable.
+
+### 12.1 Deliverables
+
+- **E_HXD_1 — Halide generator + AOT compilation.** Halide C++
+  generator emits per-arch `ffn_skeleton_<arch>.a` static archives
+  (one per arch_id: llama3, qwen3, gemma3, deepseek_v4). Each
+  archive carries its own activation polynomial — HardSwish-SwiGLU
+  for SwiGLU archs, piecewise polynomial GeGLU for Gemma3 (per
+  Systems Appendix C §C.3 / §C.4). Halide schedule uses
+  `compute_at(ffn_out, xi)` (NOT `compute_at(ffn_out, x)`) to
+  keep accumulation inside the vectorized inner loop.
+
+- **E_HXD_2 — IDL + FastRPC bridge.** `ffn_fusion.idl` declares
+  `run_ffn_skeleton` with `rout` (not `inout`) for the output
+  buffer — saves the copy-in of uninitialized state.
+  `rpcmem_alloc` sizes match IDL `*Len` parameters exactly (per
+  `feedback_fastrpc_exact_alloc`). Scales are pre-converted to
+  int32 Q-point at session create time and passed as `int32*`
+  (NOT `float*`) over the bus.
+
+- **E_HXD_3 — Per-arch activation parity.** For each arch:
+  E_HX_D_SWIGLU_KL ≤ 2e-3 vs f32 SwiGLU oracle (Llama 3.x,
+  Qwen 3, DeepSeek V4); E_HX_D_GEGLU_KL ≤ 2e-3 vs f32 GELU-tanh
+  oracle (Gemma 3). Gate fails if HardSwish formula is missing
+  the `· gate / 6` term (the documented early-implementation bug
+  per Appendix C §C.3).
+
+- **E_HXD_4 — Three-way parallel correctness.** A 100-step decode
+  with ISP + HTP + HVX all engaged produces bit-identical logits
+  to Mode C (HTP + HVX only). Proves the ISP dispatch doesn't
+  race against the other two.
+
+- **E_HXD_5 — Thermal-pause auto-tune.** Default
+  `thermal_pause_us=1500` on the S22U. The agent profiles to
+  confirm the value rides the firmware's throttle limit without
+  triggering it during a 5-minute sustained decode. Records the
+  empirical value in BUILD-ENV.md.
+
+- **E_HXD_6 — T_FRO_4 split gate on Mode D.** With `SP_HX_MODE=D`
+  engaged: (a) engine-hexagon-D-f32 vs engine-cpu-f32 ≤ 0.05%
+  PPL drift; (b) per-row Q8 drift ≤ 2%. May tighten the gate to
+  account for the 18-bit fixed-point activation precision floor;
+  document as a §8.6.1-style distributional gate with explicit
+  KL bound (target: ≤ 5e-5 vs Mode C; the 18-bit precision floor
+  is approximately one decimal digit looser than HVX's int32).
+
+- **E_HXD_7 — Two new sp_status codes wired through.**
+  `SP_EHX_ISP_DISPATCH` and `SP_EHX_THERMAL_TRIP` per Appendix C
+  §C.8. L2's error-handling for `SP_EHX_THERMAL_TRIP` is a soft
+  retry with bumped `thermal_pause_us`; that retry logic lives in
+  the Rust engine driver (L2), not in L1.
+
+### 12.2 Build env
+
+- Halide ≥ 17.0 on the Windows host (host-side AOT compilation).
+- Hexagon SDK 5.4.0.x with `hexagon-clang` for DSP-side compile.
+- Git `sh.exe` in PATH (per `reference_hexagon_build_recipe`).
+- `qaic.exe` from `WinNT/` subdirectory (per same memory).
+- Reference design (Halide generator, IDL, CMake glue,
+  `deploy-s22u.bat`): `papers/MODE_D_DESIGN_DRAFT.md`.
+
+### 12.3 Anti-contamination
+
+The old cohort's Halide work lives at
+`D:\F\shannon-prime-repos\shannon-prime-llama\backends\halide\`
+and the related `reference_halide_windows_build` memory. The
+freethedsp shim lives at the same path under `backends/freethedsp/`.
+**Semantic** patterns carry forward (Halide AOT to static archive,
+hexagon-clang for DSP side, LD_PRELOAD for unsigned PD,
+ADSP_LIBRARY_PATH trailing semicolon, 1500µs thermal pause).
+**Code** must be reimplemented fresh inside
+`shannon-prime-system-engine/src/backends/hexagon/halide/` and
+`shannon-prime-system-engine/src/backends/hexagon/freethedsp/`.
+
+### 12.4 Exit
+
+E_HXD_1..7 green on the S22U with all per-arch activation parity
+gates passing. Tag `lat-phase-3-hx-mode-d-closed`. SESSION-STATE
+entry includes: per-arch KL drift numbers, ISP dispatch latency,
+three-way parallel correctness, sustained-decode thermal profile,
+and the empirical `thermal_pause_us` for the S22U.
+
+### 12.5 Non-goals for Mode D v0
+
+- On-chip Snapdragon X Elite / 8 Gen 2 / 8 Gen 3 variants. v0
+  targets S22U (Snapdragon 8 Gen 1) only because that's the
+  validated hardware. Newer generations land as Phase 4+.
+- ISP for non-FFN ops. v0 routes only the fused FFN through the
+  ISP. QK^T and attention stay on HTP / HVX even though the ISP
+  could in principle do them too — adding ops to the ISP path
+  multiplies the schedule-tuning surface and is deferred until
+  the FFN path proves stable.
+- Halide JIT compilation on-device. v0 is AOT-only; the
+  per-arch static archives ship in the engine library. Runtime
+  JIT requires Halide runtime on Android which we don't pay for.
+
