@@ -46,9 +46,9 @@ content goes away, the overlay stays/migrates). **NOT-TOUCHED** (stays engine-si
 | 7 | packed-weight arena (`sp_arena_build`/`from_packed`/`find`/`dequant_row`) | `core/arena/arena.c`, `include/sp/arena.h` | `src/forward/arena.c`, `include/sp_engine/arena.h` | FULL-DELETE |
 | 8 | GGUF load/free/release lifecycle (`qwen3_load`/`qwen3_release_source`/`qwen3_free`) | `core/model/model.c` | binding portion of `src/forward/model.c` | **SPLIT** (see M) |
 | 9 | model-coupled weight-lift kernels `sp_matmul` / `sp_embed_row` / `sp_as_f32` / env-knob state | `core/forward_dispatch/forward_dispatch.c`, `include/sp/forward_dispatch.h` | weight-lift half of `src/forward/kernels.c` | **SPLIT** (see K) |
-| 10 | Qwen3 forward orchestration `qwen3_forward` / `qwen3_forward_ex` + KV-decode `qwen3_generate_kv` | `core/forward/forward.c` | `src/forward/forward.c` | FULL-DELETE (reference; AVX reaches it only via the now-overlayed `dot_f32`) |
-| 11 | Gemma3 reference forward `gemma3_forward` | `core/forward/gemma3.c` | `src/forward/gemma3.c` | FULL-DELETE |
-| 12 | greedy O(n²) `qwen3_generate` | `core/forward/generate.c` | `src/forward/generate.c` | FULL-DELETE |
+| 10 | Qwen3 forward orchestration `qwen3_forward` / `qwen3_forward_ex` + KV-decode `qwen3_generate_kv` | `core/forward/forward.c` (the reference twin) | `src/forward/forward.c` | **REORGANIZE → CPU backend** `src/backends/cpu/cpu_forward.c` (see Backend-overlay symmetry) |
+| 11 | Gemma3 reference forward `gemma3_forward` | `core/forward/gemma3.c` (the reference twin) | `src/forward/gemma3.c` | **REORGANIZE → CPU backend** `src/backends/cpu/cpu_gemma3.c` |
+| 12 | greedy O(n²) `qwen3_generate` | `core/forward/generate.c` (the reference twin) | `src/forward/generate.c` | **REORGANIZE → CPU backend** `src/backends/cpu/cpu_generate.c` |
 
 The engine already links the Phase-1 math-core libs (`sp_frobenius sp_ntt_crt sp_poly_ring
 sp_kste sp_vht2`); the bump adds the new ones the FULL-DELETE/SPLIT rows demand:
@@ -106,6 +106,42 @@ reference/weight-lift lives — the "atop the reference" perf paths the legs val
   a directory-listing glob false-negatived this orientation pass.)*
 
 ---
+
+## Backend-overlay symmetry (the Option-C resolution — authorized)
+
+The relocation accidentally created an asymmetry: pre-relocation the engine *was* the CPU
+backend — its forward.c/kernels.c served as both the reference and the AVX perf path, toggled
+at runtime by `SP_CPU_SCALAR`. Moving that forward into math-core made math-core the reference
+and left the CPU "backend" with no backend-side forward, while CUDA (`cuda_forward.cu`), Vulkan
+(`vulkan_forward`), and Hexagon (`sp_hex_imp.c` / `gemma3_forward_hexagon`) each retain their own
+optimized forward validated against the reference. Option C restores symmetry: **the CPU backend
+gets its own forward in `src/backends/cpu/` — the AVX-overlay sibling of `cuda_forward.cu` — and
+math-core's scalar forward is the parallel reference oracle every backend validates against**
+(the same pattern the cross-backend KL gates E_CPU_2 / E_CU_2 / E_VK_2 already use).
+
+Why this and not the alternatives: a math-core dot-dispatch *seam* (the cleaner long-term answer)
+re-opens the just-relocated hot path and the determinism-at-create contract — that belongs to the
+§8.7.4 SESSION phase where the L1 config knobs already plumb through, not to a *validation* phase
+(it would turn VALIDATE into a redesign the per-increment bisect can't cleanly recover). And the
+literal "consume the math-core scalar forward as the CPU path" neuters E_CPU_4 — a whole-forward,
+runtime-toggled (`SP_CPU_SCALAR={1,0}`) AVX-vs-scalar comparison: with only a scalar forward, both
+legs are identical, the gate trivially "passes" but exercises nothing (verified from `test_avx.c`).
+
+Consequence — duplication accepted, by design. The CPU backend's forward is structurally parallel
+to the four device backends' forwards; future edits to the forward orchestration logic touch all
+five sites (math-core scalar reference + the four backend overlays) — the same cost the existing
+CU/VK/HX backends already pay. The CPU backend's forward is **not redundant code**; it is the
+AVX-overlay sibling.
+
+One file-level clarification to the kernels.c SPLIT, resolved by this principle: the CPU backend's
+overlay is not *only* the AVX `dot_f32`. To be a real AVX-accelerated forward whose `SP_CPU_SCALAR`
+toggle is meaningful, the CPU backend keeps its full kernel surface — the weight-lift matmul/embed
+and the reference primitives that compose the forward — calling its own AVX-toggled `dot_f32`
+(in `cpu_overlay.c`, `SP_ENGINE_AVX2`-guarded; its scalar branch may delegate to math-core's
+`sp_dot_f32` for consistency). What the CPU backend *consumes* from math-core is the shared
+infrastructure that has no perf-overlay nature: model representation, the packed-weight arena,
+the GGUF parser, weight-dtype dequant, IO/hash, and the error surface. The math-core
+forward/forward_dispatch/forward_kernels libraries stand as the reference twin.
 
 ## Structural step (executed only after the verdict checkpoint)
 
