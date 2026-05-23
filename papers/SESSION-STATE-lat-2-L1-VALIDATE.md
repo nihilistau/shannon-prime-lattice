@@ -218,7 +218,7 @@ hygiene). T_FRO_4_CU gate (a) f32-vs-oracle deferred → §8.7.5 Phase 2-L1.FP16
 retiring for fp16; reproducing it isn't load-bearing); gate (b) Q4 cross-backend identity = the close.
 Engine 3fe16a8.
 
-**VK / HX — PENDING.** Each builds its own device-backend overlay (consuming the same relocated
+**VK — CLOSED.** Build green (3rd cross-toolchain: glslc). Q4 cross-backend identity vk-vs-cpu pristine where run (q8 KL 1.2e-10, argmax 31/31); M_GEMMA3_VULKAN Q4-scoped. Host-RAM saturation OOMd full-suite reproduction (VkResult-2/host-OOM, VRAM free) -> deferred to 2-L1.FP16 (the fp16 envelope fix). **HX — Q8-only anchored (2-HX, closed).** TAG lat-phase-2-l1-validate-closed: engine aff54c6 / system. **VK/HX(orig) — n/a.** Each builds its own device-backend overlay (consuming the same relocated
 infrastructure) and re-runs its existing regression, with a results entry added here. Disposition:
 VK runs the identical Q4 cross-backend identity gate; HX is Q8-only anchored already (2-HX). The `model.c`
 device-release `#ifdef` hooks — dropped with the deleted engine `model.c` — are re-homed into the
