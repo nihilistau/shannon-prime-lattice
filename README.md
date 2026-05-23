@@ -12,7 +12,7 @@ This repo contains:
 Math core lives in [shannon-prime-system](../shannon-prime-system).
 Inference engine lives in [shannon-prime-system-engine](../shannon-prime-system-engine).
 
-Discord: https://discord.gg/rre9XZmvV
+Discord: [Shannon-Prime-Lattice](https://discord.gg/rre9XZmvV)
 
 ## Status
 
