@@ -6,6 +6,8 @@ name: Discord Commit Notifications
     branches:
       - main
 
+permissions: {}
+
 jobs:
   notify-discord:
     runs-on: ubuntu-latest
