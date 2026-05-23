@@ -190,3 +190,29 @@ headers/sources must hold the same line.
 - The exact engine `include/sp_engine/` header set and which mirror headers retire vs. slim down.
 - The precise content boundary inside `kernels.c` separating the AVX `dot_f32` overlay from the
   relocated reference + weight-lift (the `#if defined(SP_ENGINE_AVX2)` region and `dot_f32`).
+
+*(Verify-at-execution outcome: the build proved them — the kernels.c content moved whole into the CPU
+backend as `cpu_overlay.c` per the symmetry resolution; `sp_set_error`'s exposure and the engine's
+`sp_engine/*` declaration headers resolved cleanly against the linked math-core libs; no header-set
+retirement was needed — the engine's includes are root-rooted and move-transparent.)*
+
+## VALIDATE leg results (running)
+
+**CPU — the §8.6 canonical anchor — CLOSED (2026-05-24).** Engine `main` carries Commit A (pin-only →
+math-core `63f6488` = the §8.7.1 RELOCATE HEAD plus the `sp_set_error` public-API promotion and the
+`sp_add_module` test-exe gating fix) and Commit B (the Option-C structural cutover); both pushed
+(engine HEAD `8795c1f`). Build green — the cutover compiles and links, and the relocated math-core
+modules cross-compile under MSVC. Regression **27/27 green, and behavior-PRESERVING** — the gate
+measurements match the pre-relocation close: `T_FRO_4` forward-correctness rel-diff **−0.0146%** (gate
+0.050%) and Q8-arena drift **−0.7353%** (gate 2.00%); arena / Frobenius inline-lift `bit_exact=YES`
+(L2-drift 0.000000%); `M_GEMMA3_CPU` argmax 31/31, mean KL 2.3e-6 (gate 1e-5); the Qwen distributional
+path within the 1e-5 floor. The integration also surfaced and fixed-at-root a latent math-core build
+bug (the test-exe target-name collision; now gated on `SP_SYSTEM_BUILD_TESTS`) — the kind of latent
+issue VALIDATE exists to catch.
+
+**CU / VK / HX — PENDING.** Each builds its own device-backend overlay (consuming the same relocated
+infrastructure) and re-runs its existing regression, with a results entry added here. The `model.c`
+device-release `#ifdef` hooks — dropped with the deleted engine `model.c` — are re-homed into the
+engine's backend teardown as those legs build (CPU-inert, so it did not block the CPU leg). Device env
+scripts are fixed-at-root if a clean checkout exposes breakage; the HX leg is live (S22U on USB). The
+closure tag `lat-phase-2-l1-validate-closed` lands once all four legs are green.
