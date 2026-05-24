@@ -95,7 +95,10 @@ environment-variable gates until they are individually proven.
 | 4 | Inline cache compression validated | PPL drift and memory savings measured per backend × model | Drift ≤ 1% on calibrated families | 4 weeks |
 | 4-MTP | Multi-token prediction (speculative decoding) | Transactional Spinor blocks + draft/verify/rewind via frozen L1 ABI primitives | M_MTP_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4 | 3 weeks; blocked by Phase 3 close |
 | 5 | Lattice features (sieve, ARM, dominance) | Off-by-default ENV-gated overlays | Regression suite green when gates off | 6 weeks |
-| 6 | Two-node CRT-sharded inference demo | Dual-prime forward pass across two boxes | End-to-end demo run | 3 weeks |
+| 6-BLOCK-SYNC | Relaxed Garner reconstruction | Per-block (4-layer) CRT reconstruction with Poncelet-deterministic Mersenne scaling + residue-polynomial activations | M_BLOCK_1: 4-layer-deferred ≡ per-layer (KL ≤ 1e-12) on Gemma3-1B | 2 weeks; blocked by Phase 5, 4-MTP close |
+| 6-TRANSPORT-CRT-RS | 3-prime CRT erasure code over QUIC | Any-two-of-three Garner over independent QUIC streams + speculative Garner during in-flight | M_TRANSPORT_1: >2× WAN throughput vs TCP at 5% packet loss | 2 weeks; blocked by 6-BLOCK-SYNC |
+| 6-MTP-AMORTIZE | K-batched residue gossip | Compose Phase 4-MTP with cross-node draft batching; one payload per K-batch | M_MTP_AMORT_1: >5× interactive token rate at K=8 over 50ms WAN | 1 week; blocked by 6-TRANSPORT-CRT-RS |
+| 6-CAUSTIC-CULL | Network-level adaptive depth | Skip QUIC payload transmission when PPT Step-12 nδ≡0 caustic layer-skip fires | M_CAUSTIC_1: bytes-on-wire drops linearly with empirical skip rate, zero ⪯_d deviation in emitted KSTE | 1 week; blocked by 6-MTP-AMORTIZE |
 | 7 | DHT crawler skeleton | Kademlia-like routing, single-node first | Two-node lookup works | 3 weeks |
 | 8 | Position-as-Arithmetic crawl assignment + **Fibonacci-Prime DHT** | 2-axis prime-lattice (semantic) × φ-hashed (load) key space | Deterministic re-assignment + uniform load under skewed inputs | 2 weeks + 1 day (Fibonacci hashing) |
 | 9 | ARM gossip aggregation + **Golden-Ratio key init** | Capacity-bounded HRR merge across peers; φ-spaced phases replace random projection | Capacity curve extends past prior K=64 ceiling | 3 weeks + 2 days (key init) |
@@ -2099,6 +2102,114 @@ scaling delta.
 - Adaptive K (varying the draft length per prompt). v0 takes K
   as a session-config knob (`sp_session_config.mtp_k`); adaptive
   selection is a follow-on.
+
+
+## 13. Phase 6 — CRT-Sharded Inference and WAN-Transport Overlays
+
+**Goal.** Graduate the dual-prime forward pass from a single-machine core
+to a multi-node distributed fabric. Overcome high-latency WAN
+constraints not by fighting physics, but by exploiting the algebraic
+properties of the cyclotomic ring $R_q$ and the CRT decomposition.
+
+**Dependencies.** `lat-phase-5-closed` (Lattice features active) and
+`lat-phase-4-mtp-closed` (transactional Spinor blocks).
+
+### 13.1 Phase 6-BLOCK-SYNC — Relaxed Garner Reconstruction
+
+**Concept:** Garner reconstruction is the only point where nodes must
+communicate through $\mathbb{Z}$. Inside $\mathbb{Z}_{q_1}$ and
+$\mathbb{Z}_{q_2}$, arithmetic is exact and closed. By deferring the
+reconstruction from per-layer to per-block (e.g., every 4 layers), we
+slash synchronization points by 75%.
+
+* **Poncelet-Deterministic Scaling:** Replace RMSNorm synchronization by
+  having both nodes deterministically pick the identical Mersenne scale
+  from the prior block's residue-class signature on $E[n]$.
+* **Residue-Polynomial Activation:** Express Halide fixed-point dispatch
+  (HardSwish-SwiGLU/GeGLU) as a polynomial in the residue. With fp16
+  activations capped at $\pm 2^{15}$ and matmul accumulators widening to
+  f32, a 4-layer accumulated magnitude stays under $2^{32}$, safely
+  within the 60-bit CRT field ($\mathbb{Z}_{q_1 \cdot q_2}$). Drift is
+  non-existent; it is purely a deferred reduction.
+* **Gate (M_BLOCK_1):** 4-layer-deferred CRT reconstruction is
+  bit-identical to per-layer reconstruction on Gemma3-1B chunked prefill
+  ($\text{KL} \le 10^{-12}$). This is a measurement-confirms-math gate.
+
+### 13.2 Phase 6-TRANSPORT-CRT-RS — 3-Prime Erasure Coding over QUIC
+
+**Concept:** TCP Head-of-Line blocking is fatal at a 15 KB/layer/token
+cadence. We bypass this by treating the CRT as a network-native erasure
+code.
+
+* **Protocol:** Ship three primes ($q_1$, $q_2$, plus the Mersenne
+  tier-2 prime) over three independent QUIC streams. This turns the
+  3-way Garner reconstruction into an "any-two-of-three" erasure code.
+* **Speculative Garner:** During in-flight time, the local node
+  speculatively computes the next block assuming the modal residue class
+  from the last $N$ reconstructions. If correct: zero latency. If
+  incorrect: O(1) ring-pointer rewind on the Spinor cache.
+* **L1 Boundaries:** Transport and reconstruction logic remain strictly
+  in the C-core. The L2 wrapper remains in its Rust sandbox, shielded
+  from the asynchronous network I/O.
+* **Gate (M_TRANSPORT_1):** $>2\times$ WAN throughput over the TCP
+  baseline at a simulated 5% packet loss.
+
+### 13.3 Phase 6-MTP-AMORTIZE — K-Batched Residue Gossip
+
+**Concept:** Compose Phase 4-MTP with multi-node gossip. Node A walks
+the $q_1$ orbit for $K$ draft tokens; Node B walks the $q_2$ orbit for
+the same $K$.
+
+* **Payload Packing:** Ship one packed payload per $K$-batch instead of
+  per-token.
+* **Zero-Cost Rejection:** Because the Spinor block is transactional,
+  rejected drafts cost zero network overhead on rewind. The node-local
+  speculative state evaporates without requiring a cross-node
+  cancellation packet.
+* **Gate (M_MTP_AMORT_1):** $>5\times$ interactive token rate at $K=8$
+  over a 50ms simulated WAN connection.
+
+### 13.4 Phase 6-CAUSTIC-CULL — Network-Level Adaptive Depth
+
+**Concept:** Extend PPT Step 12 ($n\delta \equiv 0$ adaptive depth) to
+the network layer.
+
+* **Bandwidth Annihilation:** When the residual stream trajectory
+  projects onto a caustic surface where a layer's contribution
+  identically vanishes, the engine does not just skip the local
+  compute—it explicitly skips the QUIC payload transmission for that
+  layer's residue blob.
+* **Gate (M_CAUSTIC_1):** Measured network bandwidth (bytes-on-wire per
+  token) drops linearly in proportion to the empirical layer-skip rate
+  on the Qwen3-0.6B baseline, with zero $\preceq_d$-equivalence
+  deviation in the final emitted KSTE trees.
+
+### 13.5 Sub-phase ordering and closure
+
+The four sub-phases are serial: each composes on the primitives of the
+prior one.
+
+1. **6-BLOCK-SYNC** establishes that the CRT field is closed across a
+   4-layer window. This is the *math gate* — without it the rest of
+   Phase 6 has no algebraic substrate.
+2. **6-TRANSPORT-CRT-RS** lifts the closed window onto the wire. The
+   3-prime erasure code only makes sense once block sync exists, because
+   the speculative-Garner rewind primitive depends on the Spinor block
+   transactionality already validated in Phase 4-MTP and now bounded by
+   the 4-layer window.
+3. **6-MTP-AMORTIZE** composes Phase 4-MTP with the wire. K-batching is
+   architecturally cheap once both block sync and CRT-RS transport are
+   in place; the gate measures the *interactive* payoff.
+4. **6-CAUSTIC-CULL** is the optimisation pass — it skips bytes on the
+   wire entirely when PPT Step 12 fires locally. Order-last because the
+   measurement is "bandwidth drops linearly with skip rate," which
+   requires the per-token bandwidth baseline from the prior three
+   sub-phases to be a stable reference.
+
+Closure tag: `lat-phase-6-closed` after all four sub-phase gates pass.
+Phase log entry names the per-sub-phase numbers, the empirical packet
+loss tolerance, the K cap on real WAN versus simulated WAN, and the
+caustic-skip rate measured on the Qwen3-0.6B / Gemma3-1B baselines.
 
 
 ## Phase log
