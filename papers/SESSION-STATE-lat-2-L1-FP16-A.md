@@ -41,10 +41,26 @@ The FP16 handoff drifted from ground truth (third handoff this round to do so �
    are reasonable *mechanism* tests for Part A but are **not** the §8.7.5 gates. The
    Part A tests below are named as themselves, not as `E_FP16_*`.
 3. **`sp_arch_info` lives in `sp_l1.h`**, not `sp_model.h` (handoff hedged). 
-4. **A5 transcoder does not exist** in either repo (`sp-transcode`/`gguf-to-sp` —
-   only comments match). It is spec'd engine-side (PPT-LAT-SP-MODEL-v0 §9) and was
-   never built. So A5 (write the new fields from the transcoder) has nothing to update
-   — it is a Part B prerequisite (E_FP16_1's PPL gate needs a transcoded `.sp-model`).
+4. **[CORRECTED 2026-05-26] The transcoder EXISTS.** My earlier claim "no transcoder
+   exists in either repo" was WRONG — it is engine-side at
+   `shannon-prime-system-engine/tools/sp_transcode/sp_transcode.c` (Q8-complete:
+   GGUF → `.sp-model` with OK_Q8 + Frobenius scales + F32 norms; used by the `E_FMT_*`
+   roundtrip tests). My globs missed `tools/`. **It is NOT a prerequisite for
+   `E_FP16_1`:** the PPL gate runs the engine's CPU forward on the **GGUF** model
+   (`SP_GEMMA3_GGUF` = `…/gemma-3-1b-it-f16.gguf`, 2 GB, on host) against the committed
+   oracle PPL **32.86939** — no transcoded `.sp-model` involved.
+4b. **[NEW 2026-05-26] arch_struct divergence (deferred reconciliation).** The
+   transcoder writes the engine's **`qwen3_config`** into `arch_struct`
+   (`sp_transcode.c:242`) and the engine adapter reads it back as `qwen3_config`
+   (`sp_model_adapter.c:91-93`). But the frozen spec (PPT-LAT-SP-MODEL-v0 §3) +
+   math-core `sp_model_arch` / HANDLE / SESSION / Part-A all read `arch_struct` as
+   **`sp_arch_info`** — a different layout. So engine-transcoded `.sp-model` files are
+   **mutually incompatible** with the math-core HANDLE/SESSION ABI. The engine path is
+   self-consistent (writer ↔ adapter). **NOT a Phase 2-L1.FP16 blocker** (B-CPU runs on
+   GGUF, not `.sp-model`). Tracked as a **deferred cross-repo reconciliation before
+   Phase 3** (model-family expansion): unify `arch_struct` on `sp_arch_info` across
+   transcoder + engine adapter; breaks existing `.sp-model` + `E_FMT` tests until both
+   sides update together.
 5. Engine backend paths are `src/backends/{cpu,cuda,vulkan,hexagon}/` (real, committed),
    not `src/{cpu,cuda,vulkan}/`.
 
@@ -81,14 +97,18 @@ attempted this session.
 ### Part B execution plan
 
 Re-derive per Roadmap §8.7.5 (lines ~1495-1505 table + the per-backend notes);
-confirm the CU/VK rows there before coding. Backends read `sp_session_precision`
-(now available) to select the fp16 path; f32 stays the fallback (no regression).
+confirm the CU/VK rows there before coding. **[CORRECTED 2026-05-26]** The engine
+does NOT consume the math-core session (`src/CMakeLists.txt` doesn't link `sp_forward`/
+`sp_session`); its CPU/CU/VK backends own their forward over `qwen3_model`. So the fp16
+path is gated by an **engine env knob** (`SP_ENGINE_FP16`, beside the existing
+`SP_ENGINE_F16_ACT`), NOT `sp_session_precision` (that serves the separate L2/session
+path). f32 stays the fallback (no regression).
 
 - **B-CPU** (`src/backends/cpu/`, no GPU needed — do first, locally): activations +
   KV cache + norms/RoPE/attention in fp16 (`_Float16` on gcc; AVX-512-FP16 / F16C on
   MSVC); **matmul accumulator stays f32** (widen per dot). Gate `E_FP16_1`: engine-cpu
-  -fp16 PPL vs f16 oracle ≤ 0.05% — **blocked on a transcoded Gemma3-1B `.sp-model`**
-  (transcoder doesn't exist; build it first, or use the engine's GGUF path + oracle).
+  -fp16 PPL vs f16 oracle ≤ 0.05% — **runs on the GGUF model** (`SP_GEMMA3_GGUF`) via
+  the existing `ppl.c` harness + committed oracle 32.86939; **no transcoder needed**.
 - **B-CU** (`src/backends/cuda/`, needs RTX 2060 + CUDA 13.2, see
   [[reference-cuda-13.2-build-recipe]]): cuBLAS HGEMM in the hot matmul, `__half`
   activations + KV, f32 compute type; sm_75 target.
@@ -104,10 +124,11 @@ confirm the CU/VK rows there before coding. Backends read `sp_session_precision`
 - **E_FP16_4** memory ceiling; **E_FP16_5** fp8 forward-compat — Part A already landed
   the `preferred_precision` enum E_FP16_5 leans on; the gate itself is a Part B
   validation that the fp16 path doesn't preclude fp8.
-- **Transcoder prerequisite**: `E_FP16_1`/`E_FP16_3` need a real transcoded `.sp-model`
-  (Gemma3-1B / Qwen3-0.6B). None exists on host. Build `sp-transcode` (engine-side per
-  §9), OR run the gates via the engine's existing GGUF forward path + the llama.cpp
-  oracle at `shannon-prime-lattice-llama`.
+- **Transcoder [CORRECTED 2026-05-26]**: EXISTS (`tools/sp_transcode/`, Q8-complete) and
+  is NOT a prerequisite for the fp16 PPL gates — those run the engine forward on the
+  GGUF model vs the committed oracle. The transcoder's only FP16-relevant gap is the
+  arch_struct divergence (item 4b: it writes `qwen3_config`, not the spec's
+  `sp_arch_info`), which is a deferred cross-repo reconciliation, not FP16 work.
 
 ### Closure (deferred to Part B)
 Tag `lat-phase-2-l1-fp16-closed` then the umbrella `lat-phase-2-l1-closed` (both repos)
