@@ -1749,38 +1749,118 @@ closed; the matrix is filled per-cell.
 
 **Parallelism.** Cells are independent. Sessions can pick any cell.
 
-### 9.1 Model-family list
+### 9.0 Phase 3 entry condition — `sp_model_release_source()`
 
-- 3.1 Llama 3.1 / 3.2 — established baseline; Llama 3 is the most-tested
-  upstream architecture, so it exercises every loader edge case.
-- 3.2 Qwen3 base — closest to the current canonical Qwen3-0.6B test
-  model.
-- 3.3 Qwen3.5 — incremental update on Qwen3, mostly architecture-flag
-  differences.
-- 3.4 Qwen3.6 — **MoE.** Adds the routing layer, sparse FFN, expert
-  parameter sharding. Largest single-cell scope in Phase 3.
-- 3.5 Qwen3.7 — incremental update on 3.6 if it lands by then;
-  otherwise deferred.
-- 3.6 Gemma 2.5 / 3 / 4 — Google family. Different RoPE shape, different
-  RMSNorm placement, attention sliding window. Gemma 3 is the canonical
-  research target (the T4 validation curve was on Gemma3-1B).
-- 3.7 DeepSeek V4 — large MoE with FP8 weights. Lower priority for
-  initial bring-up; the architecture is heavy and the FP8 weights would
-  require an additional dequant path.
+**Promoted from "small follow-up" to first-cell prerequisite
+(2026-05-26).** Without it Phase 3 cannot scale past ~8B models on
+a 64 GB host. The PARITY close measured math-core RSS at 1458 MB
+on Qwen3-0.6B vs engine's ~580 MB — the 754 MB delta is the source
+`.sp-model` mmap that stays resident after the arena is built.
+That delta scales linearly with the source file size:
 
-### 9.2 Priority cells
+| Model | Arena | Unreleased source | Total |
+|---|---|---|---|
+| Qwen3-0.6B | ~580 MB | ~754 MB | 1.3 GB |
+| Gemma3-1B | ~1 GB | ~2 GB | 3 GB |
+| Qwen3-8B Q4 | ~5 GB | ~16 GB f16-source | **~21 GB** |
+| Gemma4-31B Q4 | ~16 GB | ~62 GB f16-source | **~78 GB** — won't fit |
+| Qwen3.6-35B-A3B Q4 | ~18 GB MoE-active | ~70 GB f16-source | **~88 GB** — won't fit |
 
-The matrix has 28 cells. To stay honest about scope, the project
-declares which cells **must** close by end of Phase 3 and which are
-later-phase:
+**Deliverable.** Add `sp_status sp_model_release_source(sp_model*)`
+to the L1 ABI (`include/sp/sp_l1.h`). After arena build during
+`sp_session_create`, the source weight blob region of the .sp-model
+mmap can be released. The paired `.sp-tokenizer` mmap stays
+(detokenization needs it). `sp_model_unload` becomes a no-op for
+the already-released portion + unmaps the tokenizer normally.
 
-- **Must close (8 cells).** CPU × {Llama 3.x, Qwen3, Gemma 3}, CUDA ×
-  {Llama 3.x, Qwen3, Gemma 3}, Hexagon × {Qwen3, Gemma 3}.
-- **Should close (10 cells).** CPU × {Qwen3.5, Qwen3.6, Gemma 2.5,
-  Gemma 4, DeepSeek V4}, CUDA × {Qwen3.5, Qwen3.6, Gemma 2.5, Gemma 4,
-  DeepSeek V4}.
-- **Later (10 cells).** All Vulkan cells beyond the canonical
-  Qwen3-0.6B test model. All Hexagon cells beyond Qwen3 and Gemma 3.
+**Gate.** Math-core RSS on Qwen3-0.6B after explicit
+`sp_model_release_source()` call drops from 1458 MB to within
+±5% of the engine's E_CPU_10 (~580 MB). Without this, no Phase 3
+cell can close on a >8B model.
+
+### 9.1 Model-family list (2026-05-26 — updated to user fixtures)
+
+Phase 3 in-scope arches, ordered by Phase 3 priority:
+
+- **Gemma3** (`arch_id = GEMMA3`) — `gemma_forward` was the canonical
+  Phase 2 PPL anchor. Bridge support in math-core remains the
+  `T_PARITY_CROSS_LOAD` deferred item from PARITY close: sandwich
+  RMSNorm, GeGLU FFN, per-head QK-RMSNorm, dual RoPE base, local/
+  global sliding-window attention (`set_swa_pattern(6)`), tied LM
+  head. First cell to bring up.
+- **Gemma4** (`arch_id = GEMMA4`) — incremental Gemma family delta;
+  E4B variant + 31B variant. 4 adds a vision tower the text path
+  ignores. Sandwich norms inherited from Gemma3.
+- **Qwen2.5** (`arch_id = QWEN25`) — coder family (0.5B/1B/3B/14B).
+  Closer to Llama-base RoPE than Qwen3; useful for smaller test
+  fixtures and spec-decode draft (the 0.5B draft for the 14B
+  target is the canonical pairing from the prior cohort).
+- **Qwen3.5** (`arch_id = QWEN35`) — incremental delta on Qwen3
+  base; metadata flags + slightly different attention normalisation
+  order. Same kernel inventory.
+- **Qwen3.6** (`arch_id = QWEN36`) — **MoE.** A3B suffix = 35B total
+  parameters with ~3B active per token via top-k expert routing.
+  Largest single-cell scope: routing layer, sparse FFN gather,
+  expert parameter sharding. Phase 3 only requires the
+  single-machine case; multi-machine MoE is Phase 6+.
+- **DeepSeek V4** (`arch_id = DEEPSEEK_V4`) — large MoE with FP8
+  weights. **Aspirational.** No on-disk fixture yet; lower
+  priority for initial bring-up. The FP8 weights would require
+  an additional dequant path that overlaps with the eventual fp8
+  sub-phase.
+
+Llama 3.x is **deprioritised** in this cohort — the math-core
+session works on Qwen3-0.6B end-to-end so the loader edge cases
+Llama 3 was meant to canary are already exercised by the Qwen3
+path. Llama 3 cells can land opportunistically.
+
+### 9.2 Model fixtures on disk (host paths, 2026-05-26)
+
+Fixtures the user has staged for Phase 3, by arch:
+
+| Family | Path | Notes |
+|---|---|---|
+| Gemma3 | `D:\Files\Models\Mine\gemma-3-1b-it` | f16/Q3_K_M/Q4_0/Q4_1/Q4_K_M/Q6_K/Q8_0/QAT-Q4 sub-folders — multi-quant test surface |
+| Gemma3 (12B) | `D:\Files\Models\lmstudio-community\gemma-3-12b-it-GGUF` | scale-up after 1B closes |
+| Gemma4 (31B) | `D:\Files\Models\lmstudio-community\gemma-4-31B-it-GGUF` | needs `sp_model_release_source()` (§9.0) to fit |
+| Gemma4 (E4B) | `D:\Files\Models\lmstudio-community\gemma-4-E4B-it-GGUF` | smaller Gemma4 variant; first cell for Gemma4 bring-up |
+| Qwen2.5 coder | `D:\Files\Models\lmstudio-community\Qwen 2.5 coder 0.5b-1b-3b-14b` | 0.5B/1B/3B/14B family; 0.5B = spec-decode draft pairing with 14B target |
+| Qwen2.5 coder 0.5B | `D:\Files\Models\lmstudio-community\Qwen2.5-Coder-0.5B-Instruct-GGUF` | standalone 0.5B copy |
+| Qwen3 (8B) | `D:\Files\Models\lmstudio-community\Qwen3-8B-GGUF` | first Phase 3 scale-up beyond 0.6B; needs §9.0 |
+| Qwen3.5 (9B) | `D:\Files\Models\lmstudio-community\Qwen3.5-9B-GGUF` | needs §9.0 |
+| Qwen3.6 (27B) | `D:\Files\Models\lmstudio-community\Qwen3.6-27B-GGUF` | dense variant |
+| Qwen3.6 (35B A3B) | `D:\Files\Models\lmstudio-community\Qwen3.6-35B-A3B-GGUF` | **MoE** flagship; largest scope; needs §9.0 |
+| Qwen3.6 (35B A3B Draft) | `D:\Files\Models\lmstudio-community\Qwen3.6-35B-A3B-Draft-GGUF` | speculative-decode draft pairing for 4-MTP |
+| DeepSeek V4 | not on disk | aspirational; acquire later |
+
+Opportunistic Phase 3 fixtures also on disk (not user-requested
+but available): Qwen3-4B-Thinking, Qwen3-VL-4B / 8B, Phi-3.1 mini,
+Phi-4, NVIDIA Nemotron-3-Nano-4B, LFM2.5-1.2B, functiongemma-270m.
+These can land as Phase 3 cells without changing the scope; the
+agent picks them up if the work overlaps a primary cell.
+
+The reference Qwen3-0.6B fixture used by the PARITY close lives
+at `D:\Files\Models\` per the existing engine test setup
+(`SP_QWEN3_GGUF`) — kept as the regression-test model for
+math-core session correctness.
+
+### 9.3 Priority cells (2026-05-26 — updated to user fixtures)
+
+The matrix is **arch × backend**. CPU is the canonical path; CUDA
++ Vulkan + Hexagon follow per-arch as each compiles. The matrix:
+
+- **Must close (5 cells, CPU only).** CPU × {Gemma3 (1B), Gemma4
+  (E4B), Qwen2.5 (3B), Qwen3.5 (9B), Qwen3.6 (35B-A3B)}. These
+  are the smallest viable cell per arch + the MoE flagship.
+  Closing these proves the bridge handles every arch shape.
+- **Should close (5 cells).** CPU scale-ups: Gemma3-12B,
+  Gemma4-31B, Qwen3-8B, Qwen3.6-27B (dense), and any one of
+  Qwen3-VL / Phi-4 / LFM2.5 as a "fourth arch family" canary.
+- **Should close (5 CUDA cells).** CUDA × {Gemma3, Gemma4-E4B,
+  Qwen2.5, Qwen3.5, Qwen3.6-A3B}. RTX 2060 12 GB VRAM gates
+  which sizes fit; pick the smallest per arch.
+- **Later.** Vulkan + Hexagon × non-Qwen3-0.6B cells. All
+  DeepSeek V4 cells (no on-disk fixture).
 
 ### 9.3 Per-cell deliverables
 
