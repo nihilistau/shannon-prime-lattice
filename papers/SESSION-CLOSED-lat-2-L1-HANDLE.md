@@ -7,8 +7,11 @@
 pushed to `origin/main` (`63f6488..df44c5e`). The `.sp-model` adapter surface is
 landed against the **frozen** L1 ABI; the model-handle half of PPT-LAT-L1-ABI-v0
 is complete. Tier-1 (Windows MinGW gcc 15.2) **15/15 root suite green incl.
-T_IO_FORMAT (11 cases / 37 checks)**; UBSan trap-on-error clean. Tier-2 (Linux
-gcc) runs on the push; Tier-3 (MSVC) tracked open (see Open/notes).
+T_IO_FORMAT (11 cases / 37 checks)**; UBSan trap-on-error clean. **Tier-2 (Linux
+gcc) AND Tier-3 (MSVC) CI both green on the push** (run `26397311284`: `linux-gcc`
+32s, `windows-msvc` 59s) — MSVC passed, so the umbrella `lat-phase-2-l1-closed`
+MSVC concern is satisfied for this io_format layer. Remaining CI gap is the
+*sanitizer-instrumented* Tier-2 run only (see Open/notes).
 
 > **NEXT SESSION PICKS UP HERE → Phase 2-L1.SESSION (§8.7.4).** The loader,
 > arch query, tensor lookup, and Spinor verify are all in place and frozen-ABI
