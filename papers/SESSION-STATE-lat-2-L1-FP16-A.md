@@ -135,6 +135,50 @@ Tag `lat-phase-2-l1-fp16-closed` then the umbrella `lat-phase-2-l1-closed` (both
 **only after all five `E_FP16_1..5` pass for real** + the §8.2 T_FRO_4-fp16 amendment.
 Until then this is shipped mechanism, not a closed phase.
 
+## Step B-CPU closure (2026-05-26) — E_FP16_1 GREEN
+
+**Done:** fp16 working precision on the engine CPU backend (`shannon-prime-system-engine`,
+commit `81f1e1c`, `[lat-2-l1-fp16-B-cpu]`; tag `lat-phase-2-l1-fp16-B-cpu-closed`).
+
+- **Env knob shipped:** `SP_ENGINE_FP16=1` (beside `SP_ENGINE_F16_ACT`), read in
+  `sp_kernels_read_env`; default off ⇒ byte-identical f32 path.
+- **Codepath (entirely in the shared `src/backends/cpu/cpu_overlay.c`, so qwen3 +
+  gemma3 forwards both get it, no per-arch edits):** `matmul` rounds activations to
+  fp16 (the existing F16C/`sp_f32_to_f16` src1-downcast path, now `g_f16_act||g_fp16`);
+  `kernels_attn_head` rounds Q/K/V to fp16 in the score + value loops via
+  `r16()`=round-to-binary16. **Matmul accumulator + softmax + residual stream stay
+  f32** — the llama.cpp f16 scheme the oracle uses (f16 weights + f16 matmul-src1 +
+  f16 KV/attention, f32 accumulate). Conversions are F16C (`sp_f16_to_f32`/
+  `sp_f32_to_f16`), sufficient since the accumulator widens to f32; no AVX-512-FP16
+  intrinsics needed (so no MSVC-specific codepath; Tier-3 not implicated).
+- **E_FP16_1 result** (Tier-1, Windows MSVC VS2019, Gemma3-1B-f16 `SP_GEMMA3_GGUF`,
+  168-token single window, vs committed f16 oracle PPL **32.86939**):
+
+  | pass | PPL | rel-diff vs oracle | gate |
+  |---|---|---|---|
+  | f32   | 32.86458 | −0.0146% | 0.050% (gate a) |
+  | q8    | 32.62294 | −0.7353% drift vs f32 | 2.0% (gate b) |
+  | **fp16** | **32.86655** | **−0.0086%** | **0.050% (E_FP16_1)** ✓ |
+
+  fp16 is **tighter than f32** vs the f16 oracle (−0.0086% < −0.0146%), confirming the
+  fp16 path matches the oracle's precision ("naturally tight, same precision both
+  sides", §8.7.5). `T_FRO_4` PASS (12 checks). Fast suite **26/26** (no regression;
+  the knob is off by default). `E_FMT_1..4` (transcoder roundtrip) + `M_GEMMA3_CPU`
+  all green.
+- **PPL pass added** to `tests/test_ppl.c` `T_FRO_4` (third, fp16) at the 5e-4 floor;
+  `SP_ENGINE_FP16` added to `clear_matmul_knobs`.
+
+**Verification limits (honest):** Tier-1 MSVC only this session; the engine has no
+Linux-gcc CI wired for this gate (unlike math-core). `E_FP16_1` is the only fp16 gate
+closed. **Umbrella tags `lat-phase-2-l1-fp16-closed` + `lat-phase-2-l1-closed` REMAIN
+UNFIRED** — they need E_FP16_2 (cross-backend CU/VK identity), E_FP16_3 (HX qf32 floor),
+E_FP16_4 (memory ceiling — needs *true* fp16 storage, a follow-up; this work-unit lands
+fp16 numerics, not the memory-footprint win), E_FP16_5 (fp8-compat).
+
+**Remaining Part B (next sessions):** B-CU (cuBLAS HGEMM, RTX 2060), B-VK
+(`VK_KHR_shader_float16_int8` shaders), E_FP16_2 cross-backend identity, E_FP16_3 HX
+floor, E_FP16_4 memory (true fp16 buffers). Then the umbrella tags.
+
 ## Notes
 - Fixture `.sp-model` SHA-256 changed (arch_struct_size 44→56): the SESSION offload's
   `b6379383…` and HANDLE's `96e3757…` are superseded — both were observability prints,
