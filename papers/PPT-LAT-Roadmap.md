@@ -90,7 +90,7 @@ environment-variable gates until they are individually proven.
 | 2-VK | Engine, Vulkan backend | Same scope as 2-CPU on cross-platform GPU | E_VK_1..E_VK_6 green | **CLOSED 2026-05-23** |
 | 2-HX | Engine, Hexagon backend | Same scope as 2-CPU on Snapdragon HTP V69 | E_HX_1..E_HX_6 green | **ESSENTIALLY CLOSED 2026-05-23 (formal tag pending E_HX_5/E_HX_6)** |
 | 2-FMT | Engine, .sp-model on-disk format | Loader + transcoder + round-trip gate | E_FMT_1..E_FMT_4 green | **CLOSED 2026-05-23** |
-| 2-L1 | L1 ABI implementation in math-core | RELOCATE → VALIDATE → HANDLE → SESSION | Each sub-phase has its own gate; umbrella `lat-phase-2-l1-closed` | RELOCATE done; VALIDATE next |
+| 2-L1 | L1 ABI implementation in math-core | RELOCATE → VALIDATE → HANDLE → SESSION → **PARITY → FP16** | Each sub-phase gates; umbrella `lat-phase-2-l1-closed` after PARITY + FP16 | RELOCATE/VALIDATE/HANDLE/SESSION done; PARITY = next (inline KV+weight compression to math-core); FP16 = dtype plumbing |
 | 2-L3 | Headless HTTP/SSE daemon wrapping L2 | localhost:8080 service exposing the small REST + SSE surface; survives UI lifecycle | E_L3_1..3 (cold start ≤ 200 ms, UI death does not pause daemon, 5-min S22U soak with foreground service) | 3 weeks; blocked by `lat-phase-2-l1-closed` |
 | 3 | Model-family expansion | All four backends host all seven model families | M_*×B_* matrix green | 8–12 weeks |
 | 4 | Inline cache compression validated | PPL drift and memory savings measured per backend × model | Drift ≤ 1% on calibrated families | 4 weeks |
@@ -1463,32 +1463,83 @@ output exactly.
 `lat-phase-2-l1-closed` triggers after §8.7.5 Phase 2-L1.FP16 also
 closes.
 
-#### 8.7.5 Phase 2-L1.FP16 — fp16 working precision
+#### 8.7.5 Phase 2-L1.PARITY — math-core session inherits engine's inline compression
 
-The deferred desktop-GPU f32-vs-oracle legs from §8.7.2 closure
-(blocked on host-RAM saturation, not capacity) land here. Working
-precision moves from f32 to fp16 across CPU / CU / VK; HX stays
-qf32; math-core scalar reference stays f32 as the bit-exact
+**Why this sub-phase exists.** When 2-L1.SESSION closed it shipped
+`session-owned persistent f32 KV`. That is a memory **regression**
+relative to the engine, which has E_CPU_7 (Q4 inline weight
+compression) and E_CPU_8 (VHT2+Spinor inline KV codec) shipped from
+Phase 2-CPU. The math-core session must inherit that profile before
+Phase 3 can load 8B+ models — otherwise the session is unusable for
+production-context inference no matter how good its ABI is.
+
+**The math is already proven** in the prior cohort
+(`project_phase11_full_stack`, `project_phase12_q8_step_d`,
+`project_phase14_q4_filestate`) and inherited via SP Frobenius-lift
+identity. This sub-phase is **integration**, not validation —
+re-derive (anti-contamination per §3.1) the proven primitives in
+`core/vht2` and `core/frobenius` into the session's decode and
+bridge paths.
+
+**Deliverables.**
+
+- **E_PARITY_1 — Spinor KV codec in session decode.** Wire `core/vht2`
+  T_VHT_7 Spinor block layout into `sp_decode_step`'s KV write path.
+  Re-derive from the §4.5 frozen 63-byte Spinor block + §4.9
+  inline-codec spec; do not read the engine implementation
+  (anti-contamination). Gate: KV-cache memory footprint at
+  Gemma3-1B n_ctx=4096 matches the engine's `E_CPU_8` measured
+  footprint within ±5%. PPL bit-identical to the f32-KV path.
+
+- **E_PARITY_2 — Q4 inline weight in bridge.** `sp_model_to_qwen3`
+  bridge already supports OK_Q8 codes. Extend to Q4 mixed-precision
+  arena per `core/frobenius`'s T_FRO_5 frozen layout
+  (`SP_FROB_ARENA_LAYOUT_VERSION=1`). Gate: Q4-arena weight memory
+  matches engine's `E_CPU_7` footprint within ±5%; PPL drift bounded
+  per the prior cohort's calibrated number (`project_phase14_q4_result`
+  +0.7% on Gemma3-1B was the per-row Q4 budget).
+
+- **E_PARITY_3 — arch_struct reconciliation.** Engine transcoder
+  writes `qwen3_config` into arch_struct;
+  math-core SESSION expects `sp_arch_info` per
+  PPT-LAT-SP-MODEL-v0 §3 (the frozen spec — see
+  `project_arch_struct_divergence`). Engine conforms: transcoder
+  writes `sp_arch_info`, engine adapter reads `sp_arch_info`,
+  engine reconstructs its internal `qwen3_config` from
+  `sp_arch_info` + tensor inspection. Gate: cross-load
+  integration test — engine transcodes Gemma3-1B → math-core
+  session loads it → forward bit-identical vs engine forward.
+
+- **E_PARITY_4 — Peak RSS headline.** With E_PARITY_1+2 wired,
+  measure peak RSS at Gemma3-1B n_ctx=4096 under the math-core
+  session. Compare against engine's E_CPU_10 number. Gate:
+  within ±10% of engine's RSS. This is the user-visible
+  deliverable that 2-L1's relocation didn't regress the memory
+  story.
+
+**Closure tag.** `lat-phase-2-l1-parity-closed`. Then §8.7.6 FP16
+(dtype plumbing only) closes, then umbrella
+`lat-phase-2-l1-closed` fires.
+
+#### 8.7.6 Phase 2-L1.FP16 — fp16 working precision (dtype plumbing)
+
+**Scope trim from prior version.** The previous §8.7.5 over-scoped
+this sub-phase with cross-backend identity gates, Q4-arena re-
+measurement, and per-backend ULP-floor analysis as if the SP
+Frobenius-lift identity were an open question. It isn't — the
+identity is algebraic and was proven in the prior cohort
+(`project_phase11_full_stack`, `project_phase12_q8_step_d`). This
+sub-phase is **dtype plumbing**: pick the right type for residual
+activation + KV buffers across CPU/CU/VK and confirm PPL doesn't
+regress. The compression-driven memory win lives in §8.7.5 PARITY,
+not here. See `feedback-sp-is-discrete-fp-is-plumbing` for the
+canonical framing.
+
+Working precision dtype moves from f32 to fp16 across CPU / CU / VK;
+HX stays qf32; math-core scalar reference stays f32 as the bit-exact
 absolute-correctness anchor.
 
-**Why this is its own sub-phase.** The fp16 conversion fans out
-across every backend's matmul, attention, FFN, and KV-cache
-allocation paths. Doing it before §8.7.4 SESSION would mean
-re-touching all the kernels twice (once on math-core, once on the
-session wrappers). Doing it after SESSION consolidates the precision
-shift into a single backend-wide kernel pass on top of an
-ABI-stable surface.
-
-**The "bit exact" framing.** The user-direction binding rule (see
-`reference-fp16-working-precision`): the Frobenius-lift identity is
-algebraic, not precision-dependent. Per-row Q4 mixed-precision
-weights → fp16 activations through the inline-lift path produce
-cross-backend-identical fp16 outputs by construction. Measurement
-confirms the math; it does not discover the precision floor. If
-cross-backend fp16 KL is non-zero on the production Q4-arena path,
-the bug is in the backend's fp16 dispatch, not in the SP math.
-
-**Per-backend precision layout.**
+**Per-backend dtype.**
 
 | Backend       | Activations | KV cache   | Matmul accumulator | Notes                                                |
 |---------------|-------------|------------|--------------------|------------------------------------------------------|
@@ -1498,54 +1549,33 @@ the bug is in the backend's fp16 dispatch, not in the SP math.
 | HX            | qf32        | qf32       | qf32               | V69 Q6_Vsf_* IEEE-fp16 broken (gotcha #7); qf32 only |
 | Math-core ref | f32         | f32        | f32                | Bit-exact absolute-correctness anchor (untouched)    |
 
-The matmul accumulator staying at f32 is deliberate: fp16 × fp16 →
-f32 widening is the standard accuracy-preserving idiom for tensor-
-core / SIMD-FP16 hardware, and the f32 accumulator floor is well
-below fp16's representation precision so the visible result is
-fp16 anyway.
+**Deliverables (trimmed — no cross-backend identity gates, no Q4-arena
+re-measurement; both already proven and inherited).**
 
-**Deliverables.**
+- **E_FP16_1 — CPU fp16 path.** Buffers typed fp16, matmul accumulator
+  f32. Engine-cpu-fp16 PPL vs f16 oracle ≤ 0.05% (smoke gate; the
+  identity is by construction). **CLOSED** in B-CPU work.
+- **E_FP16_2 — CU fp16 path.** Same shape on CUDA. Per-backend PPL
+  smoke gate only; cross-backend KL is informational, not gating.
+  **CLOSED** in B-CU work (KL 1.573e-6 vs CPU recorded as wiring
+  confirmation).
+- **E_FP16_3 — VK fp16 path.** Same shape on Vulkan. PPL smoke gate
+  on whatever model fits the 12 GB VRAM (Qwen3-0.6B at f32-weights,
+  or Gemma3-Q4 if §8.7.5 PARITY is closed first and the Q4 weight
+  path is wired). The "bit-identical" gate from the prior over-scoped
+  version is dropped — SP Frobenius-lift identity is inherited proof.
 
-- **E_FP16_1 — CPU fp16 forward.** Activation buffers, KV cache,
-  norms, RoPE, attention all on fp16; matmul accumulator f32.
-  Engine-cpu-fp16 PPL vs f16 oracle ≤ 0.05% (naturally tight, same
-  precision both sides). Extends the existing E_CPU_10 fp16-source-
-  release work from "source release" to "production activation
-  precision."
+**E_FP16_4 (memory) moved to §8.7.5 PARITY** — that's where the
+memory deliverable actually lives. fp16 buffer-typing alone is a 2×
+on activations + KV; the inline VHT2+Spinor KV codec is the real
+~128× lossless cache win and the Q4 arena is the 8× weight win. The
+headline RSS number belongs to PARITY, not FP16.
 
-- **E_FP16_2 — Cross-backend fp16 identity.** CPU-fp16 vs CU-fp16
-  vs VK-fp16 bit-identical at fp16 precision on the production
-  Q4 mixed-precision arena. By SP Frobenius-lift identity this
-  should be zero KL (or within fp16's ULP). Measured by running
-  the same Gemma3-1B + Qwen3-0.6B fixture on the three backends
-  and asserting bit-equivalent logits at every position.
-
-- **E_FP16_3 — HX qf32 precision-floor.** HX-qf32 vs CPU-fp16 KL
-  bounded by qf32-vs-fp16 representation floor; argmax + top-5
-  agreement holds. Same shape as §8.8.1's reassociation-floor
-  pattern — see §8.8.1's extension for the generalized
-  precision-floor formulation.
-
-- **E_FP16_4 — Memory ceiling.** Peak working-set RAM at production
-  context (Gemma3-1B at n_ctx=4096, Qwen3-0.6B at the same)
-  fits within the project's resource envelope. The exact ceiling
-  is the binding constraint that drove this sub-phase; the
-  measurement records the headline number (full
-  weights + activations + KV cache + arena, peak RSS) and demonstrates
-  the headroom the f32 path lacked. The deferred f32-vs-oracle
-  desktop-GPU legs from §8.7.2 close re-run here under the fp16
-  path and are expected to pass (the host-RAM saturation that
-  blocked them disappears with fp16 activations + KV).
-
-- **E_FP16_5 — fp8 forward-compatibility.** The fp16 path doesn't
-  preclude a later fp8 sub-phase. `sp_arch_info.preferred_precision`
-  (or a session-config equivalent) enum exposes fp16 + qf32 + f32
-  as current values; reserves fp8 + fp4 + ternary (qint2) as
-  future values. The session-create dispatch reads this and selects
-  the right kernel set. Hopper/Ada/B100 NVIDIA, Lunar Lake Intel,
-  M4+ Apple Silicon ship native fp8; RTX 2060 (sm_75) does not.
-  Phase 2-L1.FP16 establishes the plumbing; the fp8 follow-on
-  becomes backend kernel additions, not architectural redesign.
+**E_FP16_5 (fp8 forward-compat) — done.** The
+`sp_arch_info.preferred_precision` enum landed in Part A of the prior
+sub-phase scope (HANDLE + SESSION precision-resolution plumbing).
+fp8 sub-phase later is a backend kernel addition, not architectural
+redesign — this hook exists. No further work required here.
 
 **Gate redefinition for §8.2 T_FRO_4 under FP16.**
 
