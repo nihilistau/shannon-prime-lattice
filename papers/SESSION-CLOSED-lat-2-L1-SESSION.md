@@ -11,8 +11,10 @@ exists in math-core. Commits (in order):
 - `c7bdb9e` — record the fixture SHA-256 in the test output.
 
 Tier-1 (Windows MinGW gcc 15.2): full root suite **16/16 green** incl. `T_SESSION`
-(6 cases / 47 checks); UBSan trap-on-error build of the session path clean. Tier-2
-(Linux gcc) + Tier-3 (MSVC) CI run on the push (status appended below).
+(6 cases / 47 checks); UBSan trap-on-error build of the session path clean. **Tier-2
+(Linux gcc) AND Tier-3 (MSVC) CI both green** on the push (run `26399281466`:
+`linux-gcc` 39s, `windows-msvc` 50s). Remaining CI gap is the sanitizer-instrumented
+Tier-2 run only (verified locally; not wired into `ci.yml`).
 
 > **NEXT → Phase 2-L1.FP16 (§8.7.5).** The umbrella `lat-phase-2-l1-closed` fires
 > after FP16 closes. FP16 must also resolve the two frozen-format metadata gaps this
