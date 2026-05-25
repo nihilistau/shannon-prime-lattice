@@ -11,8 +11,10 @@ the Part B plan.
 
 shannon-prime-system `main` @ **`35cb5df`** (`[lat-2-l1-fp16-A]`), pushed
 (`0f5b29f..35cb5df`). Tier-1 (Windows MinGW gcc 15.2): full root suite **16/16**;
-`T_SESSION` 9 cases / **73 checks**; UBSan trap-on-error clean. Tier-2/3 CI status
-appended below.
+`T_SESSION` 9 cases / **73 checks**; UBSan trap-on-error clean. **Tier-2 (Linux gcc)
+AND Tier-3 (MSVC) CI both green** (run `26401194997`: `linux-gcc` 33s, `windows-msvc`
+48s) — confirms the grown `sp_arch_info` + `_Static_assert(sizeof<=256)` compile under
+gcc and MSVC, and `sp_l1.h`'s C++ inclusion (Vulkan) is unaffected.
 
 ---
 
