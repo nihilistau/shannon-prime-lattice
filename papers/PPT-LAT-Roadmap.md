@@ -91,6 +91,7 @@ environment-variable gates until they are individually proven.
 | 2-HX | Engine, Hexagon backend | Same scope as 2-CPU on Snapdragon HTP V69 | E_HX_1..E_HX_6 green | **ESSENTIALLY CLOSED 2026-05-23 (formal tag pending E_HX_5/E_HX_6)** |
 | 2-FMT | Engine, .sp-model on-disk format | Loader + transcoder + round-trip gate | E_FMT_1..E_FMT_4 green | **CLOSED 2026-05-23** |
 | 2-L1 | L1 ABI implementation in math-core | RELOCATE → VALIDATE → HANDLE → SESSION | Each sub-phase has its own gate; umbrella `lat-phase-2-l1-closed` | RELOCATE done; VALIDATE next |
+| 2-L3 | Headless HTTP/SSE daemon wrapping L2 | localhost:8080 service exposing the small REST + SSE surface; survives UI lifecycle | E_L3_1..3 (cold start ≤ 200 ms, UI death does not pause daemon, 5-min S22U soak with foreground service) | 3 weeks; blocked by `lat-phase-2-l1-closed` |
 | 3 | Model-family expansion | All four backends host all seven model families | M_*×B_* matrix green | 8–12 weeks |
 | 4 | Inline cache compression validated | PPL drift and memory savings measured per backend × model | Drift ≤ 1% on calibrated families | 4 weeks |
 | 4-MTP | Multi-token prediction (speculative decoding) | Transactional Spinor blocks + draft/verify/rewind via frozen L1 ABI primitives | M_MTP_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4 | 3 weeks; blocked by Phase 3 close |
@@ -99,6 +100,10 @@ environment-variable gates until they are individually proven.
 | 6-TRANSPORT-CRT-RS | 3-prime CRT erasure code over QUIC | Any-two-of-three Garner over independent QUIC streams + speculative Garner during in-flight | M_TRANSPORT_1: >2× WAN throughput vs TCP at 5% packet loss | 2 weeks; blocked by 6-BLOCK-SYNC |
 | 6-MTP-AMORTIZE | K-batched residue gossip | Compose Phase 4-MTP with cross-node draft batching; one payload per K-batch | M_MTP_AMORT_1: >5× interactive token rate at K=8 over 50ms WAN | 1 week; blocked by 6-TRANSPORT-CRT-RS |
 | 6-CAUSTIC-CULL | Network-level adaptive depth | Skip QUIC payload transmission when PPT Step-12 nδ≡0 caustic layer-skip fires | M_CAUSTIC_1: bytes-on-wire drops linearly with empirical skip rate, zero ⪯_d deviation in emitted KSTE | 1 week; blocked by 6-MTP-AMORTIZE |
+| FE-MOBILE-FLUTTER | Mobile frontend (Flutter, S22U) | Dart-isolate UI, five tabs (chat / node / pouw / mesh / config), pure HTTP/SSE client to local L3 daemon | E_FE_M_1: APK ships with **zero** sp_session / spinor / logits symbols in compiled artifact | 3 weeks; blocked by `lat-phase-2-l3-closed` |
+| FE-DESKTOP-CONSOLE | Desktop fleet console (web admin) | Multi-node operator view, q-shard topology, aggregate fleet metrics, event stream | E_FE_D_1: 14-node fleet renders < 200 ms cold; per-node drilling works against live L3 endpoints | 3 weeks; blocked by `lat-phase-2-l3-closed` |
+| FE-WATCH-WEAR | Galaxy Watch6 face + complications | BLE+GATT bridge to paired phone daemon; six face designs; SSE-over-GATT chunked at 20 B | E_FE_W_1: watch holds ed25519 key fingerprint only; no logits / no Spinor blocks; haptic on mint within 500 ms of daemon SSE | 2 weeks; blocked by `lat-phase-2-l3-closed` |
+| FE-CLI-TMUX | Terminal UI (spctl) | tmux-friendly TUI for SSH/server admin; same L3 endpoints, ANSI rendering | E_FE_C_1: full overview pane (peers / sieve / receipts / htop) under 80 cols ASCII; passes `--no-truecolor` portability check | 1 week; blocked by `lat-phase-2-l3-closed` |
 | 7 | DHT crawler skeleton | Kademlia-like routing, single-node first | Two-node lookup works | 3 weeks |
 | 8 | Position-as-Arithmetic crawl assignment + **Fibonacci-Prime DHT** | 2-axis prime-lattice (semantic) × φ-hashed (load) key space | Deterministic re-assignment + uniform load under skewed inputs | 2 weeks + 1 day (Fibonacci hashing) |
 | 9 | ARM gossip aggregation + **Golden-Ratio key init** | Capacity-bounded HRR merge across peers; φ-spaced phases replace random projection | Capacity curve extends past prior K=64 ceiling | 3 weeks + 2 days (key init) |
@@ -2212,6 +2217,194 @@ loss tolerance, the K cap on real WAN versus simulated WAN, and the
 caustic-skip rate measured on the Qwen3-0.6B / Gemma3-1B baselines.
 
 
+## 14. Phase 2-L3 — Headless HTTP/SSE Daemon
+
+**Goal.** Wrap the L2 Rust driver in a long-lived OS-managed daemon
+process that exposes a small REST + SSE surface on `localhost:8080`.
+The daemon survives UI lifecycle events (Android foreground service,
+systemd unit on Linux, launchd plist on macOS) so the inference
+engine, the Friedman sieve evaluation, and PoUW mining run
+independently of any frontend. The L3 surface is the **canonical UX
+boundary** for the entire lattice; every frontend (mobile, desktop,
+watch, CLI) attaches to it.
+
+**Dependencies.** `lat-phase-2-l1-closed`.
+
+### 14.1 The five SendMessage seams
+
+This phase formalises an architectural invariant that has been
+implicit through Phases 2-CPU/CU/VK/HX/FMT/L1: **Shannon-Prime
+isolates every inter-domain boundary as a pure message-passing seam.**
+No shared mutable state crosses a seam; only typed, idempotent
+messages. There are five such seams in the lattice:
+
+| # | Seam | Direction | Transport | Payload invariant |
+|---|------|-----------|-----------|-------------------|
+| 1 | L1 ↔ L2 (FFI) | C ↔ Rust | function call | three opaque handles, atomic cancel flag, value types |
+| 2 | L2 ↔ HX backend | ARM ↔ DSP | FastRPC (adsprpc kernel driver, IPC doorbell, ~30 µs) | 64-bit SVM pointers only; payload lives in ION heaps |
+| 3 | L2 ↔ L3 | in-process | crossbeam channel | UTF-8 strings + small JSON; no raw logits, no Spinor blocks |
+| 4 | L3 ↔ frontend | HTTP/SSE (loopback or LAN) | TCP/8080 | UTF-8 JSON over text/event-stream |
+| 5 | Phone ↔ Watch | BLE GATT (paired) | 20-byte chunked SSE-equivalent | ed25519 key fingerprint + UTF-8 status; never logits |
+
+(A sixth seam — node ↔ node — appears in Phase 6 over QUIC; the
+invariant generalises.)
+
+The seams share three rules:
+
+1. **No shared mutable state.** Each side allocates its own memory;
+   pointers crossing the seam either (a) point at SVM that the OS has
+   guaranteed both sides see (FastRPC / ION) or (b) are opaque
+   handles whose payload the other side cannot dereference.
+2. **Idempotent on the wire.** A duplicated message produces the same
+   final state as a single message; a partial / interrupted message
+   is either fully visible or invisible. Spinor transactionality
+   gives this for free at seams (1), (3), (4); QUIC stream framing
+   gives it at (6); FastRPC's `rout` keyword gives it at (2); BLE
+   GATT's sequence-numbered notifications give it at (5).
+3. **Survives the other side dying.** Seam (1) survives L2 dropping
+   the session via `cancel_flag`; seam (2) survives DSP thermal
+   throttle by the ARM thread sleeping on the doorbell; seam (4)
+   survives the UI being RAM-reaped (the daemon keeps mining PoUW);
+   seam (5) survives the watch going dark (BLE re-pairs).
+
+### 14.2 The L3 surface (ruthlessly small)
+
+The HTTP routes and SSE channels mirror the
+`SP-LAT-FRONTENDS.md` design draft. Sub-phases land them
+incrementally.
+
+| Route | Verb | Direction | Payload |
+|-------|------|-----------|---------|
+| `/v1/chat` | POST | request | `{prompt: string, max_tokens?: int, stop?: [string]}` |
+| `/v1/chat` | SSE response | stream | `data: {"delta":"..."}` per token, terminator `data: [DONE]` |
+| `/v1/metrics` | GET | response | `{tokens_per_sec, htp_temp_c, ram_svm_bytes, peers, phase}` |
+| `/v1/receipts` | GET | response | `{receipts: [...], cursor: string?}` paginated PoUW dominance receipts |
+| `/v1/peers` | GET | response | `{peers: [{id, q_shard, rtt_ms, last_seen}]}` DHT neighbour set |
+| `/v1/events` | SSE | stream | peer up/down · sieve fold · thermal trip · mint event |
+| `/v1/abort/{id}` | POST | request | `204` on success, cancels an in-flight decode |
+
+**Never crosses the L3 boundary:** `sp_session*`, Spinor[63] blocks,
+raw `f32[vocab_size]` logits, Frobenius scales, HVX intrinsics,
+`.sp-model` weights (mmap-ed inside the daemon, never copied across
+the seam). Tokenisation and detokenisation happen inside the daemon
+so frontends receive only UTF-8 text.
+
+### 14.3 Sub-phases
+
+- **§14.3.1 Phase 2-L3.CORE** — tower-http/axum scaffold;
+  `localhost:8080` binding only (no LAN, no TLS for v0); FFI handle
+  to L2 via the frozen L1 ABI primitives; daemon lifecycle (`spd
+  start`, `spd stop`, `spd reload`). Closes when `curl
+  localhost:8080/v1/metrics` returns a well-formed JSON object
+  against a live `sp_session`.
+
+- **§14.3.2 Phase 2-L3.VERBS** — all six routes wired to the L2
+  driver: `/v1/chat` → `sp_session_clone` (for MTP draft branch) +
+  `sp_decode_step`; `/v1/abort` → flips the atomic `cancel_flag`
+  primitive from the L1 ABI; `/v1/receipts`, `/v1/peers` read from
+  the L2 KSTE cache and DHT peer table respectively. Closes when all
+  six routes pass per-route integration tests with curl + a
+  programmatic SSE client.
+
+- **§14.3.3 Phase 2-L3.SSE** — `text/event-stream` chunked output
+  for `/v1/chat` and `/v1/events`. Implements keep-alive comment
+  heartbeats every 15 s, and the canonical `data: [DONE]` terminator
+  for stream end. Closes when an idle SSE connection survives a
+  60-second decode pause without the client timing out.
+
+- **§14.3.4 Phase 2-L3.FG** — Android foreground service permission
+  manifest entry + systemd unit + launchd plist. The daemon's
+  parent process can die (UI killed by RAM pressure, terminal
+  disconnect) and the daemon keeps mining. Closes when `SIGSTOP` on
+  the spawning UI does not pause `/v1/events` SSE on a second
+  client.
+
+- **§14.3.5 Phase 2-L3.AUTH** — per-session bearer token printed once
+  on stdout at daemon start; frontends read it via the OS keychain
+  (Android Keystore, macOS Keychain, libsecret on Linux). No
+  passwords, no OAuth flow — single-user developer device assumption
+  for v0. Closes when a stale token fails authentication with `401`
+  and the keychain-bound frontend transparently reads the new one.
+
+### 14.4 Closure
+
+`E_L3_1..3` green on Linux gcc + Windows MSVC + Android NDK
+(aarch64-android cross-compile). Tag `lat-phase-2-l3-closed`. Phase
+log entry names the daemon binary size, the cold-start latency
+distribution, and the verified message-passing invariant across all
+five seams.
+
+
+## 15. Phase FE — Frontends
+
+**Goal.** Build the four UX surfaces that consume the L3 daemon.
+Every frontend is a "dumb client" — it holds no SP state, posts
+strings, listens for streams. The frontends are parallel deliverables
+that can land in any order once `lat-phase-2-l3-closed` ships.
+
+**Dependencies.** `lat-phase-2-l3-closed`.
+
+**Anti-contamination rule (frontends specific).** A frontend's
+compiled artifact MUST NOT contain any SP symbol or struct. The gate
+is automatic:
+
+```
+nm -gC <artifact> | grep -E '^_?(sp_session|sp_arch_info|spinor|frobenius|sp_kste|sp_vht|sp_ntt)' | wc -l
+```
+
+must return `0`. The frontend talks to L3 over UTF-8 + JSON + SSE,
+nothing else. This guarantees that an OS-level crash, exploit, or RAM
+reap on the frontend leaves the L1/L2 algebra untouched.
+
+### 15.1 Sub-phases
+
+- **§15.1.1 Phase FE-MOBILE-FLUTTER** — Flutter app for Android
+  (S22 Ultra target). Dart isolate for UI; pure HTTP/SSE client to
+  the local L3 daemon on `localhost:8080`. Five tabs: chat, node
+  (daemon health), pouw (work + discovery balance), mesh (DHT
+  topology), config. Builds the `.apk` with `flutter build apk
+  --release`; the L1/L2 stack is **not** embedded as `jniLibs` (it's
+  the daemon's job).
+
+- **§15.1.2 Phase FE-DESKTOP-CONSOLE** — operator console at
+  `admin.shannon-prime-lattice.dev`. Multi-node fleet view (14 nodes
+  in the design), q-shard topology, aggregate throughput, per-node
+  drill. Reads the same L3 surface but federates over a fleet
+  registry. Built as a static SPA (no runtime backend beyond the
+  fleet registry's read-only endpoint).
+
+- **§15.1.3 Phase FE-WATCH-WEAR** — Galaxy Watch6 (Wear OS) faces
+  and complications. Six face designs (lattice, decode, pouw, AOD,
+  tiles, notification). BLE GATT bridge to the paired phone's
+  daemon; a single GATT characteristic mirrors the phone's
+  `/v1/events` stream, notifications are wrapped in 20-byte chunks
+  and reassembled in the watch main thread. Watch holds an ed25519
+  key fingerprint of the daemon for pairing — no cloud, no relay.
+
+- **§15.1.4 Phase FE-CLI-TMUX** — `spctl` terminal UI. tmux-friendly
+  overview pane (peers · daemon log · sieve · receipts · htop). Same
+  L3 endpoints, ANSI rendering, palette-keyboard navigation. Built
+  in Rust against the same JSON schema as the other frontends.
+
+### 15.2 Why this is "Phase FE" not "Phase 7-FE"
+
+Frontends are cross-cutting; they do not slot between two compute
+phases. They share one dependency (`lat-phase-2-l3-closed`) and one
+anti-contamination invariant, but they otherwise have no
+inter-dependency. The four sub-phases can land in any order, in
+parallel agent sessions, without blocking each other or any compute
+phase. The `FE-` prefix is its own track namespace, parallel to the
+backend tracks `2-CPU/2-CU/2-VK/2-HX/2-FMT/2-L1/2-L3`.
+
+### 15.3 Closure
+
+Umbrella tag `lat-phase-fe-closed` after all four sub-phase gates
+pass. The phase log entry names the artifact sizes, the verified
+zero-SP-symbol counts, and the cross-frontend feature parity matrix
+(every action that mobile can take, desktop and CLI can take too;
+watch is read-mostly with a single tap-to-acknowledge action).
+
+
 ## Phase log
 
 One paragraph per closed phase (§3.3). Most recent last.
@@ -2413,76 +2606,147 @@ the §2-B.E.1 polynomial-shift cache (lossless on stock RoPE, gated by
 `SP_ENGINE_NTT_ATTN=1`), and the §20 items remain parked research notes —
 off the Phase 2..13 critical path.
 
-## 20.4 Phase 5-HYP — Continuous-Relaxed Dominance via Hyperbolic Embedding
+### 20.4 Phase 5-HYP — Continuous-Relaxed Dominance via Hyperbolic Embedding
 
-**Concept:** The current KSTE encoder relies on Kruskal's Tree Theorem in $T_{60,3}$.
- While the Tier-0 subtract-with-borrow check is $O(1)$, the rigid discrete topology 
-means minor quantization jitter can flip a tree's depth-rank, causing a false-negative 
-on the deduplication sieve.
+**Concept.** The current KSTE encoder relies on Kruskal's Tree Theorem
+in $T_{60,3}$. While the Tier-0 subtract-with-borrow check is $O(1)$,
+the rigid discrete topology means minor quantization jitter can flip
+a tree's depth-rank, causing a false-negative on the deduplication
+sieve.
 
-* **The Math:** Continuous trees embed into Hyperbolic Space (specifically the Poincaré ball 
-or the Lorentz manifold) with arbitrarily low distortion. By mapping the K-vector to a coordinate 
-in the $(d+1)$-dimensional Lorentz model, "dominance" transforms from a discrete tree-walk into a 
-continuous cone-inclusion check.
+* **The Math.** Continuous trees embed into Hyperbolic Space
+  (specifically the Poincaré ball or the Lorentz manifold) with
+  arbitrarily low distortion. By mapping the K-vector to a coordinate
+  in the $(d+1)$-dimensional Lorentz model, "dominance" transforms
+  from a discrete tree-walk into a continuous cone-inclusion check.
+* **The Mechanism.** Vector $u$ dominates vector $v$ if $v$ lies
+  within the future light cone of $u$. This is evaluated using the
+  Minkowski inner product:
 
-* **The Mechanism:** 
-Vector $u$ dominates vector $v$ if $v$ lies within the future light cone of $u$. This is evaluated 
-using the Minkowski inner product:
+  $$\langle u, v \rangle_{\mathcal{L}} = -u_0 v_0 + \sum_{i=1}^d u_i v_i \le -1$$
 
-$$\langle u, v \rangle_{\mathcal{L}} = -u_0 v_0 + \sum_{i=1}^d u_i v_i \le -1$$
+* **The Win.** You retain the $O(1)$ SIMD-friendly dominance check
+  (it is literally just a dot product), but you gain topological
+  robustness. Quantization noise simply shifts the coordinate
+  slightly within the hyperbolic space, rather than shattering the
+  combinatorial tree structure.
+* **Gate.** Hyperbolic dominance rejection rate matches or exceeds
+  the discrete $T_{60,3}$ sieve on the Gemma3-1B test corpus, with
+  $\text{KL} \le 10^{-6}$ drift from quantization jitter.
 
+### 20.5 Phase 4-QMC — 2D Quasi-Monte Carlo KV Eviction
 
-* **The Win:** 
-You retain the $O(1)$ SIMD-friendly dominance check (it is literally just a dot product), but you
- gain topological robustness. Quantization noise simply shifts the coordinate slightly within the 
-hyperbolic space, rather than shattering the combinatorial tree structure.
-* **Gate:** 
-Hyperbolic dominance rejection rate matches or exceeds the discrete $T_{60,3}$ sieve on the Gemma3-1B
- test corpus, with $\text{KL} \le 10^{-6}$ drift from quantization jitter.
+**Concept.** The 1D Fibonacci sub-sampling ($\lfloor k\varphi \cdot N \rfloor \pmod N$)
+is mathematically optimal for equidistant temporal coverage. However,
+context isn't just temporal; it has semantic depth. Needle-in-a-haystack
+retrieval fails if a highly semantic token happens to fall into a
+Fibonacci eviction gap.
 
-## 20.5 Phase 4-QMC — 2D Quasi-Monte Carlo KV Eviction
+* **The Math.** Upgrade the 1D Fibonacci sequence to a 2D
+  low-discrepancy sequence (e.g., a Halton or Sobol sequence).
+* **The Mechanism.** Map Axis 1 to the Temporal Index (time). Map
+  Axis 2 to a Semantic Weight (e.g., the attention magnitude or the
+  KSTE Tier-0 entropy signature). The Halton sequence uses coprime
+  bases (e.g., base 2 for time, base 3 for entropy) to generate a
+  deterministic, maximally un-clustered grid.
+* **The Win.** Eviction is no longer blind to semantic importance.
+  The 2D Halton sequence guarantees that high-semantic-value tokens
+  are never clustered and evicted together, while maintaining the
+  structural equidistribution of the temporal axis.
+* **Gate.** Needle-in-a-haystack retrieval accuracy on a 32K context
+  window improves by $>15\%$ over 1D Fibonacci eviction, with zero
+  increase to the resident KV memory footprint.
 
-**Concept:** The 1D Fibonacci sub-sampling ($\lfloor k\varphi \cdot N \rfloor \pmod N$) is mathematically 
-optimal for equidistant temporal coverage. However, context isn't just temporal; it has semantic depth. 
-Needle-in-a-haystack retrieval fails if a highly semantic token happens to fall into a Fibonacci eviction gap.
+### 20.6 Phase 9-MAP — Zero-NTT Associative Memory
 
-* **The Math:** Upgrade the 1D Fibonacci sequence to a 2D low-discrepancy sequence (e.g., a Halton or Sobol sequence).
-* **The Mechanism:** Map Axis 1 to the Temporal Index (time). Map Axis 2 to a Semantic Weight 
-(e.g., the attention magnitude or the KSTE Tier-0 entropy signature). The Halton sequence uses coprime bases 
-(e.g., base 2 for time, base 3 for entropy) to generate a deterministic, maximally un-clustered grid.
-* **The Win:** 
-Eviction is no longer blind to semantic importance. The 2D Halton sequence guarantees that high-semantic-value 
-tokens are never clustered and evicted together, while maintaining the structural equidistribution of the temporal axis.
-* **Gate:*
-* Needle-in-a-haystack retrieval accuracy on a 32K context window improves by $>15\%$ over 1D Fibonacci eviction, with
- zero increase to the resident KV memory footprint.
+**Concept.** The ARM bank currently uses Holographic Reduced
+Representations (HRR) via negacyclic convolution in $R_q$. While it
+shares the NTT pipeline with the attention layer, HRR convolution is
+inherently noisy ($O(\sqrt{K})$ capacity ceiling) and still costs an
+$O(N \log N)$ NTT round-trip per binding.
 
-## 20.6 Phase 9-MAP — Zero-NTT Associative Memory
+* **The Math.** Pivot from HRR to a Multiply-Add-Permute (MAP) Vector
+  Symbolic Architecture. In MAP, "binding" a key and a value is not
+  a polynomial multiplication; it is an orthogonal permutation.
 
-**Concept:**
-The ARM bank currently uses Holographic Reduced Representations (HRR) via negacyclic convolution in $R_q$. While it 
-shares the NTT pipeline with the attention layer, HRR convolution is inherently noisy ($O(\sqrt{K})$ capacity ceiling) 
-and still costs an $O(N \log N)$ NTT round-trip per binding.
+  $$\text{bind}(k, v) = \Pi_k(v)$$
+  $$\text{unbind}(k, M) = \Pi_k^{-1}(M)$$
 
-* **The Math:** 
-Pivot from HRR to a Multiply-Add-Permute (MAP) Vector Symbolic Architecture. In MAP, "binding" a key and a value is not a 
-polynomial multiplication; it is an orthogonal permutation.
+* **The Mechanism.** The keys $k_i$ become deterministic permutation
+  masks. On CPU/CUDA, applying $\Pi_k$ to a 63-byte Spinor block is
+  a native SIMD shuffle (e.g., `vpshufb` on AVX2/AVX-512).
+* **The Win.** You bypass the NTT pipeline completely for the ARM
+  bank. The computational cost of binding and unbinding drops to
+  effectively zero (a few clock cycles). While the capacity curve
+  still degrades with $K$, eliminating the NTT overhead allows you to
+  aggressively increase the stride or maintain multiple smaller ARM
+  banks without stalling the forward pass.
+* **Gate.** MAP-based ARM binding/unbinding executes $>10\times$
+  faster than the $R_q$ NTT-based HRR, while maintaining a cosine
+  similarity recall curve of $\ge 0.80$ at $K=1$.
 
-$$\text{bind}(k, v) = \Pi_k(v)$$
+### 20.7 SP cross-pollination — where the research tracks compose
 
-$$\text{unbind}(k, M) = \Pi_k^{-1}(M)$$
+§20.4 / 20.5 / 20.6 are written as sieve, KV-eviction, and ARM-bank
+patches respectively. The lattice's compositional nature means each
+primitive surfaces in multiple phases. The matrix below names every
+secondary attachment point so a future session can pull a research
+win into adjacent phases without re-deriving the math. None of these
+secondary attachments are blockers — they are "free" optimisations
+once the primary §20 gate passes.
 
+**Hyperbolic (§20.4 / Phase 5-HYP) — additional attachment points:**
 
-* **The Mechanism:** 
-The keys $k_i$ become deterministic permutation masks. On CPU/CUDA, applying $\Pi_k$ to a 63-byte Spinor block is a 
-native SIMD shuffle (e.g., `vpshufb` on AVX2/AVX-512).
+- **§13.1 Phase 6-BLOCK-SYNC.** Replace the discrete-clamp step in the
+  residue-polynomial activation with a Lorentz cone-inclusion check.
+  Same robustness gain at the 4-layer Garner boundary; the algebra
+  stays in $\mathbb{Z}_{q_1 \cdot q_2}$ because the Minkowski inner
+  product is a signed integer dot.
+- **§9 ARM dominance.** The Lorentz inner product is SIMD-shuffle
+  friendly (single FMA + one sign flip on the time coordinate). Gives
+  the ARM bank the same quantization-noise tolerance the KSTE sieve
+  gets.
+- **§4f-style soft attenuation.** "Near light cone but not inside"
+  gives a natural fuzzy-retrieval primitive — replaces the explicit
+  $\gamma$ attenuation parameter with a geometric distance from the
+  cone boundary.
 
-* **The Win:** 
-You bypass the NTT pipeline completely for the ARM bank. The computational cost of binding and unbinding drops to 
-effectively zero (a few clock cycles). While the capacity curve still degrades with $K$, eliminating the NTT overhead 
-allows you to aggressively increase the stride or maintain multiple smaller ARM banks without stalling the forward pass.
+**Halton/Sobol QMC (§20.5 / Phase 4-QMC) — additional attachment points:**
 
-* **Gate:** 
-MAP-based ARM binding/unbinding executes $>10\times$ faster than the $R_q$ NTT-based HRR, while maintaining a cosine similarity recall curve of $\ge 0.80$ at $K=1$.
+- **§13.3 Phase 6-MTP-AMORTIZE.** Schedule the $K$ MTP draft tokens
+  by a 2D Halton sequence over (depth, temporal) rather than $K$
+  linear next positions. Same per-batch payload, broader semantic
+  coverage per network round-trip; pairs naturally with the
+  caustic-cull (§13.4) skip pattern because Halton coverage avoids
+  clustering accepted drafts in a single skip band.
+- **§8 Position-as-Arithmetic crawl assignment.** Extend the
+  Fibonacci-Prime DHT with a Halton second axis for 2D load balancing
+  across (semantic class, hash bucket). Drop-in upgrade to the
+  golden-ratio-only assignment table.
+- **§5 Friedman sieve residual-band selection.** Order the Tier-1
+  residual bands by Halton ordering rather than linear scan. Covers
+  the embedding space more uniformly; complements the Tier-0
+  signature dedup without replacing it.
+
+**MAP zero-NTT (§20.6 / Phase 9-MAP) — additional attachment points:**
+
+- **§9 KSTE Tier-0 signature shuffle.** Replace the splitmix64-based
+  permutation table (introduced in Phase 10 anti-collision work)
+  with a `vpshufb` mask. Same per-vector cost, no NTT round-trip,
+  identical statistical properties.
+- **§1E Frobenius lift per-row permutation.** Per-row scale-class
+  rotation becomes a single SIMD shuffle on the Q8-packed bytes
+  rather than a serial pass. Wins at Frobenius arena assembly time;
+  invisible at inference time (the assembly happens once at load).
+- **§1D Spinor negacyclic involution.** The `inv[N-j] = -in[j]`
+  identity is already structurally a permutation; pivoting to
+  `vpshufb` removes the per-byte loop overhead, dropping the cost
+  from $O(N)$ adds to one 16-byte shuffle per stride.
+
+The pattern across all three columns is the same: **a research win
+that lands as a SIMD-friendly primitive at §20 inherits an O(1)
+secondary use everywhere a similar permutation, dot, or cone-check
+already lives.** Future agents working on any of those phases should
+check the §20.7 matrix before re-implementing.
 
 ---

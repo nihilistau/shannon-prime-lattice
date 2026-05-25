@@ -1,0 +1,486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>shannon-prime-lattice · desktop · spctl</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #08090d;
+    --term: #0a0c10;
+    --term-2: #0e1218;
+    --gold: #d4a14a;
+    --gold-hot: #f4c860;
+    --cyan: #1d6e7a;
+    --cyan-bright: #5fb8c4;
+    --rule: rgba(29,110,122,0.35);
+    --rule-faint: rgba(29,110,122,0.15);
+    --text: #c8cbd1;
+    --text-dim: #7d848e;
+    --text-faint: #4a525d;
+    --q1: #d94aa1;
+    --q2: #4adba0;
+    --q3: #6ea6ff;
+    --q4: #e89a3c;
+    --ok: #4adba0;
+    --warn: #e89a3c;
+    --err: #d94a4a;
+    --font: 'JetBrains Mono', monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 13px;
+    line-height: 1.4;
+    overflow: hidden;
+    -webkit-font-smoothing: antialiased;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(29,110,122,0.06) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(29,110,122,0.06) 1px, transparent 1px);
+    background-size: 80px 80px;
+    pointer-events: none;
+    z-index: 0;
+    mask-image: radial-gradient(ellipse at center, #000 30%, transparent 80%);
+  }
+
+  /* macOS window chrome */
+  .winwrap {
+    position: fixed; inset: 32px;
+    border-radius: 12px;
+    background: var(--term);
+    box-shadow:
+      0 0 0 1px #1f2530,
+      0 30px 80px rgba(0,0,0,0.8),
+      0 0 0 0.5px rgba(212,161,74,0.15);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    z-index: 1;
+  }
+  .titlebar {
+    height: 38px;
+    background: #11161d;
+    border-bottom: 1px solid var(--rule);
+    display: flex; align-items: center; padding: 0 14px;
+    flex-shrink: 0;
+  }
+  .lights { display: flex; gap: 8px; margin-right: 16px; }
+  .lights span {
+    width: 12px; height: 12px; border-radius: 6px;
+    border: 0.5px solid rgba(0,0,0,0.3);
+  }
+  .lights .r { background: #ff5f57; }
+  .lights .y { background: #febc2e; }
+  .lights .g { background: #28c840; }
+  .title {
+    color: var(--gold);
+    font-family: var(--font);
+    font-size: 12px;
+    letter-spacing: 3px;
+    flex: 1; text-align: center;
+  }
+  .title .sub { color: var(--text-dim); margin-left: 8px; }
+  .title-r { color: var(--cyan-bright); font-size: 10px; letter-spacing: 2px; }
+
+  /* TMUX-like grid */
+  .grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: 240px 1fr 280px;
+    grid-template-rows: 28px 1fr 1fr 32px 90px;
+    grid-template-areas:
+      "tabs    tabs    tabs"
+      "peers   logs    pouw"
+      "peers   sieve   pouw"
+      "status  status  status"
+      "prompt  prompt  prompt";
+    gap: 1px;
+    background: var(--rule);
+    min-height: 0;
+  }
+  .pane {
+    background: var(--term);
+    overflow: hidden;
+    display: flex; flex-direction: column;
+    min-height: 0;
+  }
+  .pane-head {
+    padding: 4px 12px;
+    font-size: 9px; letter-spacing: 3px;
+    color: var(--gold);
+    border-bottom: 1px solid var(--rule-faint);
+    background: var(--term-2);
+    display: flex; align-items: center; justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .pane-head .badge {
+    color: var(--cyan-bright);
+    font-size: 9px; letter-spacing: 1.5px;
+  }
+  .pane-body {
+    flex: 1; overflow: hidden; padding: 8px 12px;
+    font-size: 12px;
+  }
+
+  /* Tab bar (tmux windows) */
+  .tabs { grid-area: tabs; background: var(--term-2); border-bottom: 1px solid var(--rule); }
+  .tabs-inner {
+    display: flex; height: 100%;
+    font-size: 10px; letter-spacing: 2px;
+  }
+  .tab {
+    padding: 0 14px; display: flex; align-items: center; gap: 8px;
+    border-right: 1px solid var(--rule-faint);
+    color: var(--text-dim);
+    cursor: default;
+  }
+  .tab.active {
+    color: var(--gold-hot);
+    background: var(--bg);
+    box-shadow: inset 0 -1px 0 var(--gold);
+  }
+  .tab .n { color: var(--text-faint); }
+  .tab.active .n { color: var(--gold); }
+  .tab .badge {
+    background: var(--gold); color: var(--bg);
+    padding: 0 4px; border-radius: 2px;
+    font-size: 8px; font-weight: 700;
+  }
+
+  /* Panes */
+  .peers   { grid-area: peers; }
+  .logs    { grid-area: logs; }
+  .sieve   { grid-area: sieve; }
+  .pouw    { grid-area: pouw; }
+  .status  { grid-area: status; background: var(--term-2); border-top: 1px solid var(--rule); }
+  .prompt  { grid-area: prompt; background: var(--bg); border-top: 1px solid var(--rule); }
+
+  /* Peer list */
+  .peer-row {
+    display: grid; grid-template-columns: 14px 1fr auto;
+    gap: 8px; padding: 4px 0; align-items: center;
+    font-size: 11px;
+  }
+  .peer-dot {
+    width: 8px; height: 8px; border-radius: 4px;
+    margin-left: 3px;
+  }
+  .peer-tag { color: var(--text); }
+  .peer-q { font-size: 9px; letter-spacing: 1.5px; padding: 1px 5px; border-radius: 2px; }
+
+  /* Log lines */
+  .log-line {
+    display: flex; gap: 10px; padding: 1px 0;
+    font-size: 11.5px; line-height: 1.5;
+    color: var(--text);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .log-time { color: var(--text-faint); flex-shrink: 0; }
+  .log-lvl  { width: 32px; flex-shrink: 0; letter-spacing: 1.5px; font-size: 10px; }
+  .log-lvl.i { color: var(--cyan-bright); }
+  .log-lvl.w { color: var(--warn); }
+  .log-lvl.e { color: var(--err); }
+  .log-lvl.s { color: var(--ok); }
+  .log-msg .k { color: var(--gold); }
+  .log-msg .c { color: var(--cyan-bright); }
+  .log-msg .v { color: var(--gold-hot); }
+
+  /* PoUW list */
+  .pouw-row {
+    display: flex; gap: 8px; padding: 6px 0;
+    border-bottom: 1px solid var(--rule-faint);
+    font-size: 11px; align-items: center;
+  }
+  .pouw-row:last-child { border-bottom: none; }
+  .pouw-bar { width: 3px; align-self: stretch; }
+  .pouw-id  { color: var(--text-faint); font-size: 9.5px; }
+  .pouw-kind { color: var(--text); font-size: 11px; }
+  .pouw-val { color: var(--gold-hot); font-weight: 600; margin-left: auto; }
+
+  /* Sieve viz */
+  .sieve-body {
+    padding: 8px 12px; flex: 1; overflow: hidden;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .sieve-tree {
+    font-family: var(--font); font-size: 11px; line-height: 1.45;
+    color: var(--text-dim); white-space: pre;
+  }
+  .sieve-tree .root  { color: var(--gold-hot); }
+  .sieve-tree .keep  { color: var(--gold); }
+  .sieve-tree .fold  { color: var(--err); text-decoration: line-through; opacity: 0.6; }
+  .sieve-tree .new   { color: var(--ok); }
+
+  /* Status bar */
+  .status-inner {
+    height: 100%; padding: 0 14px;
+    display: flex; align-items: center; gap: 18px;
+    font-size: 10.5px; letter-spacing: 1.5px;
+    color: var(--text-dim);
+  }
+  .status-inner .seg { display: flex; align-items: center; gap: 6px; }
+  .status-inner .seg .v { color: var(--gold); }
+  .status-inner .seg .vh { color: var(--gold-hot); }
+  .status-inner .seg .c { color: var(--cyan-bright); }
+  .status-inner .right { margin-left: auto; }
+
+  /* Prompt */
+  .prompt-inner {
+    padding: 12px 16px;
+    display: flex; flex-direction: column; gap: 6px;
+    font-size: 12.5px;
+  }
+  .prompt-line {
+    display: flex; align-items: center; gap: 10px;
+    color: var(--text);
+  }
+  .prompt-line .caret { color: var(--gold); font-weight: 700; }
+  .prompt-line .path  { color: var(--cyan-bright); }
+  .prompt-line .hint  { color: var(--text-faint); margin-left: auto; font-size: 10px; letter-spacing: 1.5px; }
+  .prompt-input {
+    color: var(--text); font-family: var(--font);
+    flex: 1;
+  }
+  .prompt-input .placeholder { color: var(--text-faint); }
+  .prompt-input .cursor {
+    display: inline-block; width: 8px; height: 14px;
+    background: var(--gold-hot); vertical-align: -2px;
+    animation: blink 1s steps(2) infinite; margin-left: 1px;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+
+  /* Sparkline (CSS-only block bars) */
+  .sparks {
+    display: flex; gap: 1px; align-items: flex-end;
+    height: 14px;
+  }
+  .sparks span {
+    width: 3px; background: var(--gold); display: inline-block;
+  }
+
+  /* tiny ascii lattice in status */
+  .lattice-mini {
+    color: var(--cyan-bright); font-family: var(--font);
+    letter-spacing: -1px; font-size: 9px;
+    opacity: 0.7;
+  }
+</style>
+</head>
+<body>
+
+<div class="winwrap">
+  <div class="titlebar">
+    <div class="lights"><span class="r"></span><span class="y"></span><span class="g"></span></div>
+    <div class="title">
+      spctl <span class="sub">— ssh ray@spl-node-01 — 188×52</span>
+    </div>
+    <div class="title-r">tmux 1:spctl* · zsh</div>
+  </div>
+
+  <div class="grid">
+    <!-- TAB BAR -->
+    <div class="pane tabs">
+      <div class="tabs-inner">
+        <div class="tab active"><span class="n">0:</span>overview<span class="badge">●</span></div>
+        <div class="tab"><span class="n">1:</span>chat</div>
+        <div class="tab"><span class="n">2:</span>sieve</div>
+        <div class="tab"><span class="n">3:</span>peers</div>
+        <div class="tab"><span class="n">4:</span>logs</div>
+        <div class="tab"><span class="n">5:</span>htop · htp</div>
+        <div style="flex:1"></div>
+        <div class="tab"><span class="n">⌘k</span>palette</div>
+        <div class="tab"><span class="n">?</span>help</div>
+      </div>
+    </div>
+
+    <!-- PEERS -->
+    <div class="pane peers">
+      <div class="pane-head">
+        <span>peers · l4 dht</span>
+        <span class="badge">14/32</span>
+      </div>
+      <div class="pane-body">
+        <div class="peer-row"><div class="peer-dot" style="background:var(--gold-hot);box-shadow:0 0 6px var(--gold-hot)"></div><div><div class="peer-tag" style="color:var(--gold-hot);font-weight:600">SELF</div><div style="font-size:9px;color:var(--text-faint);letter-spacing:1px">0x4c..7b · q₃</div></div><div class="peer-q" style="background:#6ea6ff20;color:#6ea6ff">q₃</div></div>
+        <div class="peer-row"><div class="peer-dot" style="background:var(--q1)"></div><div><div class="peer-tag">lao01</div><div style="font-size:9px;color:var(--text-faint);letter-spacing:1px">0x9a..21 · 18ms</div></div><div class="peer-q" style="background:#d94aa120;color:#d94aa1">q₁</div></div>
+        <div class="peer-row"><div class="peer-dot" style="background:var(--q2)"></div><div><div class="peer-tag">lao02</div><div style="font-size:9px;color:var(--text-faint);letter-spacing:1px">0x1f..a0 · 22ms</div></div><div class="peer-q" style="background:#4adba020;color:#4adba0">q₂</div></div>
+        <div class="peer-row"><div class="peer-dot" style="background:var(--q3)"></div><div><div class="peer-tag">lao03</div><div style="font-size:9px;color:var(--text-faint);letter-spacing:1px">0x77..3b · 31ms</div></div><div class="peer-q" style="background:#6ea6ff20;color:#6ea6ff">q₃</div></div>
+        <div class="peer-row"><div class="peer-dot" style="background:var(--q4)"></div><div><div class="peer-tag">lao04</div><div style="font-size:9px;color:var(--text-faint);letter-spacing:1px">0xee..5a · 44ms</div></div><div class="peer-q" style="background:#e89a3c20;color:#e89a3c">q₄</div></div>
+        <div class="peer-row"><div class="peer-dot" style="background:var(--q2)"></div><div><div class="peer-tag">lao07</div><div style="font-size:9px;color:var(--text-faint);letter-spacing:1px">0xbd..11 · 28ms</div></div><div class="peer-q" style="background:#4adba020;color:#4adba0">q₂</div></div>
+        <div class="peer-row"><div class="peer-dot" style="background:#b478ff"></div><div><div class="peer-tag">lao08</div><div style="font-size:9px;color:var(--text-faint);letter-spacing:1px">0x40..18 · 53ms</div></div><div class="peer-q" style="background:#b478ff20;color:#b478ff">q₅</div></div>
+        <div class="peer-row"><div class="peer-dot" style="background:var(--q1)"></div><div><div class="peer-tag">lao09</div><div style="font-size:9px;color:var(--text-faint);letter-spacing:1px">0xc1..f2 · 67ms</div></div><div class="peer-q" style="background:#d94aa120;color:#d94aa1">q₁</div></div>
+        <div class="peer-row"><div class="peer-dot" style="background:var(--q3);opacity:0.5"></div><div><div class="peer-tag" style="color:var(--text-dim)">lao12</div><div style="font-size:9px;color:var(--text-faint);letter-spacing:1px">stale · 4s</div></div><div class="peer-q" style="background:#6ea6ff20;color:#6ea6ff">q₃</div></div>
+        <div style="margin-top:10px;font-size:9px;letter-spacing:2px;color:var(--text-faint)">+ 5 more in ring 2</div>
+      </div>
+    </div>
+
+    <!-- LOGS -->
+    <div class="pane logs">
+      <div class="pane-head">
+        <span>daemon log · tail -f</span>
+        <span class="badge">spd v0.1.0 · pid 4421</span>
+      </div>
+      <div class="pane-body" style="font-size:11.5px;">
+        <div class="log-line"><span class="log-time">14:08:02</span><span class="log-lvl i">INFO</span><span class="log-msg">l3 http listening on <span class="k">127.0.0.1:8080</span> (ipv4 loopback only)</span></div>
+        <div class="log-line"><span class="log-time">14:08:02</span><span class="log-lvl i">INFO</span><span class="log-msg">l2 session ready · model=<span class="v">gemma-3-4b-q4</span> svm=<span class="v">2.1 GiB</span></span></div>
+        <div class="log-line"><span class="log-time">14:08:03</span><span class="log-lvl s">OK</span><span class="log-msg">halide skel <span class="c">libffn_fusion_skel.so</span> resident in ADSP_LIBRARY_PATH</span></div>
+        <div class="log-line"><span class="log-time">14:08:03</span><span class="log-lvl i">INFO</span><span class="log-msg">l4 dht joined · ring <span class="v">0x4c..7b</span> · q₃ shard</span></div>
+        <div class="log-line"><span class="log-time">14:08:11</span><span class="log-lvl i">INFO</span><span class="log-msg">peer up <span class="c">lao03</span> · rtt <span class="v">31ms</span> · ver spd/0.1</span></div>
+        <div class="log-line"><span class="log-time">14:08:22</span><span class="log-lvl i">INFO</span><span class="log-msg">sieve fold <span class="k">3</span> trees → <span class="v">1</span> rep · q₂</span></div>
+        <div class="log-line"><span class="log-time">14:08:34</span><span class="log-lvl s">MINT</span><span class="log-msg">pouw frontier-ext <span class="c">0x9a3c..0938</span> · <span class="v">+2.1 spl-d</span></span></div>
+        <div class="log-line"><span class="log-time">14:08:41</span><span class="log-lvl i">INFO</span><span class="log-msg">decode_step layer 0..31 · fastrpc tax <span class="v">31.4 µs</span> avg</span></div>
+        <div class="log-line"><span class="log-time">14:08:47</span><span class="log-lvl w">WARN</span><span class="log-msg">htp temp <span class="v">58 °C</span> · pacing decode · 1500 µs trip</span></div>
+        <div class="log-line"><span class="log-time">14:08:48</span><span class="log-lvl s">MINT</span><span class="log-msg">pouw verify-commit <span class="c">0x9a3b..ee5a</span> · <span class="v">+0.4 spl-w</span></span></div>
+        <div class="log-line"><span class="log-time">14:08:53</span><span class="log-lvl i">INFO</span><span class="log-msg">sieve fold <span class="k">2</span> trees → <span class="v">1</span> rep · q₁</span></div>
+        <div class="log-line"><span class="log-time">14:08:55</span><span class="log-lvl s">MINT</span><span class="log-msg">pouw frontier-ext <span class="c">0x9a3d..f12c</span> · <span class="v">+1.8 spl-d</span></span></div>
+        <div class="log-line"><span class="log-time">14:09:02</span><span class="log-lvl i">INFO</span><span class="log-msg">gossip <span class="c">lao07 ← lao03</span> · 14 receipts replicated</span></div>
+        <div class="log-line"><span class="log-time">14:09:08</span><span class="log-lvl s">OK</span><span class="log-msg">decode tok <span class="v">512/512</span> · 38.4 t/s · ttft 312 ms</span></div>
+        <div class="log-line"><span class="log-time">14:09:11</span><span class="log-lvl i">INFO</span><span class="log-msg">sse client <span class="c">::1:54322</span> subscribed /v1/events</span></div>
+      </div>
+    </div>
+
+    <!-- SIEVE -->
+    <div class="pane sieve">
+      <div class="pane-head">
+        <span>friedman sieve · ⪯_d</span>
+        <span class="badge">depth 7 · 142 nodes · 39 frontier</span>
+      </div>
+      <div class="sieve-body">
+        <div class="sieve-tree"><span class="root">●</span> root  · <span style="color:var(--text-dim)">spl1q…aa01</span></div>
+        <div class="sieve-tree"><span style="color:var(--text-dim)">├─</span> <span class="keep">●</span> mod q₁ · <span style="color:var(--text-dim)">23 trees · 14 reps</span></div>
+        <div class="sieve-tree"><span style="color:var(--text-dim)">│  ├─</span> <span class="keep">●</span> p₁²·p₃ · <span style="color:var(--text-faint)">canonical</span></div>
+        <div class="sieve-tree"><span style="color:var(--text-dim)">│  ├─</span> <span class="fold">○ p₁·p₃² · folded ⪯_d into above</span></div>
+        <div class="sieve-tree"><span style="color:var(--text-dim)">│  ├─</span> <span class="keep">●</span> p₁³·p₅ · <span style="color:var(--text-faint)">canonical</span></div>
+        <div class="sieve-tree"><span style="color:var(--text-dim)">│  └─</span> <span class="new">★</span> p₁⁵·p₇·p₁₃ · <span style="color:var(--ok)">frontier · incomparable</span></div>
+        <div class="sieve-tree"><span style="color:var(--text-dim)">├─</span> <span class="keep">●</span> mod q₂ · <span style="color:var(--text-dim)">31 trees · 22 reps</span></div>
+        <div class="sieve-tree"><span style="color:var(--text-dim)">│  ├─</span> <span class="keep">●</span> p₂·p₅²</div>
+        <div class="sieve-tree"><span style="color:var(--text-dim)">│  ├─</span> <span class="fold">○ p₂²·p₅ · folded</span></div>
+        <div class="sieve-tree"><span style="color:var(--text-dim)">│  └─</span> <span class="new">★</span> p₂³·p₁₁·p₁₇ · <span style="color:var(--ok)">frontier</span></div>
+        <div class="sieve-tree"><span style="color:var(--text-dim)">├─</span> <span class="keep">●</span> mod q₃ · <span style="color:var(--text-dim)">28 trees · 18 reps</span></div>
+        <div class="sieve-tree"><span style="color:var(--text-dim)">│  └─</span> <span class="new">★</span> p₃²·p₇·p₁₉ · <span style="color:var(--ok)">frontier · just minted</span></div>
+        <div class="sieve-tree"><span style="color:var(--text-dim)">└─</span> <span style="color:var(--text-dim)">extension queue · 4 trees pending</span></div>
+        <div style="margin-top:8px;font-size:9.5px;letter-spacing:2px;color:var(--text-faint)">last fold: 14:08:53 · queue tick: 1.2s</div>
+      </div>
+    </div>
+
+    <!-- POUW -->
+    <div class="pane pouw">
+      <div class="pane-head">
+        <span>pouw · receipts</span>
+        <span class="badge">+8 in last 5m</span>
+      </div>
+      <div class="pane-body">
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <div style="flex:1;padding:8px;border:1px solid rgba(212,161,74,0.45);background:rgba(212,161,74,0.08)">
+            <div style="font-size:8px;letter-spacing:2px;color:var(--gold)">WORK</div>
+            <div style="font-size:16px;color:var(--gold-hot);font-weight:600;margin-top:2px">148.62</div>
+            <div style="font-size:8px;color:var(--text-faint);letter-spacing:1px;margin-top:1px">+0.84/h</div>
+          </div>
+          <div style="flex:1;padding:8px;border:1px solid rgba(217,74,161,0.45);background:rgba(217,74,161,0.08)">
+            <div style="font-size:8px;letter-spacing:2px;color:var(--q1)">DISC</div>
+            <div style="font-size:16px;color:var(--q1);font-weight:600;margin-top:2px">23.40</div>
+            <div style="font-size:8px;color:var(--text-faint);letter-spacing:1px;margin-top:1px">+3 frontier/h</div>
+          </div>
+        </div>
+
+        <div class="pouw-row">
+          <div class="pouw-bar" style="background:var(--q3);box-shadow:0 0 6px var(--q3)"></div>
+          <div style="min-width:0;flex:1">
+            <div class="pouw-kind">frontier-ext <span style="color:var(--q3);font-size:9px">· q₃</span></div>
+            <div class="pouw-id">0x9a3f..7b21 · 32s</div>
+          </div>
+          <div class="pouw-val">+1.8</div>
+        </div>
+        <div class="pouw-row">
+          <div class="pouw-bar" style="background:var(--q2)"></div>
+          <div style="min-width:0;flex:1">
+            <div class="pouw-kind">verify-commit <span style="color:var(--q2);font-size:9px">· q₂</span></div>
+            <div class="pouw-id">0x9a3e..1a40 · 1m</div>
+          </div>
+          <div class="pouw-val">+0.4</div>
+        </div>
+        <div class="pouw-row">
+          <div class="pouw-bar" style="background:var(--q1)"></div>
+          <div style="min-width:0;flex:1">
+            <div class="pouw-kind">sieve-dedup <span style="color:var(--q1);font-size:9px">· q₁</span></div>
+            <div class="pouw-id">0x9a3d..f12c · 2m</div>
+          </div>
+          <div class="pouw-val">+0.2</div>
+        </div>
+        <div class="pouw-row">
+          <div class="pouw-bar" style="background:var(--q4)"></div>
+          <div style="min-width:0;flex:1">
+            <div class="pouw-kind">frontier-ext <span style="color:var(--q4);font-size:9px">· q₄</span></div>
+            <div class="pouw-id">0x9a3c..0938 · 4m</div>
+          </div>
+          <div class="pouw-val">+2.1</div>
+        </div>
+        <div class="pouw-row">
+          <div class="pouw-bar" style="background:var(--q3)"></div>
+          <div style="min-width:0;flex:1">
+            <div class="pouw-kind">verify-commit <span style="color:var(--q3);font-size:9px">· q₃</span></div>
+            <div class="pouw-id">0x9a3b..ee5a · 5m</div>
+          </div>
+          <div class="pouw-val">+0.4</div>
+        </div>
+        <div class="pouw-row">
+          <div class="pouw-bar" style="background:var(--q2)"></div>
+          <div style="min-width:0;flex:1">
+            <div class="pouw-kind">sieve-dedup <span style="color:var(--q2);font-size:9px">· q₂</span></div>
+            <div class="pouw-id">0x9a3a..7702 · 7m</div>
+          </div>
+          <div class="pouw-val">+0.2</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- STATUS -->
+    <div class="pane status">
+      <div class="status-inner">
+        <div class="seg">⬢ <span class="vh">spd</span> <span style="color:var(--ok)">●</span> healthy</div>
+        <div class="seg">tok/s <span class="v">38.4</span></div>
+        <div class="seg">htp <span class="v" style="color:var(--warn)">58°C</span></div>
+        <div class="seg">svm <span class="v">2.4 GiB</span></div>
+        <div class="seg">peers <span class="v">14/32</span></div>
+        <div class="seg">frontier <span class="v">39</span></div>
+        <div class="seg" style="color:var(--cyan-bright)">⌬ <span class="lattice-mini">█▆▄▂▁▂▄▆█▆▄▂▁▂▄▆</span></div>
+        <div class="seg right">spd v0.1.0 · phase 0</div>
+        <div class="seg">⌘1..6 · panes</div>
+        <div class="seg">^b d · detach</div>
+      </div>
+    </div>
+
+    <!-- PROMPT -->
+    <div class="pane prompt">
+      <div class="prompt-inner">
+        <div class="prompt-line" style="font-size:11px">
+          <span style="color:var(--text-faint)">$</span>
+          <span style="color:var(--text-dim)">curl localhost:8080/v1/chat -d</span>
+          <span style="color:var(--cyan-bright)">'{"prompt":"…"}'</span>
+          <span style="color:var(--text-dim)">--no-buffer</span>
+        </div>
+        <div class="prompt-line">
+          <span class="caret">spctl</span>
+          <span class="path">~/sp-lattice/q₃</span>
+          <span style="color:var(--gold-hot)">›</span>
+          <div class="prompt-input">
+            <span>chat </span>
+            <span class="placeholder">explain the role of the friedman-kruskal embedding in the sieve</span>
+            <span class="cursor"></span>
+          </div>
+          <span class="hint">↵ send · ⌃c abort · ⌃l clear</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

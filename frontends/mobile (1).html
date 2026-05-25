@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<title>shannon-prime-lattice · mobile · flutter</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500;600;700&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --obsidian: #08090d;
+    --gold: #d4a14a;
+    --cyan: #1d6e7a;
+    --cyan-bright: #5fb8c4;
+    --text-dim: #7d848e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0;
+    background: var(--obsidian);
+    color: #c8cbd1;
+    font-family: 'JetBrains Mono', monospace;
+    overflow-x: hidden;
+  }
+  body::before {
+    content: '';
+    position: fixed; inset: 0;
+    background-image:
+      linear-gradient(rgba(29,110,122,0.07) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(29,110,122,0.07) 1px, transparent 1px);
+    background-size: 80px 80px;
+    pointer-events: none;
+    z-index: 0;
+    mask-image: radial-gradient(ellipse at center, #000 30%, transparent 80%);
+  }
+
+  /* Override design-canvas chrome */
+  body, .design-canvas { background: var(--obsidian) !important; }
+  .design-canvas > div { background: transparent !important; }
+
+  /* Animation keyframes used by flutter screens */
+  @keyframes fBlink { 0%, 49% { opacity: 1; } 50%, 100% { opacity: 0; } }
+  @keyframes fPulse {
+    0%, 100% { opacity: 0.5; transform: scale(0.85); }
+    50% { opacity: 1; transform: scale(1.1); }
+  }
+
+  /* Page header for non-canvas view */
+  .page-head {
+    padding: 60px 40px 20px;
+    position: relative; z-index: 1;
+    max-width: 1400px; margin: 0 auto;
+  }
+  .page-head h1 {
+    font-size: 28px; font-weight: 600;
+    letter-spacing: 4px; color: var(--gold);
+    margin: 0 0 12px;
+  }
+  .page-head .sub {
+    font-size: 12px; letter-spacing: 3px;
+    color: var(--cyan-bright); opacity: 0.85;
+  }
+  .page-head .desc {
+    font-size: 13px; line-height: 1.7;
+    color: #c8cbd1; margin-top: 20px;
+    max-width: 720px;
+  }
+  .page-head .desc .term { color: var(--gold); }
+  .page-head .nav {
+    margin-top: 24px; display: flex; gap: 16px; flex-wrap: wrap;
+    font-size: 11px; letter-spacing: 2px;
+  }
+  .page-head .nav a { color: var(--cyan-bright); text-decoration: none; }
+  .page-head .nav a:hover { color: var(--gold); }
+</style>
+</head>
+<body>
+
+<div id="root"></div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<script type="text/babel" src="design-canvas.jsx"></script>
+<script type="text/babel" src="flutter-screens.jsx"></script>
+
+<script type="text/babel">
+// Phone bezel — Samsung S22 Ultra dimensions, 412×892 logical Flutter
+// canvas (3088×1440 device px / DPR 3.5 ≈ same M3 layout).
+// Hand-drawn here so we control the dark cypherpunk frame.
+const PhoneFrame = ({ children, label }) => (
+  <div style={{
+    width: 296, height: 612,
+    background: '#000',
+    borderRadius: 38,
+    padding: 8,
+    boxShadow: '0 0 0 1.5px #1f2530, 0 0 0 3px #0a0c10, 0 30px 60px rgba(0,0,0,0.6), 0 0 0 0.5px rgba(212,161,74,0.15)',
+    position: 'relative',
+  }}>
+    {/* camera dot */}
+    <div style={{
+      position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)',
+      width: 8, height: 8, borderRadius: 4,
+      background: '#0a0c10',
+      boxShadow: 'inset 0 0 0 1px #1f2530',
+      zIndex: 5,
+    }}/>
+    <div style={{
+      width: '100%', height: '100%', borderRadius: 30, overflow: 'hidden',
+      position: 'relative',
+    }}>
+      {children}
+    </div>
+  </div>
+);
+
+const ScreenCard = ({ Screen, title, sub }) => (
+  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16, padding: 12 }}>
+    <PhoneFrame>
+      <Screen/>
+    </PhoneFrame>
+    <div style={{ textAlign: 'center', maxWidth: 280 }}>
+      <div style={{ fontSize: 11, letterSpacing: 3, color: '#d4a14a', fontWeight: 600 }}>{title}</div>
+      <div style={{ fontSize: 10, letterSpacing: 1.5, color: '#7d848e', marginTop: 4, lineHeight: 1.5 }}>{sub}</div>
+    </div>
+  </div>
+);
+
+const App = () => (
+  <DesignCanvas
+    title="shannon-prime-lattice · mobile"
+    subtitle="flutter frontend · http/sse client to localhost:8080"
+  >
+    <DCSection id="hero" title="overview"
+               subtitle="dumb flutter UI, process-isolated from the L3 daemon — UI death never stops PoUW mining">
+      <DCArtboard id="hero" label="architecture · message-passing boundaries"
+                  width={1280} height={680}>
+        <ArchitectureBoard/>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="screens" title="screens · 412 × 892"
+               subtitle="boot · chat · node · pouw · mesh · config">
+      <DCArtboard id="boot"     label="01 · boot · daemon handshake"   width={336} height={680}>
+        <ScreenCard Screen={ScreenBoot}    title="boot · handshake"    sub="dial localhost:8080 · open SSE /v1/events"/>
+      </DCArtboard>
+      <DCArtboard id="chat"     label="02 · chat · SSE stream"          width={336} height={680}>
+        <ScreenCard Screen={ScreenChat}    title="chat · streaming"    sub="POST /v1/chat · stream text/event-stream chunks"/>
+      </DCArtboard>
+      <DCArtboard id="node"     label="03 · node · hardware + thermal"  width={336} height={680}>
+        <ScreenCard Screen={ScreenNode}    title="node · sp-daemon"    sub="GET /v1/metrics · thermal trip + pipeline + svm"/>
+      </DCArtboard>
+      <DCArtboard id="pouw"     label="04 · pouw · receipts ledger"     width={336} height={680}>
+        <ScreenCard Screen={ScreenPoUW}    title="pouw · receipts"     sub="GET /v1/receipts · work + discovery tokens"/>
+      </DCArtboard>
+      <DCArtboard id="mesh"     label="05 · mesh · DHT lattice"         width={336} height={680}>
+        <ScreenCard Screen={ScreenMesh}    title="mesh · L4 DHT"       sub="GET /v1/peers · position-as-arithmetic"/>
+      </DCArtboard>
+      <DCArtboard id="settings" label="06 · config · endpoint + keys"   width={336} height={680}>
+        <ScreenCard Screen={ScreenSettings} title="config · daemon"     sub="endpoint · transport · backend · identity"/>
+      </DCArtboard>
+    </DCSection>
+
+    <DCSection id="boundary" title="the boundary contract"
+               subtitle="what crosses the dart/rust line · what stays inside the daemon">
+      <DCArtboard id="contract" label="ffi contract · what crosses · what doesn't"
+                  width={1280} height={620}>
+        <BoundaryBoard/>
+      </DCArtboard>
+    </DCSection>
+  </DesignCanvas>
+);
+
+// ============================================================
+// Architecture board — full message-passing diagram
+// ============================================================
+const ArchitectureBoard = () => {
+  const M = window.M_THEME;
+  return (
+    <div style={{
+      width: '100%', height: '100%', background: M.bg, color: M.text,
+      fontFamily: M.font, padding: '32px 48px', position: 'relative',
+      display: 'flex', flexDirection: 'column', gap: 18,
+    }}>
+      <div>
+        <div style={{ fontSize: 10, letterSpacing: 4, color: M.cyanBright, opacity: 0.85 }}>
+          flutter mobile frontend · message-passing architecture
+        </div>
+        <div style={{ fontSize: 22, letterSpacing: 2, color: M.gold, marginTop: 8, fontWeight: 600 }}>
+          isolated processes · sendmessage all the way down
+        </div>
+        <div style={{ fontSize: 12, color: M.text, marginTop: 10, maxWidth: 820, lineHeight: 1.7 }}>
+          the flutter app is a <span style={{ color: M.gold }}>pure HTTP/SSE client</span> to a headless
+          rust daemon on <span style={{ color: M.gold }}>localhost:8080</span>. dart never sees
+          sp_session pointers, spinor blocks, or raw logits. if android kills the UI for ram pressure,
+          the daemon keeps evaluating the friedman sieve and mining pouw receipts without interruption.
+        </div>
+      </div>
+
+      {/* Big horizontal flow diagram */}
+      <svg viewBox="0 0 1200 360" width="100%" height="360" style={{ display: 'block' }}>
+        <defs>
+          <marker id="arrowGold" viewBox="0 0 10 10" refX="9" refY="5"
+                  markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill={M.gold}/>
+          </marker>
+          <marker id="arrowCyan" viewBox="0 0 10 10" refX="9" refY="5"
+                  markerWidth="6" markerHeight="6" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill={M.cyanBright}/>
+          </marker>
+          <filter id="archGlow"><feGaussianBlur stdDeviation="1.5"/></filter>
+        </defs>
+
+        {/* OS swim lanes */}
+        <g>
+          <text x="20" y="36" fontSize="9" letterSpacing="2.5" fill={M.cyanBright} opacity="0.7">android · linux kernel</text>
+          <text x="20" y="226" fontSize="9" letterSpacing="2.5" fill={M.q4} opacity="0.7">qurt · qualcomm rtos</text>
+          <line x1="0" y1="200" x2="1200" y2="200" stroke={M.rule} strokeDasharray="4 6" strokeWidth="0.5"/>
+        </g>
+
+        {/* Boxes */}
+        {(() => {
+          const boxes = [
+            { x: 40,   y: 50,  w: 200, h: 130, c: M.cyanBright, label: 'flutter app', sub: 'dart isolate',
+              detail: ['• POST /v1/chat',
+                       '• GET  /v1/metrics',
+                       '• SSE  /v1/events',
+                       '• localhost:8080',
+                       '· no native ffi to L1',
+                       '· no shared memory'] },
+            { x: 290,  y: 50,  w: 220, h: 130, c: M.gold, label: 'sp-daemon', sub: 'l3 http · headless service',
+              detail: ['• tower-http / axum',
+                       '• foreground notif',
+                       '• survives ui death',
+                       '• mines pouw on screen-off',
+                       '· serializes only utf-8'] },
+            { x: 560,  y: 50,  w: 220, h: 130, c: M.gold, label: 'rust l2 driver', sub: 'sp_session · spinor · scales',
+              detail: ['• sp_decode_step',
+                       '• kste · sieve · arm',
+                       '• holds raw logits',
+                       '• never exposed to dart'] },
+            { x: 830,  y: 50,  w: 200, h: 130, c: M.q4, label: 'fastrpc', sub: 'ipc doorbell · ~30 µs',
+              detail: ['• adsprpc · smmu · trustzone',
+                       '• copies only 64-bit ptrs',
+                       '• cannot be bypassed'] },
+            { x: 830,  y: 240, w: 200, h: 100, c: M.goldHot, label: 'hexagon v69 htp', sub: 'qurt · halide skel',
+              detail: ['• up·gate·swiglu·down (fused)',
+                       '• 18-bit fixed-point',
+                       '• thermal cap 62 °C'] },
+            { x: 560,  y: 240, w: 220, h: 100, c: M.q2, label: 'svm · ion heap', sub: 'shared virtual memory',
+              detail: ['• rpcmem_alloc',
+                       '• arm + dsp see same cells',
+                       '• zero-copy'] },
+            { x: 290,  y: 240, w: 220, h: 100, c: M.q1, label: 'l4 dht · gossip', sub: 'pouw · peers · sieve',
+              detail: ['• dominance-receipt mint',
+                       '• frontier-extension',
+                       '• runs even when ui is dead'] },
+          ];
+          return boxes.map((b, i) => (
+            <g key={i}>
+              <rect x={b.x} y={b.y} width={b.w} height={b.h}
+                    fill={M.panel} stroke={b.c} strokeOpacity="0.7" strokeWidth="0.8"/>
+              <rect x={b.x} y={b.y} width={3} height={b.h} fill={b.c} opacity="0.85"/>
+              <text x={b.x + 14} y={b.y + 22} fontSize="13" letterSpacing="1.5"
+                    fill={b.c} fontWeight="600">{b.label}</text>
+              <text x={b.x + 14} y={b.y + 38} fontSize="9" letterSpacing="2"
+                    fill={M.textDim}>{b.sub}</text>
+              {b.detail.map((d, j) => (
+                <text key={j} x={b.x + 14} y={b.y + 56 + j * 12}
+                      fontSize="9.5" fill={d.startsWith('·') ? M.textFaint : M.text}>{d}</text>
+              ))}
+            </g>
+          ));
+        })()}
+
+        {/* Arrows */}
+        <g markerEnd="url(#arrowGold)" stroke={M.gold} strokeWidth="1" fill="none">
+          <line x1="240" y1="100" x2="285" y2="100"/>
+          <line x1="510" y1="100" x2="555" y2="100"/>
+          <line x1="780" y1="100" x2="825" y2="100"/>
+        </g>
+        <g markerStart="url(#arrowCyan)" stroke={M.cyanBright} strokeOpacity="0.7"
+           strokeWidth="0.8" fill="none" strokeDasharray="2 4">
+          <line x1="240" y1="130" x2="285" y2="130"/>
+          <line x1="510" y1="130" x2="555" y2="130"/>
+          <line x1="780" y1="130" x2="825" y2="130"/>
+        </g>
+        {/* OS-crossing arrow */}
+        <g stroke={M.q4} strokeWidth="1" fill="none">
+          <line x1="930" y1="180" x2="930" y2="238" markerEnd="url(#arrowGold)"/>
+          <line x1="900" y1="238" x2="900" y2="180" markerEnd="url(#arrowCyan)"
+                stroke={M.cyanBright} strokeDasharray="2 4"/>
+        </g>
+        {/* svm bidir */}
+        <g stroke={M.q2} strokeWidth="0.8" fill="none">
+          <line x1="780" y1="290" x2="828" y2="290" markerEnd="url(#arrowGold)" stroke={M.q2}/>
+          <line x1="828" y1="305" x2="780" y2="305" markerEnd="url(#arrowGold)" stroke={M.q2}/>
+        </g>
+        {/* daemon → dht */}
+        <line x1="400" y1="180" x2="400" y2="238" stroke={M.q1} strokeWidth="0.8"
+              strokeDasharray="2 3" markerEnd="url(#arrowGold)"/>
+
+        {/* Labels above arrows */}
+        <text x="263" y="92" fontSize="8" fill={M.gold} letterSpacing="1" textAnchor="middle">JSON / SSE</text>
+        <text x="533" y="92" fontSize="8" fill={M.gold} letterSpacing="1" textAnchor="middle">FFI · only utf-8</text>
+        <text x="803" y="92" fontSize="8" fill={M.gold} letterSpacing="1" textAnchor="middle">ipc · 64-bit ptrs</text>
+        <text x="940" y="220" fontSize="8" fill={M.q4} letterSpacing="1">dispatch</text>
+        <text x="867" y="220" fontSize="8" fill={M.cyanBright} letterSpacing="1" textAnchor="end">done</text>
+      </svg>
+
+      {/* footer rules */}
+      <div style={{
+        display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 1,
+        background: M.rule, border: `1px solid ${M.rule}`,
+      }}>
+        {[
+          ['ui survives the daemon', 'thermal trips and pauses never reach dart — the UI keeps rendering at 120hz while the dsp throttles silently.'],
+          ['daemon survives the ui', 'android RAM-reaps the flutter activity? the daemon foreground service keeps mining and gossiping. peer connectivity is unbroken.'],
+          ['no marshalling tax',     'dart and rust share only utf-8 strings + small json. spinor blocks, frobenius scales and raw logits never cross the boundary.'],
+        ].map(([h, b], i) => (
+          <div key={i} style={{ background: M.bg, padding: 14 }}>
+            <div style={{ fontSize: 10, letterSpacing: 2.5, color: M.gold, marginBottom: 6 }}>{h}</div>
+            <div style={{ fontSize: 11, color: M.textDim, lineHeight: 1.65 }}>{b}</div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+// ============================================================
+// Boundary contract board — what crosses, what doesn't
+// ============================================================
+const BoundaryBoard = () => {
+  const M = window.M_THEME;
+  const crosses = [
+    ['POST  /v1/chat',       'JSON · { prompt, max_tokens, stop } → SSE stream of { delta:"…" }'],
+    ['GET   /v1/metrics',    'JSON · { tokens_per_sec, htp_temp_c, ram_svm_bytes, peers }'],
+    ['GET   /v1/receipts',   'JSON · paginated dominance receipts'],
+    ['GET   /v1/peers',      'JSON · dht neighbour set, with q-shard tags'],
+    ['SSE   /v1/events',     'text/event-stream · peer up/down · sieve folds · thermal trips'],
+    ['POST  /v1/abort/{id}', '204 · cancel an in-flight decode'],
+  ];
+  const doesntCross = [
+    ['sp_session *',         'raw rust pointer — daemon-internal'],
+    ['Spinor[63] blocks',     '63-byte tile of compressed kv-cache'],
+    ['raw logits',           'f32[vocab_size] · serialized to text inside rust'],
+    ['Frobenius scale',      'per-tile quantization metadata'],
+    ['HVX intrinsics',       'hexagon vector ops · qurt-only'],
+    ['weights / .sp-model',  'mmap-ed inside the daemon, never copied'],
+  ];
+
+  return (
+    <div style={{
+      width: '100%', height: '100%', background: M.bg, color: M.text,
+      fontFamily: M.font, padding: '32px 40px',
+      display: 'flex', flexDirection: 'column', gap: 18,
+    }}>
+      <div>
+        <div style={{ fontSize: 10, letterSpacing: 4, color: M.cyanBright, opacity: 0.85 }}>
+          the ffi contract
+        </div>
+        <div style={{ fontSize: 22, letterSpacing: 2, color: M.gold, marginTop: 8, fontWeight: 600 }}>
+          ruthlessly small surface across the dart / rust boundary
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 20, flex: 1, minHeight: 0 }}>
+        <div style={{
+          border: `1px solid ${M.ruleHot}`,
+          padding: 20, background: 'rgba(13,17,23,0.5)',
+          display: 'flex', flexDirection: 'column', minHeight: 0,
+        }}>
+          <div style={{ fontSize: 10, letterSpacing: 3, color: M.gold, marginBottom: 4 }}>crosses the boundary</div>
+          <div style={{ fontSize: 11, color: M.textDim, marginBottom: 14 }}>utf-8 strings · json · sse · idempotent http verbs</div>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            {crosses.map(([k, v], i) => (
+              <div key={i} style={{
+                padding: '10px 0',
+                borderBottom: i === crosses.length - 1 ? 'none' : `1px solid ${M.rule}`,
+              }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                  <span style={{ color: M.ok, fontSize: 12 }}>✓</span>
+                  <span style={{ color: M.goldHot, fontSize: 12, letterSpacing: 1, fontWeight: 600 }}>{k}</span>
+                </div>
+                <div style={{ fontSize: 10.5, color: M.text, marginTop: 2, paddingLeft: 20, lineHeight: 1.5 }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div style={{
+          border: `1px solid ${M.err}55`,
+          padding: 20, background: 'rgba(13,17,23,0.5)',
+          display: 'flex', flexDirection: 'column', minHeight: 0,
+        }}>
+          <div style={{ fontSize: 10, letterSpacing: 3, color: M.err, marginBottom: 4 }}>never crosses</div>
+          <div style={{ fontSize: 11, color: M.textDim, marginBottom: 14 }}>raw pointers · binary tensors · hardware intrinsics</div>
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
+            {doesntCross.map(([k, v], i) => (
+              <div key={i} style={{
+                padding: '10px 0',
+                borderBottom: i === doesntCross.length - 1 ? 'none' : `1px solid ${M.rule}`,
+              }}>
+                <div style={{ display: 'flex', gap: 8, alignItems: 'baseline' }}>
+                  <span style={{ color: M.err, fontSize: 12 }}>✗</span>
+                  <span style={{ color: M.err, fontSize: 12, letterSpacing: 1, fontWeight: 600 }}>{k}</span>
+                </div>
+                <div style={{ fontSize: 10.5, color: M.textDim, marginTop: 2, paddingLeft: 20, lineHeight: 1.5 }}>{v}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+</script>
+</body>
+</html>
