@@ -179,6 +179,50 @@ fp16 numerics, not the memory-footprint win), E_FP16_5 (fp8-compat).
 (`VK_KHR_shader_float16_int8` shaders), E_FP16_2 cross-backend identity, E_FP16_3 HX
 floor, E_FP16_4 memory (true fp16 buffers). Then the umbrella tags.
 
+## Step B-CU closure (2026-05-26) — E_FP16_2 (cuda-vs-cpu) GREEN
+
+**Done:** fp16 working precision on the engine CUDA backend (`shannon-prime-system-engine`,
+commit `81f1e1c..b942712`, `[lat-2-l1-fp16-B-cu]`; tag `lat-phase-2-l1-fp16-B-cu-closed`).
+
+- **Codepath (`src/backends/cuda/cuda_forward.cu`, `qwen3_forward_cuda_ex`):** a
+  `k_round_f16` CUDA kernel (round device f32 → IEEE binary16 → f32, `<cuda_fp16.h>`)
+  gated by the **same `SP_ENGINE_FP16`** env knob, applied at the same points as the
+  CPU `r16()`: `dnx` after each RMSNorm (matmul activations), `dq/dk/dv` before
+  `k_attn` (fp16 Q/K/V), `dao` before O-proj, `dg` before down-proj. **Weights stay
+  f32 (f16-valued from the f16 GGUF) and cuBLAS SGEMM keeps the f32 accumulator** — no
+  `cublasGemmEx`/`__half` rewrite was needed; rounding the operands reproduces the
+  f16-weights × f16-activations → f32 scheme bit-for-bit with the CPU path. The
+  device weight cache is unaffected (precision is a per-forward activation knob, not a
+  weight-dtype change).
+- **E_FP16_2 result** (Tier-1, RTX 2060 sm_75, CUDA 13.2 + VS2019, Qwen3-0.6B,
+  31-token ref, vs CPU-fp16):
+
+  | compare | argmax | KL mean | gate |
+  |---|---|---|---|
+  | E_CU_2 cuda-vs-oracle (f32, existing) | 31/31 | 2.334e-6 | 1e-5 |
+  | 8.3 cuda-vs-cpu f32 (existing) | 31/31 | 1.060e-11 | 1e-5 |
+  | E_CU_3 q8 cuda-vs-cpu (existing) | 31/31 | 1.234e-10 | 1e-5 |
+  | **E_FP16_2 fp16 cuda-vs-cpu** | **31/31** | **1.573e-6** | **1e-5** ✓ |
+
+  CUDA-fp16 ≡ CPU-fp16 to KL 1.573e-6 (argmax 31/31). The fp16 floor amplifies the
+  cross-backend reassociation vs f32 (1.06e-11 → 1.57e-6: CPU scalar dot vs CUDA SGEMM
+  reduction order on f16-rounded operands) but stays well under 1e-5 — the Frobenius-lift
+  cross-backend identity holds at fp16. `CUDA_SMOKE` + `M_QWEN3_CUDA` PASS (21 checks);
+  the f32/Q8 cuda-vs-cpu numbers are unregressed (match the VALIDATE CU close).
+- **Gate added** to `tests/test_qwen3_cuda.c` (`M_QWEN3_CUDA`): the `E_FP16_2 fp16
+  cuda-vs-cpu` scenario (both backends `SP_ENGINE_FP16` on the f16 weights).
+
+**Scope / limits (honest):** this closes the **CU side of E_FP16_2** (cuda-vs-cpu) on
+Qwen3-0.6B. The *full* E_FP16_2 also needs the VK leg (B-VK). `gemma3_forward_cuda`
+fp16 is a trivial follow-up (same `k_round_f16`, VRAM-scoped at 1B). Tier-1 only (RTX
+2060). **Umbrella tags `lat-phase-2-l1-fp16-closed` + `lat-phase-2-l1-closed` REMAIN
+UNFIRED** — still need B-VK + E_FP16_2(VK) + E_FP16_3 (HX qf32 floor) + E_FP16_4
+(memory; true fp16 storage) + E_FP16_5 (fp8-compat).
+
+**Remaining Part B (next sessions):** B-VK (`VK_KHR_shader_float16_int8`, `float16_t`
+shaders, RTX 2060 Vulkan), then E_FP16_2(VK) + E_FP16_3 (HX) + E_FP16_4 (memory) +
+E_FP16_5 (fp8-compat). Then the umbrella tags.
+
 ## Notes
 - Fixture `.sp-model` SHA-256 changed (arch_struct_size 44→56): the SESSION offload's
   `b6379383…` and HANDLE's `96e3757…` are superseded — both were observability prints,
