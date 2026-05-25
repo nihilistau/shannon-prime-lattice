@@ -2581,6 +2581,101 @@ the relocations are bit-exact.
 Closure tag deferred to the umbrella `lat-phase-2-l1-closed` after
 sub-phases 8.7.2 / 8.7.3 / 8.7.4 close in order.
 
+### 2026-05-26 — Phase 2-L1 UMBRELLA CLOSED (`lat-phase-2-l1-closed`)
+
+The entire L1 ABI implementation is live in math-core. Math-core
+is now the canonical inference path; the engine is a backend +
+transcoder consumer of the frozen L1 ABI, not the implementation.
+Six sub-phases shut over five sessions:
+
+**RELOCATE** (2026-05-23, twelve increments, `222e252c`) —
+reference forward path migrated from engine into `core/forward/`,
+`core/io_format/`, `core/session/`.
+
+**VALIDATE** (`lat-phase-2-l1-validate-closed`, `aff54c6`) —
+engine integration bumped onto math-core sources; CU/VK Q4
+cross-backend identity bit-exact; host-RAM full-suite deferred
+to FP16 plumbing.
+
+**HANDLE** (`lat-phase-2-l1-handle-closed`) — `.sp-model` adapter
+into math-core via `sp_model_load` (3-arg, with tokenizer path),
+`sp_model_arch`, `sp_model_unload`. Spinor 0xA5 sentinel sweep,
+xxh64-keyed O(log N) tensor lookup. The first agent of the cohort
+to verify a memory-drafted handoff against the frozen headers
+and surface the spec drift before executing.
+
+**SESSION** (`lat-phase-2-l1-session-closed`, `df44c5e..0f5b29f`) —
+`sp_session_create/destroy/position`, `sp_prefill_chunk`,
+`sp_decode_step`, `sp_session_clone/rewind`, atomic cancel wiring,
+`sp_model_to_qwen3` bridge. Prefill bit-exact vs `qwen3_forward`;
+decode trajectory exact vs `qwen3_generate_kv` over 100 steps.
+
+**PARITY** (`lat-phase-2-l1-parity-closed`, math-core `df6c8827`
++ continuation) — math-core session inherits engine's inline
+compression profile. E_PARITY_1 Spinor KV codec wired into
+`sp_decode_step` (2.71× compression by construction matching
+E_CPU_8). E_PARITY_2 Q4 mixed-precision arena in bridge. E_PARITY_3
+arch_struct reconciliation — engine transcoder + adapter brought
+onto the frozen `sp_arch_info` layout per PPT-LAT-SP-MODEL-v0 §3
+(engine had been writing `qwen3_config` in violation of the spec).
+E_PARITY_4 peak RSS within ±0.1% of engine's E_CPU_10 number on
+real Qwen3-0.6B. Two bonus pickups: untied embedding support in
+the math-core bridge, and `out_syn` LM-head routing that
+distinguishes `output.weight` from `token_embd.weight`. Both
+were classified as Phase 3 prep in prior offloads; landing them
+here removed two Phase 3 prerequisites.
+
+**FP16** (`lat-phase-2-l1-fp16-closed`, engine `65a85d1`) — dtype
+plumbing across CPU/CU/VK behind `SP_ENGINE_FP16=1`, default off.
+E_FP16_1 CPU PPL drift -0.0146% vs f16 oracle (gate 0.05%).
+E_FP16_2 CUDA KL 1.573e-6 vs CPU-fp16 (wiring sanity, not a gate
+— SP Frobenius-lift identity inherited). E_FP16_3 VK PPL bit-
+identical to CPU-fp16 at 32.86458 (option A: `packHalf2x16` /
+`unpackHalf2x16` rounding via `round_f16.comp`, no
+`VK_KHR_shader_float16_int8` extension required). Math-core
+reference forward stays f32 (canonical anchor); HX stays qf32
+(V69 Q6_Vsf_* IEEE-fp16 broken per `reference-hx-activation-correctness`).
+
+**Headline numbers at close:**
+
+- KV cache: 2.71× compression via Spinor block codec (matches
+  E_CPU_8 by construction; SP identity inherited from
+  `project_phase11_full_stack` + `project_phase12_q8_step_d`).
+- Weight arena: ~574 MB Q8 + ~301 MB Q4 mixed-precision (matches
+  E_CPU_7/E_CPU_10 within ±0.1%; per-row Frobenius lift).
+- fp16 working precision wired on three backends; math-core stays
+  f32; HX stays qf32.
+- One cross-loadable `.sp-model` format: engine transcodes,
+  math-core session loads, forward bit-identical.
+- Real Qwen3-0.6B runs end-to-end through the relocated session ABI.
+
+**Deferred items carried forward** (named to prevent silent loss):
+
+- **Gemma3 bridge in math-core** — `T_PARITY_CROSS_LOAD` not yet
+  exercised on Gemma3; sandwich post-norms + GeGLU dispatch
+  remain to wire. Phase 3 entry condition for the gemma3 family.
+- **`sp_model_release_source()`** — would recover ~754 MB mmap
+  after arena build (reduce math-core total RSS from 1458 MB →
+  ~580 MB to match engine E_CPU_10 absolute number). Small win;
+  Phase 3 or follow-up.
+- **Engine submodule pin** — engine references math-core df6c882
+  pinned via submodule; bump to 8d2c422 after lattice push lands.
+
+**What Phase 3 inherits:** a frozen L1 ABI, math-core as the
+canonical inference path with inline KV + weight compression at
+parity with the engine, untied embedding support, one cross-
+loadable file format, fp16 dtype across compute backends. The
+Phase 3 model-family expansion is now strictly about adding
+arches (gemma3, deepseek-v4, llama3) to the bridge — the
+ABI surface and memory mechanism don't move.
+
+Offloads: `SESSION-CLOSED-lat-2-L1-HANDLE.md`,
+`SESSION-CLOSED-lat-2-L1-SESSION.md`,
+`SESSION-CLOSED-lat-2-L1-PARITY.md`,
+`SESSION-CLOSED-lat-2-L1-FP16.md` (on lattice). Engine pushed at
+`65a85d1` with all FP16 + closure tags. Math-core at `8d2c422`.
+Lattice at `9d64861`.
+
 
 ---
 
