@@ -2413,4 +2413,76 @@ the §2-B.E.1 polynomial-shift cache (lossless on stock RoPE, gated by
 `SP_ENGINE_NTT_ATTN=1`), and the §20 items remain parked research notes —
 off the Phase 2..13 critical path.
 
+## 20.4 Phase 5-HYP — Continuous-Relaxed Dominance via Hyperbolic Embedding
+
+**Concept:** The current KSTE encoder relies on Kruskal's Tree Theorem in $T_{60,3}$.
+ While the Tier-0 subtract-with-borrow check is $O(1)$, the rigid discrete topology 
+means minor quantization jitter can flip a tree's depth-rank, causing a false-negative 
+on the deduplication sieve.
+
+* **The Math:** Continuous trees embed into Hyperbolic Space (specifically the Poincaré ball 
+or the Lorentz manifold) with arbitrarily low distortion. By mapping the K-vector to a coordinate 
+in the $(d+1)$-dimensional Lorentz model, "dominance" transforms from a discrete tree-walk into a 
+continuous cone-inclusion check.
+
+* **The Mechanism:** 
+Vector $u$ dominates vector $v$ if $v$ lies within the future light cone of $u$. This is evaluated 
+using the Minkowski inner product:
+
+$$\langle u, v \rangle_{\mathcal{L}} = -u_0 v_0 + \sum_{i=1}^d u_i v_i \le -1$$
+
+
+* **The Win:** 
+You retain the $O(1)$ SIMD-friendly dominance check (it is literally just a dot product), but you
+ gain topological robustness. Quantization noise simply shifts the coordinate slightly within the 
+hyperbolic space, rather than shattering the combinatorial tree structure.
+* **Gate:** 
+Hyperbolic dominance rejection rate matches or exceeds the discrete $T_{60,3}$ sieve on the Gemma3-1B
+ test corpus, with $\text{KL} \le 10^{-6}$ drift from quantization jitter.
+
+## 20.5 Phase 4-QMC — 2D Quasi-Monte Carlo KV Eviction
+
+**Concept:** The 1D Fibonacci sub-sampling ($\lfloor k\varphi \cdot N \rfloor \pmod N$) is mathematically 
+optimal for equidistant temporal coverage. However, context isn't just temporal; it has semantic depth. 
+Needle-in-a-haystack retrieval fails if a highly semantic token happens to fall into a Fibonacci eviction gap.
+
+* **The Math:** Upgrade the 1D Fibonacci sequence to a 2D low-discrepancy sequence (e.g., a Halton or Sobol sequence).
+* **The Mechanism:** Map Axis 1 to the Temporal Index (time). Map Axis 2 to a Semantic Weight 
+(e.g., the attention magnitude or the KSTE Tier-0 entropy signature). The Halton sequence uses coprime bases 
+(e.g., base 2 for time, base 3 for entropy) to generate a deterministic, maximally un-clustered grid.
+* **The Win:** 
+Eviction is no longer blind to semantic importance. The 2D Halton sequence guarantees that high-semantic-value 
+tokens are never clustered and evicted together, while maintaining the structural equidistribution of the temporal axis.
+* **Gate:*
+* Needle-in-a-haystack retrieval accuracy on a 32K context window improves by $>15\%$ over 1D Fibonacci eviction, with
+ zero increase to the resident KV memory footprint.
+
+## 20.6 Phase 9-MAP — Zero-NTT Associative Memory
+
+**Concept:**
+The ARM bank currently uses Holographic Reduced Representations (HRR) via negacyclic convolution in $R_q$. While it 
+shares the NTT pipeline with the attention layer, HRR convolution is inherently noisy ($O(\sqrt{K})$ capacity ceiling) 
+and still costs an $O(N \log N)$ NTT round-trip per binding.
+
+* **The Math:** 
+Pivot from HRR to a Multiply-Add-Permute (MAP) Vector Symbolic Architecture. In MAP, "binding" a key and a value is not a 
+polynomial multiplication; it is an orthogonal permutation.
+
+$$\text{bind}(k, v) = \Pi_k(v)$$
+
+$$\text{unbind}(k, M) = \Pi_k^{-1}(M)$$
+
+
+* **The Mechanism:** 
+The keys $k_i$ become deterministic permutation masks. On CPU/CUDA, applying $\Pi_k$ to a 63-byte Spinor block is a 
+native SIMD shuffle (e.g., `vpshufb` on AVX2/AVX-512).
+
+* **The Win:** 
+You bypass the NTT pipeline completely for the ARM bank. The computational cost of binding and unbinding drops to 
+effectively zero (a few clock cycles). While the capacity curve still degrades with $K$, eliminating the NTT overhead 
+allows you to aggressively increase the stride or maintain multiple smaller ARM banks without stalling the forward pass.
+
+* **Gate:** 
+MAP-based ARM binding/unbinding executes $>10\times$ faster than the $R_q$ NTT-based HRR, while maintaining a cosine similarity recall curve of $\ge 0.80$ at $K=1$.
+
 ---
