@@ -1749,14 +1749,15 @@ closed; the matrix is filled per-cell.
 
 **Parallelism.** Cells are independent. Sessions can pick any cell.
 
-### 9.0 Phase 3 entry condition — `sp_model_release_source()`
+### 9.0 Phase 3 entry condition — zero-copy memory invariant
 
 **Promoted from "small follow-up" to first-cell prerequisite
-(2026-05-26).** Without it Phase 3 cannot scale past ~8B models on
-a 64 GB host. The PARITY close measured math-core RSS at 1458 MB
-on Qwen3-0.6B vs engine's ~580 MB — the 754 MB delta is the source
-`.sp-model` mmap that stays resident after the arena is built.
-That delta scales linearly with the source file size:
+(2026-05-26).** Without these fixes Phase 3 cannot scale past
+~8B models on a 64 GB host. The PARITY close measured math-core
+RSS at 1458 MB on Qwen3-0.6B vs engine's ~580 MB — the 754 MB
+delta is the source `.sp-model` mmap that stays resident after
+the bridge allocates a separate arena. That delta scales
+linearly with source file size:
 
 | Model | Arena | Unreleased source | Total |
 |---|---|---|---|
@@ -1766,17 +1767,76 @@ That delta scales linearly with the source file size:
 | Gemma4-31B Q4 | ~16 GB | ~62 GB f16-source | **~78 GB** — won't fit |
 | Qwen3.6-35B-A3B Q4 | ~18 GB MoE-active | ~70 GB f16-source | **~88 GB** — won't fit |
 
-**Deliverable.** Add `sp_status sp_model_release_source(sp_model*)`
-to the L1 ABI (`include/sp/sp_l1.h`). After arena build during
-`sp_session_create`, the source weight blob region of the .sp-model
-mmap can be released. The paired `.sp-tokenizer` mmap stays
-(detokenization needs it). `sp_model_unload` becomes a no-op for
-the already-released portion + unmaps the tokenizer normally.
+**Information-theoretic invariant** (see
+`reference-zero-copy-invariant`): inflating a Q4 weight back to
+fp16 in main RAM adds zero information and 4× the memory
+bandwidth. The SP `sp_frob_*` inline-decompress-in-register
+design exists precisely so that **weights never exist as fp16
+in main RAM**. Any path that materialises a fp16 dequantised
+weight buffer for the purpose of "running at fp16" is
+architecturally wrong, regardless of whether it produces the
+right answer. fp16 working precision (§8.7.6) is **activations
++ KV only** — never weights. Weights stay compressed forever;
+the matmul does the inline-decompress on the read.
 
-**Gate.** Math-core RSS on Qwen3-0.6B after explicit
-`sp_model_release_source()` call drops from 1458 MB to within
-±5% of the engine's E_CPU_10 (~580 MB). Without this, no Phase 3
-cell can close on a >8B model.
+This invariant decomposes the bridge fix into **two paths, both
+required**:
+
+**Fix A — `sp_model_release_source()` for arena-allocating paths.**
+When the source `.sp-model` is NOT in arena-compatible layout
+(e.g., a raw f16-GGUF being dynamically quantised into a packed
+Q4 arena by the bridge), the bridge mmaps, allocates the arena,
+packs, and then **releases the source mmap region the millisecond
+arena build completes**. Add
+`sp_status sp_model_release_source(sp_model*)` to the L1 ABI
+(`include/sp/sp_l1.h`). The paired `.sp-tokenizer` mmap is
+preserved (detokenization needs it). `sp_model_unload` becomes
+a partial no-op for the released portion + unmaps the tokenizer
+normally.
+
+**Fix B — zero-copy aliasing for arena-compatible `.sp-model`.**
+When the source `.sp-model` is ALREADY in `OK_Q4` or `OK_Q8`
+arena-compatible layout (i.e., the Phase 2-FMT transcoder
+pre-built the arena layout on disk), the bridge **allocates
+nothing**. It walks the tensor table and points the model's
+weight pointers directly at the mmap'd payload. Per-tensor
+`owned_mask` (or equivalent) records which tensors are aliased
+(don't free on `sp_session_destroy`) vs owned (free normally).
+Result on a 5 GB Q4 `.sp-model`: total math-core weight RAM ≈
+5 GB (arena = mmap, no duplication). `release_source` is not
+called and not meaningful for this path — the source IS the
+arena.
+
+Fix B is the **architectural end-state** the `.sp-model` format
+was built for in Phase 2-FMT. Fix A is the **stopgap** for users
+who have raw f16-GGUF files (LM Studio downloads are typically
+f16) and haven't transcoded yet. Both must be implemented in
+this cell; every Phase 3 arch bridge added thereafter inherits
+the same two-path obligation.
+
+**Bridge decision logic** (inspected per-tensor at load time):
+
+- All tensors `OK_Q4`/`OK_Q8` in `SP_FROB_ARENA_LAYOUT_VERSION=1`
+  layout AND correctly aligned → **Fix B** (zero-copy alias).
+- Any dtype mismatch, layout-version mismatch, or alignment
+  problem → **Fix A** (allocate arena + populate + release source).
+- Tensors that need a one-shot transform regardless (e.g., Gemma
+  embedding × √n_embd) → owned arena copy for those tensors
+  specifically, aliased for the rest.
+
+**Gate.** Two measurements on Qwen3-0.6B (the PARITY test
+fixture):
+
+- **Fix A path:** load raw f16-GGUF via the engine bridge with
+  dynamic Q4 quantisation → math-core RSS within ±5% of engine
+  E_CPU_10 (~580 MB) after `sp_model_release_source()`.
+- **Fix B path:** load pre-transcoded Q4 `.sp-model` →
+  math-core RSS ≈ on-disk file size (within ±5%, accounting
+  for tokenizer + session buffers + Spinor KV at default
+  context). Zero arena allocation; aliased tensor pointers
+  verified via address comparison against mmap base.
+
+Without both, no Phase 3 cell can close on a >8B model.
 
 ### 9.1 Model-family list (2026-05-26 — updated to user fixtures)
 
