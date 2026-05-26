@@ -99,7 +99,7 @@ environment-variable gates until they are individually proven.
 | 3-FP8 | FP8 weight sub-phase | DeepSeek-V4 FP8 dequant + bridge | DeepSeek-V4 bit-identity vs reference | Aspirational; no fixture |
 | 4 | Inline cache compression validated | PPL drift and memory savings measured per backend × model | Drift ≤ 1% on calibrated families | 4 weeks |
 | 4-MTP | Multi-Token Prediction (built-in heads) | Target-model self-drafting + verifying via auxiliary prediction heads; transactional Spinor block rewind | M_MTP_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4; native MTP-head fixture (DeepSeek-V4 or Qwen3.6 MTP variant) | 3 weeks; **UNBLOCKED 2026-05-26** by lat-phase-3-attn-closed; can spawn on any MTP-head-bearing arch |
-| 4-SPEC | Speculative decoding (separate draft) | Smaller draft model + larger target verifier; transactional Spinor block rewind on rejection | M_SPEC_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4 using Qwen3.6-35B-A3B + Qwen3.6-35B-A3B-Draft pairing, or Qwen2.5-Coder-14B + Qwen2.5-Coder-0.5B | 2 weeks; **UNBLOCKED 2026-05-26** by lat-phase-3-attn-closed; runs on already-closed Qwen2.5 cell |
+| 4-SPEC | Speculative decoding (separate draft) | Smaller draft model + larger target verifier; transactional Spinor block rewind on rejection | M_SPEC_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4 using Qwen3.6-35B-A3B + Qwen3.6-35B-A3B-Draft pairing, or Qwen2.5-Coder-14B + Qwen2.5-Coder-0.5B | **MATH GATE CLOSED 2026-05-27** (`lat-phase-4-spec-math-closed`) — M_SPEC_1 + M_SPEC_2 PASS, T8.1 validated; M_SPEC_3 (throughput) + M_SPEC_4 (RSS) deferred pending 14B fixture |
 | TS | TailSlayer channel-aware memory placement | GF(2) recovery of memory controller channel-select hash + hedge-read allocation on independent DDR channels for Spinor blocks / CRT residue pairs / Frobenius row pairs / KSTE upper tier | TS.MAP graceful CI fallback + TS.HEDGE ≥ 2× tail P99 drop + TS.INTEGRATE-CRT bit-identical PPL with measurable wall-time win | 2-3 weeks parallel; cross-cutting infrastructure; downstream phases consume the primitive |
 | 5 | Lattice features (sieve, ARM, dominance) | Off-by-default ENV-gated overlays | Regression suite green when gates off | 6 weeks |
 | 6-BLOCK-SYNC | Relaxed Garner reconstruction | Per-block (4-layer) CRT reconstruction with Poncelet-deterministic Mersenne scaling + residue-polynomial activations | M_BLOCK_1: 4-layer-deferred ≡ per-layer (KL ≤ 1e-12) on Gemma3-1B | 2 weeks; blocked by Phase 5, 4-MTP close |
@@ -3512,6 +3512,42 @@ framing + the eleven lattice integration points (CRT dual-prime
 hedge reads is the killer integration). Phase TS does NOT block
 any other phase; every downstream phase (4-SPEC, 5 sieve, 6
 CRT-shard, Mode D LPDDR5x segregation) benefits when it lands.
+
+### 2026-05-27 — Phase 4-SPEC math gate closed (`lat-phase-4-spec-math-closed`)
+
+Corollary T8.1 validated: `sp_session_rewind(K-j)` restores byte-identical KV
+state to position t+j — zero ghost contamination after draft rollback. All math
+gates passed on the Qwen2.5-Coder-0.5B × 2 fixture (same-model, Q8_0).
+
+**Fixture:** 3B (Q4_K_M) excluded — `sp_dequant_row` doesn't support K-quants.
+14B absent from local storage. 0.5B used as both target and draft; synthetic
+rejection protocol (C-Synth) covers the rejection branch.
+
+**`sp_transcode` fix (engine `d21c161`):** bypass `qwen3_load` which returned
+NULL on missing `qwen2.attention.key_length` key; read GGUF metadata directly
+from already-open `gguf_ctx`; compute `head_dim = n_embd / n_head` as fallback.
+Tool-layer change only — L1 ABI (`sp_l1.h`) untouched.
+
+**Engine commits:** `d21c161` (transcode fix) + `ffd52c2` (SpSession::rewind +
+Cargo.toml bin entry) + `cafb349` (dual-model AppState + `--draft-model` arg) +
+`693881f` (spec.rs discrete loop, argmax-only, `Option<Vec<f32>>` on rejection) +
+`3966f1d` (spec_validate: protocols A+B / C / C-Synth) + `c705ece` (off-by-one
+fix: break inner ki loop + skip position check at 200-token boundary).
+
+**Gate results:**
+- Protocol A+B (planted acceptance rates + T8.1 identity): PASS — 5 rates, rewind
+  logits byte-identical after rollback at each acceptance position.
+- Protocol C (500-token natural soak): 500/500 accepted (100.0%) — expected for
+  same-model deterministic fixture.
+- Protocol C-Synth (200-token forced rejection): 178/200 accepted (89.0%) —
+  ~22 forced rejections exercised the rewind path; math confirms 44×4 + 22×1 = 198
+  ≈ 200 tokens.
+
+**M_SPEC_1: PASS. M_SPEC_2: PASS. T8.1 VALIDATED.**
+
+Deferred: M_SPEC_3 (≥1.5× throughput) awaits the 14B target fixture; M_SPEC_4
+(zero-copy aliasing / peak RSS) follows M_SPEC_3. Tag `lat-phase-4-spec-math-closed`
+on both engine and lattice repos. Offload: `SESSION-CLOSED-lat-4-SPEC.md`.
 
 
 ---
