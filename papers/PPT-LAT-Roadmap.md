@@ -101,6 +101,7 @@ environment-variable gates until they are individually proven.
 | 4-MTP | Multi-Token Prediction (built-in heads) | Target-model self-drafting + verifying via auxiliary prediction heads; transactional Spinor block rewind | M_MTP_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4; native MTP-head fixture (DeepSeek-V4 or Qwen3.6 MTP variant) | 3 weeks; **UNBLOCKED 2026-05-26** by lat-phase-3-attn-closed; can spawn on any MTP-head-bearing arch |
 | 4-SPEC | Speculative decoding (separate draft) | Smaller draft model + larger target verifier; transactional Spinor block rewind on rejection | M_SPEC_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4 using Qwen3.6-35B-A3B + Qwen3.6-35B-A3B-Draft pairing, or Qwen2.5-Coder-14B + Qwen2.5-Coder-0.5B | **MATH GATE CLOSED 2026-05-27** (`lat-phase-4-spec-math-closed`) — M_SPEC_1 + M_SPEC_2 PASS, T8.1 validated; M_SPEC_3 (throughput) + M_SPEC_4 (RSS) deferred pending 14B fixture |
 | TS | TailSlayer channel-aware memory placement | GF(2) recovery of memory controller channel-select hash + hedge-read allocation on independent DDR channels for Spinor blocks / CRT residue pairs / Frobenius row pairs / KSTE upper tier | TS.MAP graceful CI fallback + TS.HEDGE ≥ 2× tail P99 drop + TS.INTEGRATE-CRT bit-identical PPL with measurable wall-time win | 2-3 weeks parallel; cross-cutting infrastructure; downstream phases consume the primitive |
+| 2-CU.PTX | Bare-metal NVIDIA assembly for discrete kernels | PTX inline asm replacing nvcc generic SASS on Spinor warp-load (differentiated cache modifiers), GF(p) Montgomery butterfly, INT8 tensor-core Q8 matmul (mma.sync), KSTE hash (lop3+prmt), persistent kernel for spec-decode | M_PTX_1 bit-exact math identity + M_PTX_2 >85% SOL DRAM bandwidth + M_PTX_3 zero cudaMalloc + M_PTX_4 session isolation | 3 weeks; blocked by lat-phase-3-attn-closed + Phase 4-SPEC math gate; bare-metal CUDA leg of the per-backend symmetry |
 | 5 | Lattice features (sieve, ARM, dominance) | Off-by-default ENV-gated overlays | Regression suite green when gates off | 6 weeks |
 | 6-BLOCK-SYNC | Relaxed Garner reconstruction | Per-block (4-layer) CRT reconstruction with Poncelet-deterministic Mersenne scaling + residue-polynomial activations | M_BLOCK_1: 4-layer-deferred ≡ per-layer (KL ≤ 1e-12) on Gemma3-1B | 2 weeks; blocked by Phase 5, 4-MTP close |
 | 6-TRANSPORT-CRT-RS | 3-prime CRT erasure code over QUIC | Any-two-of-three Garner over independent QUIC streams + speculative Garner during in-flight | M_TRANSPORT_1: >2× WAN throughput vs TCP at 5% packet loss | 2 weeks; blocked by 6-BLOCK-SYNC |
@@ -2996,6 +2997,199 @@ Reference: `reference-tailslayer-integration` memory entry +
 <https://github.com/nihilistau/tailslayer>.
 
 
+## 17. Phase 2-CU.PTX — bare-metal NVIDIA assembly for discrete algebra
+
+**Goal.** Replace generic `nvcc`-compiled SASS on the CUDA
+backend's lattice-specific kernels with hand-written PTX
+inline assembly. Standard CUDA C++ is "default engine" thinking
+— its codegen assumes continuous-float GEMM patterns, refuses
+to use integer tensor cores for Q8 matmul, wraps `(a*b)%q` in
+a slow generic integer-division subroutine, and L1-caches
+single-use Spinor reads. PTX is the silicon-direct wedge that
+lets us wield the lattice's discrete Z_q arithmetic and 63-byte
+Spinor block geometry as the GPU actually executes them.
+
+**Provenance.** DeepSeek-V3 pioneered custom-PTX-for-MoE-routing
+in their technical report. Laurie's TailSlayer captures the
+same algebraic-substrate-meets-silicon ethos at the memory-
+controller layer. Same intellectual lineage; both treat
+compiler-hidden or undocumented hardware as a mathematical
+object to command directly.
+
+**Dependencies.** `lat-phase-2-l1-closed` (CUDA backend at
+fp16 working precision) + `lat-phase-3-attn-closed` (real
+arches loadable end-to-end for bit-identity testing).
+
+**Scope boundary** (binding, prevents drift):
+- PTX REPLACES generic CUDA C++ for: Spinor block loads, GF(p)
+  NTT butterflies, KSTE / sieve hash primitives, INT8 tensor-
+  core matmul on the Frobenius arena.
+- PTX does NOT replace cuBLAS HGEMM. cuBLAS is deeply tuned;
+  the PTX work surrounds it where lattice-specific kernels
+  live.
+
+### 17.1 Phase 2-CU.PTX.SPINOR — 63-byte Spinor warp-load
+
+**Differentiated cache modifiers** (more nuanced than uniform
+`ld.global.nc`):
+
+- **Hot recent window** (last `swa_window` blocks per head;
+  ~32 KB on Gemma3 local layers): re-read per query during
+  prefill. Use `ld.global.cg` (L2-cached, L1-bypassed) —
+  recent Spinors stay warm in 3 MB L2 on RTX 2060.
+- **Cold streaming tail** (older history beyond the window):
+  read once per prefill, never again. Use `ld.global.cs` or
+  `ld.global.nc` — L1+L2 bypass, no pollution.
+
+Boundary check is a position-vs-current-token comparison at
+decode-step entry; runtime dispatch on cache policy.
+
+**Warp packing** for 63-byte geometry: 32 threads × 4 bytes =
+128 bytes per warp = 2 Spinor blocks + 2 sentinel slack. Pack
+two blocks per warp via `v4.u32` loads with `shfl.sync` cross-
+thread shuffle for the cross-block byte.
+
+### 17.2 Phase 2-CU.PTX.NTT — GF(p) Montgomery / Barrett butterfly
+
+`q_1 = 1073738753` and `q_2 = 1073732609` are 30-bit Proth
+primes chosen specifically so modular arithmetic fits the
+integer ALU. Replace `nvcc`'s generic integer division (~40
+cycles per `(a*b)%q`) with hardcoded PTX:
+
+- `mad.wide.u32` captures exact 64-bit product of two 32-bit
+  operands in one cycle.
+- `shf.r` (funnel-shift right) + `add.cc` (add with carry)
+  complete Barrett or Montgomery reduction in 3-4 cycles.
+
+Net: NTT butterfly drops ~40 cycles → ~4. CRT-NTT pass on
+Gemma3-1B forward becomes register-pressure bound, not
+modular-arithmetic bound.
+
+### 17.3 Phase 2-CU.PTX.MMA — INT8 tensor-core Frobenius matmul
+
+**The deliverable Gemini's draft missed.** RTX 2060 (sm_75
+Turing) has INT8 tensor cores accessible via
+`mma.sync.aligned.m8n8k16.row.col.s32.s8.s8.s32`. The packed
+Q8 arena is INTEGER-valued — perfect substrate. `nvcc` won't
+emit this for Q8-packed data because the high-level CUDA API
+is fp16/bf16-shaped.
+
+New path `sp_frob_matmul_q8_mma`:
+- Q8 codes loaded directly from mmap'd `.sp-model` arena
+  (Fix B) into shared memory tiles via
+  `cp.async.cg.shared.global` on sm_80+ (Ampere); fall back
+  to `ld.global.cg` on sm_75.
+- `mma.sync` accumulates in S32; per-row Frobenius scale
+  applies post-accumulation as `(s32_acc * fp32_scale)` →
+  fp16 output activation.
+- Bypasses cuBLAS for the Q8 case; cuBLAS HGEMM still owns
+  the fp16-weight path.
+
+Expected: ~4× throughput on the dominant matmul of the
+forward pass for Q8 workloads. Composes with §17.1 SPINOR
+(K-cache reads) and §17.2 NTT (poly-ring attention) for a
+fully PTX-native discrete-kernel forward path.
+
+### 17.4 Phase 2-CU.PTX.HASH — KSTE / sieve hash primitives
+
+PTX-exclusive with no C++ equivalent:
+
+- `lop3.b32 dst, a, b, c, immLut` — evaluates any 3-input
+  boolean function in 1 cycle. Drop-in for XXH3 mixing, KSTE
+  Tier-0 subtract-with-borrow signatures, PoUW receipt chain
+  hash rounds.
+- `prmt.b32 dst, a, b, selector` — byte permute across 8
+  source bytes. Replaces shift+mask sequences for KSTE tree-
+  index extraction from Spinor blocks.
+
+Lands the primitives + microbenchmark; full sieve integration
+gated on Phase 5 (sieve doesn't exist yet). Same shape as
+§16.5 TS.INTEGRATE-KSTE — primitive now, integration when
+sieve ships.
+
+### 17.5 Phase 2-CU.PTX.PERSIST — persistent kernel for spec-decode
+
+**Composes with Phase 4-SPEC.** Phase 4-SPEC issues K
+`sp_decode_step` calls on the draft model per verify cycle.
+Each is a kernel launch (~5-10 µs overhead). At K=4 that's
+20-40 µs of pure launch overhead per spec cycle — comparable
+to the actual draft compute on a 0.5B model.
+
+PTX persistent kernel: pre-launch a long-running kernel
+spinning on a work queue in pinned host memory. CPU pushes
+draft requests; GPU consumes without re-launching. Latency
+floor drops from ~5 µs launch to ~100 ns queue poll.
+
+Gated optional — Phase 4-SPEC M_SPEC_3 may close at 1.5× via
+cuBLAS-batched HGEMM alone. §17.5 lands as the closure-margin
+case.
+
+### 17.6 Closure gates
+
+- **M_PTX_1 (math gate — load-bearing):** every PTX kernel
+  produces bit-identical output vs the math-core f32 scalar
+  reference. Integer kernels (§17.2 NTT, §17.4 HASH):
+  byte-exact equality, not KL — pure Z_q operations, any drift
+  is a bug. Float-adjacent kernels (§17.1 SPINOR, §17.3 MMA):
+  within fp16 ULP floor (matches Phase 2-L1.FP16 gate shape).
+  If math drifts, STOP — PTX is for speed, never approximation.
+- **M_PTX_2 (throughput — Nsight Compute profile):**
+  - §17.1 SPINOR: ≥ 85% SOL DRAM bandwidth on Spinor read.
+  - §17.2 NTT: ≥ 8× butterfly speedup vs nvcc baseline.
+  - §17.3 MMA: ≥ 3× Q8 matmul speedup vs existing
+    `SP_ENGINE_FROB` Q8 path.
+- **M_PTX_3 (memory honesty):** zero `cudaMalloc` on hot
+  path. PTX operates on `sp_session` + Fix B mmap pointers.
+  Heap trace verified clean.
+- **M_PTX_4 (session isolation):** PTX kernels run on the
+  per-`sp_session` CUDA stream. No global device sync. Two
+  concurrent sessions interleave without cross-corruption.
+
+**Platform gates:** M_PTX_1 + M_PTX_3 + M_PTX_4 close Tier-1
+on dev host (RTX 2060). M_PTX_2 requires Nsight Compute; runs
+on dev host, artifact attached to closure note. CI (no GPU)
+builds + runs unit tests against the stub-fallback path
+(graceful: no-GPU hosts route to existing cuBLAS-only paths).
+
+### 17.7 Closure
+
+Commit prefix `[lat-2-cu-ptx]` on shannon-prime-system-engine.
+Sub-tags: `lat-phase-2-cu-ptx-spinor-closed`, `...-ntt-closed`,
+`...-mma-closed`, `...-hash-closed`, `...-persist-closed`.
+Umbrella `lat-phase-2-cu-ptx-closed` after all five (or four
+— PERSIST optional) close.
+
+Offload `papers/SESSION-CLOSED-lat-2-CU-PTX.md`: each PTX
+block's recovered SASS via `cuobjdump`, Nsight Compute
+SOL+IPC numbers, bit-identity vs math-core reference,
+cuBLAS-vs-PTX-vs-stub fallback dispatch logic.
+
+### 17.8 Anti-contamination + cross-backend symmetry
+
+Phase 2-CU.PTX is the CUDA leg of the per-backend bare-metal
+pattern (see `reference-baremetal-backend-pattern`):
+
+- **CPU bare-metal:** AVX-512-FP16 + F16C intrinsics — closed
+  in `lat-phase-2-l1-fp16-closed`.
+- **CUDA bare-metal:** PTX inline asm — this phase.
+- **Vulkan bare-metal:** SPIR-V intrinsics +
+  `VK_KHR_cooperative_matrix` — future Phase 2-VK.SPV.
+- **Hexagon bare-metal:** HVX + QNN HTP + Halide AOT — Mode B
+  closed; Mode C/D deferred per §10, §11.
+
+Each backend's high-level compiler is "default engine" by
+default; the bare-metal sub-phase is the lattice-specific
+wedge that escapes the continuous-float assumptions baked
+into `nvcc`, `glslc`, `hexagon-clang`.
+
+**Do NOT copy legacy CUDA code** from
+`D:\F\shannon-prime-repos\shannon-prime-engine\` (legacy,
+contaminated). Re-derive from math-core scalar reference +
+PTX ISA docs. The closed math-core Q8 / NTT / Spinor
+primitives are the algebraic ground truth; PTX is a faster
+execution of the same math.
+
+
 ## Phase log
 
 One paragraph per closed phase (§3.3). Most recent last.
@@ -3548,6 +3742,56 @@ fix: break inner ki loop + skip position check at 200-token boundary).
 Deferred: M_SPEC_3 (≥1.5× throughput) awaits the 14B target fixture; M_SPEC_4
 (zero-copy aliasing / peak RSS) follows M_SPEC_3. Tag `lat-phase-4-spec-math-closed`
 on both engine and lattice repos. Offload: `SESSION-CLOSED-lat-4-SPEC.md`.
+
+### 2026-05-27 — Phase 2-CU.PTX added to §17 (bare-metal NVIDIA assembly)
+
+CUDA leg of the per-backend bare-metal pattern recorded in
+memory entry `reference-baremetal-backend-pattern`. DeepSeek-V3
+originated custom-PTX-for-discrete-kernels in their tech
+report; the lattice extends the same wedge to Spinor blocks,
+GF(p) NTT butterflies, INT8 tensor-core Q8 matmul, and KSTE
+hash primitives. Standard `nvcc` SASS is "default engine" —
+emits generic integer-division subroutines for `(a*b)%q`,
+refuses INT8 mma.sync for Q8-packed data, L1-caches single-use
+Spinor reads. PTX bypasses each.
+
+Five sub-phases (§17.1–§17.5):
+- **SPINOR**: 63-byte warp-load with differentiated cache
+  modifiers (`ld.global.cg` hot window, `ld.global.cs`/`.nc`
+  cold tail); `shfl.sync` for cross-block byte handling.
+- **NTT**: Montgomery/Barrett butterfly via `mad.wide.u32` +
+  `shf.r` + `add.cc`; ~40 cycle → ~4 cycle per `(a*b)%q` on
+  30-bit Proth primes.
+- **MMA**: INT8 tensor-core matmul on Q8 arena via
+  `mma.sync.aligned.m8n8k16.row.col.s32.s8.s8.s32`; the
+  deliverable Gemini's original draft missed. Bypasses cuBLAS
+  for the Q8 case (cuBLAS HGEMM stays the fp16 path).
+- **HASH**: `lop3.b32` + `prmt.b32` for KSTE / PoUW receipt
+  hash mixing. Primitive now, sieve integration when Phase 5
+  ships.
+- **PERSIST**: optional persistent kernel for Phase 4-SPEC
+  spec-decode loop — closes the kernel-launch overhead gap
+  at K=4. Becomes load-bearing for M_SPEC_3 throughput
+  closure on the 14B target fixture.
+
+Gates: M_PTX_1 bit-exact identity vs math-core scalar
+reference (integer kernels byte-exact, float-adjacent within
+fp16 ULP), M_PTX_2 ≥ 85% SOL DRAM via Nsight Compute,
+M_PTX_3 zero `cudaMalloc` on hot path, M_PTX_4 per-session
+CUDA stream isolation.
+
+§2 phase table updated. Composes with:
+- **Phase 4-SPEC** (math gate just closed at
+  `lat-phase-4-spec-math-closed`) — PTX speedup feeds the
+  deferred M_SPEC_3 throughput gate when 14B fixture arrives.
+- **Phase 5 sieve** — HASH primitives feed PoUW receipt mint.
+- **Phase TS** — TS picks the channel, PTX picks how to read
+  it; the two stack (TS for memory-controller placement, PTX
+  for in-SM cache policy).
+
+Dependencies: `lat-phase-2-l1-closed` (CUDA backend at fp16) +
+`lat-phase-3-attn-closed` (real arches for bit-identity
+testing). Both satisfied 2026-05-26.
 
 
 ---
