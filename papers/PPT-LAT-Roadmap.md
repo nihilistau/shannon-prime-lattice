@@ -102,6 +102,7 @@ environment-variable gates until they are individually proven.
 | 4-SPEC | Speculative decoding (separate draft) | Smaller draft model + larger target verifier; transactional Spinor block rewind on rejection | M_SPEC_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4 using Qwen3.6-35B-A3B + Qwen3.6-35B-A3B-Draft pairing, or Qwen2.5-Coder-14B + Qwen2.5-Coder-0.5B | **MATH GATE CLOSED 2026-05-27** (`lat-phase-4-spec-math-closed`) — M_SPEC_1 + M_SPEC_2 PASS, T8.1 validated; M_SPEC_3 (throughput) + M_SPEC_4 (RSS) deferred pending 14B fixture |
 | TS | TailSlayer channel-aware memory placement | GF(2) recovery of memory controller channel-select hash + hedge-read allocation on independent DDR channels for Spinor blocks / CRT residue pairs / Frobenius row pairs / KSTE upper tier | TS.MAP graceful CI fallback + TS.HEDGE ≥ 2× tail P99 drop + TS.INTEGRATE-CRT bit-identical PPL with measurable wall-time win | 2-3 weeks parallel; cross-cutting infrastructure; downstream phases consume the primitive |
 | 2-CU.PTX | Bare-metal NVIDIA assembly for discrete kernels | PTX inline asm replacing nvcc generic SASS on Spinor warp-load (differentiated cache modifiers), GF(p) Montgomery butterfly, INT8 tensor-core Q8 matmul (mma.sync), KSTE hash (lop3+prmt), persistent kernel for spec-decode | M_PTX_1 bit-exact math identity + M_PTX_2 >85% SOL DRAM bandwidth + M_PTX_3 zero cudaMalloc + M_PTX_4 session isolation | 3 weeks; blocked by lat-phase-3-attn-closed + Phase 4-SPEC math gate; bare-metal CUDA leg of the per-backend symmetry |
+| 2-CPU.AVX | Bare-metal x86 AVX-512 intrinsics for discrete kernels | AVX-512 VNNI (Q8 matmul) + IFMA (GF(p) butterfly, Zen 4 fallback) + ternarylogic (KSTE hash) + NT-loads (Spinor streaming) + WAITPKG (PERSIST polling, optional); 64-byte ZMM = 63-byte Spinor + sentinel | M_AVX_1 bit-exact math + M_AVX_2 ≥3.5× VNNI matmul + M_AVX_3 NT-load L1/L2 bypass via perf-stat + M_AVX_4 objdump confirms vpdpbusd / vpmadd52luq / vpternlogd emitted | 3 weeks; blocked by lat-phase-3-attn-closed; bare-metal x86 leg of the per-backend symmetry |
 | 5 | Lattice features (sieve, ARM, dominance) | Off-by-default ENV-gated overlays | Regression suite green when gates off | 6 weeks |
 | 6-BLOCK-SYNC | Relaxed Garner reconstruction | Per-block (4-layer) CRT reconstruction with Poncelet-deterministic Mersenne scaling + residue-polynomial activations | M_BLOCK_1: 4-layer-deferred ≡ per-layer (KL ≤ 1e-12) on Gemma3-1B | 2 weeks; blocked by Phase 5, 4-MTP close |
 | 6-TRANSPORT-CRT-RS | 3-prime CRT erasure code over QUIC | Any-two-of-three Garner over independent QUIC streams + speculative Garner during in-flight | M_TRANSPORT_1: >2× WAN throughput vs TCP at 5% packet loss | 2 weeks; blocked by 6-BLOCK-SYNC |
@@ -3190,6 +3191,248 @@ primitives are the algebraic ground truth; PTX is a faster
 execution of the same math.
 
 
+## 18. Phase 2-CPU.AVX — bare-metal x86 AVX-512 intrinsics for discrete algebra
+
+**Goal.** Replace generic `gcc -O3 -march=native` auto-
+vectorisation on the CPU backend's lattice-specific kernels
+with explicit AVX-512 intrinsics. Compilers default to
+floating-point pipelines, will silently upcast integer
+operations to FP32 ALUs, will pollute L1/L2 with single-use
+streaming Spinor reads, and won't reach for VNNI/IFMA/
+ternarylogic without intrinsics — exactly the same "default
+engine" failure mode as `nvcc` on CUDA. AVX-512 is the
+silicon-direct wedge that lets us wield the lattice's
+discrete Z_q and 63-byte Spinor block geometry as the CPU
+actually executes them.
+
+**The hardware coincidence.** A 64-byte ZMM register is
+exactly 63-byte Spinor block + 1-byte 0xA5 sentinel. The
+lattice's choice of block size was made before AVX-512 was
+considered; the alignment is structural, not engineered.
+That coincidence is the foundation of this phase.
+
+**Provenance.** This is the CPU leg of the per-backend
+bare-metal pattern (see `reference-baremetal-backend-pattern`).
+Same intellectual lineage as Phase 2-CU.PTX (§17): treat the
+high-level compiler's abstractions as the obstacle, wield the
+silicon directly via intrinsics.
+
+**Dependencies.** `lat-phase-2-l1-fp16-closed` (CPU dtype
+shift to fp16, already shipped) + `lat-phase-3-attn-closed`
+(real arches for bit-identity testing).
+
+**Hardware targets** (runtime CPUID dispatch — no host
+assumed):
+- **Tiger Lake-B Intel** (Beast Canyon NUC): AVX-512F + VNNI
+  + IFMA + DQ + BW + WAITPKG. The full suite. Reference
+  target.
+- **Sapphire Rapids+ Intel**: above + AMX (§18.5 optional).
+- **Zen 4 AMD** (Ryzen 7950X): AVX-512F + VNNI yes; **IFMA
+  NO**, **WAITPKG NO**. §18.3 IFMA path needs fallback.
+- **aarch64** (S22 Ultra, Apple Silicon): no AVX. Future
+  §18.NEON sub-phase; not in this phase's scope.
+
+### 18.1 Phase 2-CPU.AVX.SPINOR — ZMM Spinor window load
+
+A 64-byte ZMM register holds exactly one Spinor block.
+Differentiated cache modifiers per access pattern:
+
+- **Hot recent window** (last `swa_window` blocks per head):
+  re-read per query during prefill. Use `_mm512_load_si512`
+  (aligned) + `_mm_prefetch(addr, _MM_HINT_T0)` to keep in
+  L1+L2. Tiger Lake-B's 24 MB L3 is large enough to hold
+  the entire active KV cache for typical contexts; if Intel
+  CAT is available, partition L3 way_mask for lattice arenas.
+- **Cold streaming tail**: use `_mm512_stream_load_si512`
+  (Non-Temporal load). Bypasses L1+L2 entirely; pulls 64 B
+  straight from DRAM into ZMM, doesn't pollute the cache
+  hierarchy.
+- **Post-use eviction** (sieve traversal in Phase 5):
+  `_mm_clflushopt` or `_mm_clwb` to evict Spinors after a
+  random-walk pass, preventing L3 pollution of the next
+  walk.
+
+The 1-byte sentinel slack at the top of each ZMM is the
+0xA5 integrity check from PPT-LAT-SP-MODEL-v0 §6.
+
+### 18.2 Phase 2-CPU.AVX.VNNI — Q8 Frobenius matmul
+
+VNNI (`_mm512_dpbusd_epi32`) is the AMX/Tensor Core
+equivalent on Tiger Lake — INT8 multiply-accumulate in 32-bit
+integer accumulators, 64 MACs per ZMM per cycle. The Q8
+Frobenius arena is integer-valued; VNNI is the perfect
+substrate.
+
+New path `sp_frob_matmul_q8_vnni`:
+- Q8 codes loaded from mmap'd `.sp-model` arena (Fix B
+  aliasing inherited) directly into ZMM registers via
+  `_mm512_load_si512`.
+- `_mm512_dpbusd_epi32` accumulates 64 INT8 × INT8 → s32
+  products per cycle into the accumulator ZMM.
+- Per-row Frobenius scale applies post-accumulation as
+  `(s32_acc * fp32_scale)` → fp16 output via
+  `_mm512_cvtps_ph`. Stays in integer ALUs through the
+  matmul; only crosses to FP at the scale step.
+
+Does NOT replace MKL/OpenBLAS dense fp16 matmul for arbitrary
+shapes; replaces specifically the Q8 Frobenius path.
+
+**Optional §18.5 AMX upgrade** (Sapphire Rapids+ hosts):
+`_tile_dpbssd` on AMX tile registers gives ~2× over VNNI for
+the same operation. Runtime dispatch via
+`__builtin_cpu_supports("amx-tile")`; fall back to VNNI on
+hosts without AMX.
+
+### 18.3 Phase 2-CPU.AVX.IFMA — GF(p) Montgomery / Barrett butterfly
+
+AVX-512 IFMA (`_mm512_madd52lo_epu64`, `_mm512_madd52hi_epu64`)
+takes 52-bit integers, produces 64-bit fused multiply-add
+without precision loss. Eight Montgomery butterflies per ZMM
+per few cycles for the 30-bit Proth primes (`q_1 = 1073738753`,
+`q_2 = 1073732609`).
+
+**Zen 4 fallback (no IFMA):** use `_mm512_madd_epi32` from DQ
+(yes on Zen 4) + manual reduction via shifts. Slower (~2× the
+IFMA path) but still better than scalar. Runtime dispatch via
+`__builtin_cpu_supports("avx512ifma")`.
+
+### 18.4 Phase 2-CPU.AVX.TERNLOG — KSTE / sieve hash
+
+`_mm512_ternarylogic_epi32` (`vpternlogd`) is the AVX-512
+equivalent of PTX `lop3.b32`: evaluates any 3-input boolean
+truth table in a single cycle across 16 parallel 32-bit lanes.
+Combined with `_mm512_permutexvar_epi8` for byte permutation
+(equivalent to PTX `prmt.b32`), the Friedman sieve hash
+mixing rounds become a pure silicon pipeline.
+
+Auxiliary instructions worth using for the sieve:
+- `_mm512_popcnt_epi64` (`vpopcntq`) — single-cycle popcount
+  per 64-bit lane for KSTE Tier-0 signature bit-counting.
+- `_mm512_mask_compress_epi64` / `_mm512_mask_expand_epi64`
+  for sparse Spinor block compaction (composes with Phase
+  4-QMC eviction work).
+- `_mm512_lzcnt_epi32` for argmax-class extraction in Phase
+  4-SPEC accept/reject (already shipped at
+  `lat-phase-4-spec-math-closed`; this is the
+  hot-path-optimised version).
+
+Lands primitives + microbenchmark. Full sieve integration
+gated on Phase 5 close.
+
+### 18.5 Phase 2-CPU.AVX.PERSIST — UMONITOR/UMWAIT polling
+
+Standard L3 daemon worker threads context-switch on `epoll`
+or `condvar`, paying ~5-10 µs OS scheduler overhead per
+wake. Tiger Lake-B's WAITPKG ISA gives us hardware-level
+cache-line monitoring:
+
+- `_umonitor(&queue_head)` arms the monitor on the queue's
+  cache line.
+- `_umwait(timeout, C-state)` halts the core until the cache
+  line is modified (or timeout expires).
+- When the daemon CPU thread writes a new decode-step
+  request to the queue, the hardware wakes the worker in
+  nanoseconds — zero OS context switch.
+
+Combined with `pthread_setaffinity_np` to pin the worker to
+isolated CPUs (Linux `isolcpus=` kernel parameter) and
+`tickless` operation (`nohz_full=`), the worker becomes
+effectively a userspace OS on the pinned core.
+
+**Zen 4 fallback (no WAITPKG):** spin-loop with
+`_mm_pause()` on the queue head. Higher idle power; same
+wake latency.
+
+Optional sub-phase — gated on observing real OS jitter as
+the bottleneck in sustained Phase 4-SPEC / Phase 5 mining
+workloads. Lands if needed.
+
+### 18.6 Closure gates
+
+- **M_AVX_1 (math identity — load-bearing):** every AVX-512
+  intrinsic kernel produces bit-identical output vs math-
+  core's f32 scalar reference. Integer kernels (§18.2 VNNI,
+  §18.3 IFMA, §18.4 TERNLOG): byte-exact equality — pure
+  Z_q ops, drift is a bug. Float-adjacent kernels (§18.1
+  SPINOR loads, §18.2 VNNI post-accumulation scale): within
+  fp16 ULP floor (matches Phase 2-L1.FP16 gate shape).
+- **M_AVX_2 (throughput):**
+  - §18.2 VNNI: ≥ 3.5× speedup on Q8 matmul vs scalar
+    fallback.
+  - §18.3 IFMA: ≥ 8× butterfly speedup vs scalar.
+  - §18.4 TERNLOG: hash microbenchmark ≥ 16× scalar.
+- **M_AVX_3 (cache efficiency):** Linux `perf stat -e
+  LLC-loads,LLC-load-misses,L1-dcache-load-misses,
+  l2_rqsts.all_demand_data_rd` confirms NT-loads bypass
+  L1+L2 during cold streaming. Windows: ETW counters via
+  WPR/xperf or Intel VTune cache-line profile. Platform-
+  portable — whichever profiler the host supports.
+- **M_AVX_4 (compiler honesty):** `objdump -d` of the
+  compiled binary shows the expected AVX-512 instructions
+  (`vmovdqa64`, `vpdpbusd`, `vpmadd52luq`, `vpternlogd`)
+  on the lattice-specific kernels — NOT `vmovups` (FP-typed)
+  or scalar fallbacks. Compiler successfully restrained
+  from upcasting integer ops to FP pipelines.
+
+**Platform gates:** M_AVX_1 + M_AVX_4 close Tier-1 on Beast
+Canyon (Intel Tiger Lake-B with full AVX-512 suite). M_AVX_2
++ M_AVX_3 require `perf stat` or equivalent profiler; runs
+on dev host, artifact attached to closure note. CI matrix
+exercises both Intel (full suite) and AMD Zen 4 (VNNI yes,
+IFMA fallback path) where runners are available; aarch64
+CI runs only the stub-fallback path.
+
+### 18.7 Closure
+
+Commit prefix `[lat-2-cpu-avx]` on shannon-prime-system-
+engine. Sub-tags per deliverable:
+`lat-phase-2-cpu-avx-spinor-closed`, `...-vnni-closed`,
+`...-ifma-closed`, `...-ternlog-closed`,
+`...-persist-closed` (if shipped).
+
+Umbrella `lat-phase-2-cpu-avx-closed` after all 4-5
+sub-phases close. Offload `papers/SESSION-CLOSED-lat-2-CPU-
+AVX.md` names: each kernel's recovered `objdump -d` snippet,
+the `perf stat` cache-miss numbers, the bit-identity test
+results, the CPUID-detected feature matrix per host
+exercised, the AMD-IFMA-fallback dispatch logic.
+
+### 18.8 Anti-contamination + cross-backend symmetry
+
+Phase 2-CPU.AVX is the x86 leg of the bare-metal pattern.
+Same boundaries as Phase 2-CU.PTX (§17):
+
+- Do NOT touch math-core. Math-core's scalar C is the
+  ground truth.
+- Do NOT replace MKL/OpenBLAS dense matmul for arbitrary
+  shapes. Replace specifically the lattice-discrete kernels:
+  Spinor loads, GF(p) butterfly, Q8 Frobenius matmul,
+  sieve hash.
+- Do NOT copy legacy CPU code from
+  `D:\F\shannon-prime-repos\shannon-prime-engine\` (legacy
+  contaminated). Re-derive from math-core scalar reference
+  + Intel/AMD intrinsics docs.
+
+**Default-engine anti-patterns specific to gcc/clang to
+catch in review:**
+- `vmovups` (FP-typed) emitted on integer data → use
+  `_mm512_load_epi32` to force `vmovdqa64`.
+- `static const __m512i K` re-loaded per call → declare
+  with `__attribute__((aligned(64)))`, lift out of loops.
+- Compiler refusing to use AVX-512 without ISA hint → add
+  `__attribute__((target("avx512f,avx512vnni,avx512ifma,
+  avx512bw,avx512dq,avx512vpopcntdq,avx512bitalg")))` per
+  function rather than `-mavx512f` whole-TU.
+- Auto-vectorisation falling back to AVX-2 because ZMM
+  spill cost — explicit `_mm512_loadu_si512` defeats this.
+
+Composes with Phase TS (§16) — TS picks the physical
+memory channel; AVX-512 NT-loads bypass the cache hierarchy
+on top of that. Two-level memory-system control: channel
+placement (TS) + cache policy (AVX-512). Stacked, not
+duplicated.
+
+
 ## Phase log
 
 One paragraph per closed phase (§3.3). Most recent last.
@@ -3792,6 +4035,58 @@ CUDA stream isolation.
 Dependencies: `lat-phase-2-l1-closed` (CUDA backend at fp16) +
 `lat-phase-3-attn-closed` (real arches for bit-identity
 testing). Both satisfied 2026-05-26.
+
+### 2026-05-27 — Phase 2-CPU.AVX added to §18 (bare-metal x86 AVX-512 intrinsics)
+
+x86 leg of the per-backend bare-metal pattern. Companion
+phase to 2-CU.PTX (§17); same boundaries, different silicon.
+The lattice's 63-byte Spinor block + 1-byte 0xA5 sentinel
+fits a 64-byte ZMM register exactly — pre-existing
+hardware coincidence, not engineered alignment.
+
+Five sub-phases (§18.1–§18.5):
+- **SPINOR**: ZMM load with differentiated cache modifiers
+  (`_mm512_load_si512` + `_MM_HINT_T0` prefetch for hot
+  window; `_mm512_stream_load_si512` NT-load for cold tail;
+  `_mm_clflushopt` for post-use eviction). Tiger Lake-B's
+  24 MB L3 holds the entire active KV window; if Intel CAT
+  available, partition for lattice arenas.
+- **VNNI**: `_mm512_dpbusd_epi32` for INT8 Q8 Frobenius
+  matmul — the AMX/Tensor Core equivalent on Tiger Lake.
+  Optional §18.5 AMX `_tile_dpbssd` upgrade on Sapphire
+  Rapids+ hosts.
+- **IFMA**: `_mm512_madd52lo_epu64` / `_mm512_madd52hi_epu64`
+  for GF(p) Montgomery butterfly. Zen 4 fallback path via
+  `_mm512_madd_epi32` + manual reduction.
+- **TERNLOG**: `_mm512_ternarylogic_epi32` + `vpopcntq` +
+  `vpcompressq`/`vpexpandq` for KSTE hash mixing, Tier-0
+  signatures, sparse Spinor compaction.
+- **PERSIST** (optional): UMONITOR/UMWAIT cache-line
+  polling on WAITPKG hosts; pinned isolcpu workers for
+  sustained mining. Zen 4 fallback to `_mm_pause()` spin.
+
+Gates: M_AVX_1 bit-exact math identity vs math-core scalar
+(integer kernels byte-exact; float-adjacent within fp16 ULP),
+M_AVX_2 ≥ 3.5× VNNI throughput vs scalar, M_AVX_3 NT-load
+cache bypass verified via `perf stat`, M_AVX_4 `objdump -d`
+confirms expected AVX-512 instructions actually emitted
+(catches compiler defaulting to `vmovups` FP-typed paths).
+
+Cross-arch reality: Tiger Lake-B (Beast Canyon NUC) has the
+full suite; Zen 4 (Ryzen 7950X) has VNNI but **NO IFMA + NO
+WAITPKG** — runtime CPUID dispatch + fallback paths.
+aarch64 (S22 Ultra) gets future §18.NEON sub-phase.
+
+§2 phase table updated with 2-CPU.AVX row. Memory entry
+`reference-baremetal-backend-pattern` now has the two-layer
+split per backend explicit: dtype layer (closed in 2-L1.FP16)
++ intrinsic-exploitation layer (this phase for x86, §17 for
+CUDA, future for VK / NEON).
+
+Composes with Phase TS (§16) — TS picks the physical memory
+channel via GF(2) hash recovery; AVX-512 NT-loads bypass the
+cache hierarchy on top of that. Two-level memory-system
+control: channel placement + cache policy.
 
 
 ---
