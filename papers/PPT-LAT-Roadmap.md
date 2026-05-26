@@ -98,7 +98,8 @@ environment-variable gates until they are individually proven.
 | 3-MoE | MoE arch sub-phase | Routing layer + sparse FFN gather + Qwen3.6 bridge | Qwen3.6 bit-identity vs reference (single-machine MoE) | Deferred; pre-inspect GGUF before scoping |
 | 3-FP8 | FP8 weight sub-phase | DeepSeek-V4 FP8 dequant + bridge | DeepSeek-V4 bit-identity vs reference | Aspirational; no fixture |
 | 4 | Inline cache compression validated | PPL drift and memory savings measured per backend × model | Drift ≤ 1% on calibrated families | 4 weeks |
-| 4-MTP | Multi-token prediction (speculative decoding) | Transactional Spinor blocks + draft/verify/rewind via frozen L1 ABI primitives | M_MTP_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4 | 3 weeks; blocked by Phase 3 close |
+| 4-MTP | Multi-Token Prediction (built-in heads) | Target-model self-drafting + verifying via auxiliary prediction heads; transactional Spinor block rewind | M_MTP_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4; native MTP-head fixture (DeepSeek-V4 or Qwen3.6 MTP variant) | 3 weeks; **UNBLOCKED 2026-05-26** by lat-phase-3-attn-closed; can spawn on any MTP-head-bearing arch |
+| 4-SPEC | Speculative decoding (separate draft) | Smaller draft model + larger target verifier; transactional Spinor block rewind on rejection | M_SPEC_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4 using Qwen3.6-35B-A3B + Qwen3.6-35B-A3B-Draft pairing, or Qwen2.5-Coder-14B + Qwen2.5-Coder-0.5B | 2 weeks; **UNBLOCKED 2026-05-26** by lat-phase-3-attn-closed; runs on already-closed Qwen2.5 cell |
 | 5 | Lattice features (sieve, ARM, dominance) | Off-by-default ENV-gated overlays | Regression suite green when gates off | 6 weeks |
 | 6-BLOCK-SYNC | Relaxed Garner reconstruction | Per-block (4-layer) CRT reconstruction with Poncelet-deterministic Mersenne scaling + residue-polynomial activations | M_BLOCK_1: 4-layer-deferred ≡ per-layer (KL ≤ 1e-12) on Gemma3-1B | 2 weeks; blocked by Phase 5, 4-MTP close |
 | 6-TRANSPORT-CRT-RS | 3-prime CRT erasure code over QUIC | Any-two-of-three Garner over independent QUIC streams + speculative Garner during in-flight | M_TRANSPORT_1: >2× WAN throughput vs TCP at 5% packet loss | 2 weeks; blocked by 6-BLOCK-SYNC |
@@ -2315,21 +2316,48 @@ and the empirical `thermal_pause_us` for the S22U.
 
 ---
 
-## 12. Phase 4-MTP — Multi-token prediction (speculative decoding)
+## 12. Phase 4-MTP and Phase 4-SPEC — multi-token speedup overlays
 
-DeepSeek V3/V4, Gemma 4, and llama.cpp's beta MTP merge all
-implement MTP on continuous-float architectures with the
-associated VRAM tax. The lattice maps MTP structurally to Step 10
-of the 13-step PPT canonical table (the Activation Oracle / Cramér
-prime-gap prefetch). Theorem T8 (PPT-LAT-Theory §11.5) formalises
-the exactness claim; PPT-LAT-Systems §4.6 specifies the runtime
-contract (`SP_MTP_DRAFTER=1` gate + transactional Spinor blocks).
-The L1 ABI primitives required to implement it (`sp_session_clone`,
-`sp_session_rewind`, atomic cancel flag) are already frozen at
-`lat-phase2-contract-frozen` — the contract anticipated this
-without naming the use case.
+**Important distinction (corrected 2026-05-26).** MTP and standard
+speculative decoding are different speedup mechanisms even though
+they share the lattice's transactional Spinor-block rewind
+primitive. Earlier roadmap prose conflated them.
 
-This sub-phase realises T8 in code.
+- **Phase 4-MTP — Multi-Token Prediction (built-in heads).** The
+  target model has auxiliary prediction heads trained into it
+  that project K future tokens during the same forward pass. One
+  model loaded; slight VRAM increase for the heads; self-drafting
+  + self-verifying. DeepSeek V3/V4 ship MTP heads natively;
+  llama.cpp's beta MTP merge implements this path; Gemma 4 has
+  it in some checkpoints. Best on highly structured / repetitive
+  text (code, structured chat).
+
+- **Phase 4-SPEC — Standard speculative decoding (separate draft
+  model).** A smaller distinct draft model rapidly proposes K
+  tokens; the target model verifies in a single batched forward.
+  Two models loaded; heavier VRAM but separates compute load (and
+  can split draft/target across devices). The
+  Qwen3.6-35B-A3B-Draft fixture on disk is the canonical pairing
+  for the Qwen3.6 family; Qwen2.5-Coder-0.5B paired with
+  Qwen2.5-Coder-14B is the same pattern at smaller scale.
+
+Both sub-phases land independently. Both rely on the same
+foundational L1 ABI primitives — `sp_session_clone`,
+`sp_session_rewind`, atomic cancel flag — which were frozen at
+`lat-phase2-contract-frozen` precisely because Theorem T8's
+clean-rejection-in-Z_q algebra applies to either drafter source
+(built-in head or separate model; what gets rewound is the
+Spinor block tail, identically). PPT-LAT-Theory §11.5 (Theorem
+T8) covers both; PPT-LAT-Systems §4.6 gates them via
+`SP_MTP_DRAFTER` and `SP_SPEC_DRAFTER` respectively.
+
+The lattice maps both structurally to Step 10 of the 13-step PPT
+canonical table (the Activation Oracle / Cramér prime-gap
+prefetch). What differs is where the K-token guess comes from:
+auxiliary heads inside the target model (MTP) vs a separate
+smaller model's forward pass (SPEC).
+
+Sub-phases below realise T8 in code along both paths.
 
 **Dependencies.** `lat-phase-3-closed` — strictly blocked. The
 base architectures (Gemma 4, DeepSeek V3/V4, MTP-enabled Qwen 3
