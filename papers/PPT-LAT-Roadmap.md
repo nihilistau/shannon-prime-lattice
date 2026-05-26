@@ -91,8 +91,8 @@ environment-variable gates until they are individually proven.
 | 2-HX | Engine, Hexagon backend | Same scope as 2-CPU on Snapdragon HTP V69 | E_HX_1..E_HX_6 green | **ESSENTIALLY CLOSED 2026-05-23 (formal tag pending E_HX_5/E_HX_6)** |
 | 2-FMT | Engine, .sp-model on-disk format | Loader + transcoder + round-trip gate | E_FMT_1..E_FMT_4 green | **CLOSED 2026-05-23** |
 | 2-L1 | L1 ABI implementation in math-core | RELOCATE → VALIDATE → HANDLE → SESSION → **PARITY → FP16** | Each sub-phase gates; umbrella `lat-phase-2-l1-closed` after PARITY + FP16 | RELOCATE/VALIDATE/HANDLE/SESSION done; PARITY = next (inline KV+weight compression to math-core); FP16 = dtype plumbing |
-| 2-L3 | Headless HTTP/SSE daemon wrapping L2 | localhost:8080 service exposing the small REST + SSE surface; survives UI lifecycle | E_L3_1..3 (cold start ≤ 200 ms, UI death does not pause daemon, 5-min S22U soak with foreground service) | **CORE + VERBS CLOSED 2026-05-26**; SSE/FG/TOK/AUTH remain |
-| 3 | Model-family expansion | All four backends host all seven model families | M_*×B_* matrix green | **Gemma3 cell CLOSED 2026-05-26**; 5 more must-close cells remain |
+| 2-L3 | Headless HTTP/SSE daemon wrapping L2 | localhost:8080 service exposing the small REST + SSE surface; survives UI lifecycle | E_L3_1..3 (cold start ≤ 200 ms, UI death does not pause daemon, 5-min S22U soak with foreground service) | **CORE + VERBS + SSE CLOSED 2026-05-26**; FG/TOK/AUTH remain |
+| 3 | Model-family expansion | All four backends host all seven model families | M_*×B_* matrix green | **Gemma3 + Qwen2.5 cells CLOSED 2026-05-26**; 2 must-close cells remain (Gemma4-E4B, Qwen3.6-35B-A3B); Qwen3.5 deferred to Phase 3-SSM |
 | 4 | Inline cache compression validated | PPL drift and memory savings measured per backend × model | Drift ≤ 1% on calibrated families | 4 weeks |
 | 4-MTP | Multi-token prediction (speculative decoding) | Transactional Spinor blocks + draft/verify/rewind via frozen L1 ABI primitives | M_MTP_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4 | 3 weeks; blocked by Phase 3 close |
 | 5 | Lattice features (sieve, ARM, dominance) | Off-by-default ENV-gated overlays | Regression suite green when gates off | 6 weeks |
@@ -2957,6 +2957,55 @@ test harnesses but not by frontends. Offload:
 Build: `SP_SYSTEM_BUILD_DIR=../../build-cpu/lib/shannon-prime-system`
 + `LIBCLANG_PATH=C:\Program Files\LLVM\bin` for the bindgen
 step.
+
+### 2026-05-26 — Phase 2-L3.SSE shipped (`lat-phase-2-l3-sse-closed`)
+
+Engine `2db6f9b`. Closed the deferred E_L3_VERBS_2 abort-race
+gate on a real model (Qwen3-0.6B at ~950 ms/token gave plenty
+of room for the ~65 ms abort RTT to race the decode loop) plus
+the three SSE-proper gates. `sse_response()` helper added
+canonical headers (`Cache-Control: no-cache`,
+`X-Accel-Buffering: no`); keepalive comment `keepalive` at 15 s;
+`event: cancelled` vs `data: [DONE]` selected on the cancel flag.
+`ChatEvent` broadcast via `tokio::sync::broadcast` from the
+decode-loop termination paths; `/v1/events` subscribers receive
+`event: chat_completed` with `{chat_id, status}` payload.
+
+- **E_L3_VERBS_2** ✓ (204 abort → `event: cancelled` after
+  ~2 deltas on Qwen3-0.6B).
+- **E_L3_SSE_1** ✓ (framing + headers + 15 s keepalive).
+- **E_L3_SSE_2** ✓ (`chat_completed` broadcast received by
+  subscriber).
+- **E_L3_SSE_3** ✓ (4 keepalive pings over 62 s; idle survived).
+
+Phase string now `lat-phase-2-l3-sse-closed`. Offload:
+`SESSION-CLOSED-lat-2-L3-SSE.md`. Remaining L3 sub-phases:
+FG / TOK / AUTH.
+
+### 2026-05-26 — Phase 3 Cell 2 Qwen2.5 CLOSED (`lat-phase-3-cell-qwen25-closed`)
+
+Math-core `aeecdba` + engine `2063496` + tag on all three repos.
+GGUF investigation against Qwen2.5-Coder-3B confirmed pure
+attention (no SSM trap). Bridge shipped:
+
+- `SP_ARCH_QWEN25 = 2` in `include/sp/model.h`;
+  `SP_ARCH_ID_QWEN25 = 6` in `include/sp/sp_model.h` (skipping 5
+  which is reserved for the future Phase 3-SSM Qwen3.5 work).
+- `sp_model_to_qwen25` bridge in math-core mirroring Fix B's
+  `alias_mask = 0x3` pattern; engine adapter mirrors the same
+  shape.
+- Forward: **no QK norms** (unlike Qwen3 + Gemma3), **3 F32 QKV
+  biases per layer** (Qwen2.5-specific — Qwen3 dropped these),
+  SwiGLU FFN (not GeGLU).
+- `fill_arch_struct` Qwen2.5 detection in `sp_transcode`.
+
+T_SESSION 365/365 (was 249 after Cell 1; +116 from qwen25 tests
++ bridge). Engine CPU ctest 14/14 incl. E_FMT_1..4. Offload:
+`SESSION-CLOSED-lat-3-cell-qwen25.md`.
+
+**Must-close set status:** 2 of 4 cells closed (Gemma3 ✅,
+Qwen2.5 ✅). Remaining: Gemma4-E4B, Qwen3.6-35B-A3B (MoE).
+Qwen3.5 deferred to Phase 3-SSM.
 
 
 ---
