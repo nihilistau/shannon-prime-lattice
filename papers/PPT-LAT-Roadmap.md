@@ -91,7 +91,7 @@ environment-variable gates until they are individually proven.
 | 2-HX | Engine, Hexagon backend | Same scope as 2-CPU on Snapdragon HTP V69 | E_HX_1..E_HX_6 green | **ESSENTIALLY CLOSED 2026-05-23 (formal tag pending E_HX_5/E_HX_6)** |
 | 2-FMT | Engine, .sp-model on-disk format | Loader + transcoder + round-trip gate | E_FMT_1..E_FMT_4 green | **CLOSED 2026-05-23** |
 | 2-L1 | L1 ABI implementation in math-core | RELOCATE → VALIDATE → HANDLE → SESSION → **PARITY → FP16** | Each sub-phase gates; umbrella `lat-phase-2-l1-closed` after PARITY + FP16 | RELOCATE/VALIDATE/HANDLE/SESSION done; PARITY = next (inline KV+weight compression to math-core); FP16 = dtype plumbing |
-| 2-L3 | Headless HTTP/SSE daemon wrapping L2 | localhost:8080 service exposing the small REST + SSE surface; survives UI lifecycle | E_L3_1..3 (cold start ≤ 200 ms, UI death does not pause daemon, 5-min S22U soak with foreground service) | **CORE CLOSED 2026-05-26**; VERBS/SSE/FG/AUTH remain |
+| 2-L3 | Headless HTTP/SSE daemon wrapping L2 | localhost:8080 service exposing the small REST + SSE surface; survives UI lifecycle | E_L3_1..3 (cold start ≤ 200 ms, UI death does not pause daemon, 5-min S22U soak with foreground service) | **CORE + VERBS CLOSED 2026-05-26**; SSE/FG/TOK/AUTH remain |
 | 3 | Model-family expansion | All four backends host all seven model families | M_*×B_* matrix green | **Gemma3 cell CLOSED 2026-05-26**; 5 more must-close cells remain |
 | 4 | Inline cache compression validated | PPL drift and memory savings measured per backend × model | Drift ≤ 1% on calibrated families | 4 weeks |
 | 4-MTP | Multi-token prediction (speculative decoding) | Transactional Spinor blocks + draft/verify/rewind via frozen L1 ABI primitives | M_MTP_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4 | 3 weeks; blocked by Phase 3 close |
@@ -2922,6 +2922,41 @@ tensor transforms" rule from §9.0; captured in
 for future arch agents.
 
 Offload: `SESSION-CLOSED-lat-3-cell-gemma3.md`.
+
+### 2026-05-26 — Phase 2-L3.VERBS shipped (`lat-phase-2-l3-verbs-closed`)
+
+Engine `77d0076`. All six L3 routes wired through to L1:
+`POST /v1/chat` (SSE delta stream + `[DONE]`),
+`POST /v1/abort/{id}`, `GET /v1/metrics` (real `session_pos` from
+`sp_session_position` + placeholders for tokens/sec/peers),
+`GET /v1/receipts` + `GET /v1/peers` (empty arrays, Phase 5
+placeholders), `SSE /v1/events`. Sessions table in
+`src/sessions.rs`; per-chat `Arc<AtomicI32>` cancel flag wired
+to `sp_session_create`'s `volatile int *` slot; base session
+stays at pos=0 forever and per-request sessions clone off it.
+
+**E_L3_VERBS_1 ✓** (SSE streams 4 deltas + `[DONE]`).
+**E_L3_VERBS_3 ✓** (parallel chats, distinct session ids, no
+cross-talk).
+**E_L3_VERBS_2 mechanism correct but timing gate DEFERRED** —
+the synthetic fx_q4 fixture
+(`D:/F/shannon-prime-repos/shannon-prime-system/fx_q4.spm` +
+`.spt`, 78 KB / 192 B) fills its context in ~15 ms which is
+faster than the ~65 ms abort round-trip. The cancel-flag
+mechanism is verified; the latency proof needs a real model
+that decodes slow enough for the abort to actually race the
+decode loop. Re-runs under Phase 2-L3.SSE on Qwen3-0.6B.
+
+**Notable v0 constraint:** `/v1/chat` currently takes
+`{"prompt_tokens":[i32...], "max_tokens":N}` — pre-tokenized
+integers, not strings. The `.sp-tokenizer` blob decoding lands
+in Phase 2-L3.TOK; until then the daemon is callable by
+test harnesses but not by frontends. Offload:
+`SESSION-CLOSED-lat-2-L3-VERBS.md`.
+
+Build: `SP_SYSTEM_BUILD_DIR=../../build-cpu/lib/shannon-prime-system`
++ `LIBCLANG_PATH=C:\Program Files\LLVM\bin` for the bindgen
+step.
 
 
 ---
