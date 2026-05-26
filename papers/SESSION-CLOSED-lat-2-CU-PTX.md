@@ -2,7 +2,10 @@
 
 **Phase:** 2-CU.PTX — engine, CUDA bare-metal PTX/WMMA primitives  
 **Roadmap §:** §17 (PTX intrinsics for discrete algebra)  
-**Status:** CLOSED — all M_PTX_1..M_PTX_4 green; Task 5 PERSIST skipped  
+**Status:** CLOSED — M_PTX_1 all green; M_PTX_3/M_PTX_4 green; M_PTX_2 MMA PASS (3.4×);
+M_PTX_2 NTT/HASH NEEDS_TUNING (both paths use Barrett/BW-bound baseline, gates assumed naive);
+M_PTX_2 SPINOR NEEDS_TUNING (scalar u32 load = 66–71% DRAM SOL; v4 loads needed for 85%);
+Task 5 PERSIST skipped  
 **Hardware:** RTX 2060, sm_75 (Turing), CUDA 13.2, VS2019 BT, Ninja  
 **Build dir:** `build-cuda` (engine repo)
 
@@ -102,14 +105,30 @@ and baseline paths emit `IMAD` Barrett.
 
 **Gate results:**
 - M_PTX_1 SPINOR: PASS (bit-exact vs scalar memcpy reference)
-- M_PTX_2 SPINOR: hot=492.3 GB/s, cold=533.3 GB/s (bench-reported, RTX 2060,
-  L2-cached warm; small 1024-warp buffer ≈ L2-resident)
+- M_PTX_2 SPINOR: ncu `dram__bytes_read` = **221–239 GB/s** (66–71% of 336 GB/s DRAM
+  peak), **NEEDS_TUNING** (gate ≥85% SOL = 286 GB/s). Timer shows 294–452 GB/s
+  (inflated by L2 warm state from warm-up passes). Hardware DRAM metric is authoritative.
 
-**ncu profiling (Step 6.2; no admin lock on this host):**  
-`l1tex__t_bytes_pipe_lsu_mem_global_op_ld.sum.per_second` on `k_bench_spinor`:
-- Run 0 (cold/initial): 24–26 GB/s (DRAM-limited, unwarmed)
-- Run 1 (L2-cached): 622–637 GB/s (RTX 2060 L2 BW ~650 GB/s, 95–98% SOL)
-- Run 2 (L2-cached): 637–779 GB/s (peak L2 throughput)
+**Bench fixture (final):** Sequential-chunk kernel: N=131072 blocks (16 MB = 5× L2),
+N_GRID=960 (32 warps/SM × 30 SMs — full sm_75 warp occupancy, max 32 concurrent DRAM
+requests/SM). Each grid block owns a contiguous `n_blocks/gridDim.x ≈ 137` spinor-block
+chunk; sequential access ensures DRAM row-buffer hit rates. Three earlier designs tested:
+(1) localized window (blockIdx.x+r) % N — entire working set L2-resident regardless of N;
+(2) strided (b += gridDim.x) — DRAM row thrash, only ~90 GB/s; (3) localized window with
+N=65536 — still L2-dominated (83-90 GB/s DRAM). Sequential chunk with N_GRID=960 achieves
+the highest DRAM throughput: 221-239 GB/s (hardware ncu metric).
+
+**Root cause of NEEDS_TUNING:** `sp_spinor_warpload` issues one `ld.global.cs.u32`
+(4 bytes/thread × 32 = 128 bytes/warp) per loop iteration with a sequential dependency
+(XOR accumulator). Each warp waits for DRAM before issuing the next load. With 32
+warps/SM × 30 SMs = 960 concurrent requests × 128 bytes = 120 KB in-flight —
+insufficient to saturate the 336 GB/s GDDR6 bus. Improvement: vector loads
+(`ld.global.cs.v4`, 512 bytes/warp) or prefetch-unrolled chains to reach ≥85% SOL.
+
+**ncu profiling (final fixture, no admin lock on this host):**  
+`dram__bytes_read.sum.per_second` on `k_bench_spinor` (960×1×1, sm_75):
+- Both hot and cold passes: **221–239 GB/s** (ncu hardware metric; L1TEX: 406–474 GB/s)
+- Consistent across multiple invocations (3 fixtures and 2 kernel designs all measured)
 
 ncu ran without privilege error (no admin required on this host).
 
@@ -129,14 +148,14 @@ On sm_75, nvcc/PTXAS translates PTX cache qualifiers to SASS `LDG` modifiers:
 ## §17.3 MMA — INT8 WMMA m16n16k16
 
 **API:** `nvcuda::wmma` (CUDA 13.2 C++ WMMA API, sm_75)  
-**Shape:** m16n16k16, fragment types `matrix_a`/`matrix_b` INT8 `col_major`,
-accumulator `float` — the only INT8 WMMA shape exposed by the CUDA 13.2 C++ API
+**Shape:** m16n16k16, fragment types `matrix_a`/`matrix_b` INT8 `row_major`,
+accumulator `int32_t` — the only INT8 WMMA shape exposed by the CUDA 13.2 C++ API
 on sm_75. (`m8n8k16` INT8 is a PTX-level shape not accessible via the C++ API in
 CUDA 13.2.)
 
 **Gate results:**
 - M_PTX_1 MMA all-ones (16×16×16): PASS (bit-exact; all outputs = 16.0f — INT8
-  `1×1×16` inner products accumulated to float)
+  `1×1×16` inner products accumulated to int32_t, scaled → __half)
 - M_PTX_1 MMA random Q8 (64×64×64): PASS (bit-exact vs reference scalar)
 - M_PTX_2 MMA: **3.4–3.5×** vs k_dequant+naive f32 matmul (gate ≥3×) — PASS
 - M_PTX_3: PASS (no `cudaMalloc` in hot-path kernel; `__shared__` tiles only)
@@ -174,10 +193,10 @@ kernel work was needed.
 | M_PTX_1  | SPINOR warpload               | PASS   | Bit-exact                          |
 | M_PTX_1  | MMA all-ones 16³              | PASS   | Bit-exact; output=16.0f            |
 | M_PTX_1  | MMA random Q8 64³             | PASS   | Bit-exact                          |
-| M_PTX_2  | NTT speedup                   | 1.0×   | Both paths use Barrett IMAD (SASS) |
-| M_PTX_2  | HASH speedup                  | 1.1×   | Both bandwidth-bound               |
-| M_PTX_2  | SPINOR hot BW                 | 492 GB/s | L2-cached; ncu L1TEX ~637 GB/s   |
-| M_PTX_2  | SPINOR cold BW                | 533 GB/s | Evict-first                      |
+| M_PTX_2  | NTT speedup                   | 1.0× (bench: NEEDS_TUNING) | Both paths emit Barrett IMAD (SASS confirmed); 8× gate assumes software-div baseline, which nvcc already eliminates for compile-time moduli |
+| M_PTX_2  | HASH speedup                  | 1.1× (bench: NEEDS_TUNING) | Both kernels bandwidth-bound on RTX 2060; lop3 issue-width vs 2×XOR indistinguishable at memory saturation (architectural, ncu metric not measured) |
+| M_PTX_2  | SPINOR DRAM BW (ncu)          | 221–239 GB/s (66–71%) | NEEDS_TUNING; ncu `dram__bytes_read` on RTX 2060; scalar u32 load bottlenecked; v4 vector loads needed for ≥85% |
+| M_PTX_2  | SPINOR timer BW               | 294–452 GB/s | L2-inflated; not authoritative; ncu metric above is gate basis |
 | M_PTX_2  | MMA speedup                   | 3.4–3.5× | Gate ≥3×; PASS                  |
 | M_PTX_3  | No cudaMalloc in hot paths    | PASS   | `__shared__` tiles only            |
 | M_PTX_4  | Per-session stream param      | PASS   | Throughout all kernels             |
@@ -187,6 +206,10 @@ kernel work was needed.
 
 ## Deferred Work
 
+- **M_PTX_2 SPINOR DRAM SOL (≥85%):** Scalar `ld.global.cs.u32` (128 bytes/warp) achieves
+  221–239 GB/s DRAM (66–71% SOL on RTX 2060). Gate requires 286 GB/s. Improvement:
+  `ld.global.cs.v4` vector loads (4 × uint32 per thread = 512 bytes/warp) to generate
+  4× the outstanding DRAM requests per warp. Deferred to Phase 5 hot-path optimisation.
 - **`cuda_forward.cu` WMMA wiring:** Arena layout uses variable-length row offsets
   (`row_off` array); WMMA requires contiguous `int8` A-tile (k×16 aligned). Wiring
   `sp_frob_matmul_q8_mma_kernel` into the forward pass requires a contiguous
