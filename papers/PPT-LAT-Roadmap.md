@@ -1749,16 +1749,40 @@ closed; the matrix is filled per-cell.
 
 **Parallelism.** Cells are independent. Sessions can pick any cell.
 
-### 9.0 Phase 3 entry condition — the `.sp-model` file IS the arena
+### 9.0 Phase 3 entry condition — zero-copy memory invariant (CLOSED 2026-05-26)
 
-**Promoted from "small follow-up" to first-cell prerequisite
-(2026-05-26; corrected 2026-05-26 to the single-path framing).**
-Without this Phase 3 cannot scale past ~8B models on a 64 GB
-host. The PARITY close measured math-core RSS at 1458 MB on
-Qwen3-0.6B vs engine's ~580 MB — the 754 MB delta is the source
-`.sp-model` mmap that stays resident **alongside the bridge's
-unnecessary arena copy**. That delta scales linearly with source
-file size:
+**CLOSED at math-core `87300c9` + fixup `108c64f` + engine
+submodule bump `6302438` + tag `lat-phase-3-zero-copy-closed`.**
+T_ZERO_COPY_ALIAS gate green. T_SESSION 119/119. Math-core
+session now loads `.sp-model` zero-copy: `alias_mask` field on
+`sp_frob_packed_tensor` (bit 0 codes, bit 1 row_scale) aliases
+the mmap directly; only `row_prec` + `row_off` (5 bytes/row)
+heap-allocated. `qm` hoisted to model handle, shared across
+sessions. PARITY's redundant arena allocation is gone.
+
+**Fix A status: deprecated as a runtime ABI surface.**
+`sp_model_release_source()` was originally proposed as a stopgap
+for any bridge path forced to allocate an arena from a non-arena-
+compatible source. Audit of the runtime paths shows no such caller
+exists: math-core's session only loads `.sp-model`, and Fix B
+handles that zero-copy. The only place raw f16-GGUF gets read is
+`tools/sp_transcode` (an offline CLI tool); its memory pressure
+when packing big models (e.g. Gemma4-31B = 62 GB f16-source mmap
++ ~5 GB packed emit_list coexisting) is a separate internal
+transcoder concern, NOT an L1 ABI addition. Tracked as a
+sp_transcode internal fix (close GGUF mmap before allocating the
+emit_list, or stream-write per-tensor), to land before
+transcoding 30B+ models on a 64 GB host.
+
+**Why this section is kept** (not deleted from the roadmap): the
+information-theoretic invariant it captures is load-bearing for
+every future arch bridge — weights never exist as fp16 in main
+RAM, the file IS the arena, the bridge aliases mmap pointers,
+per-tensor transforms are pre-applied by the transcoder. The
+historical PARITY measurement (1458 MB on Qwen3-0.6B vs engine's
+580 MB) is the receipts.
+
+Historical scale table (left in for memory of why this mattered):
 
 | Model | Arena | Unreleased source | Total |
 |---|---|---|---|
@@ -1810,45 +1834,6 @@ already pre-scaled).
 equals the on-disk file size.** This is the **end-state**, and
 the path every newly-transcoded model should take.
 
-**The transition reality, though, needs `sp_model_release_source()`.**
-Users have raw f16-GGUF files from LM Studio that haven't been
-transcoded yet. The engine's dynamic-quantization bridge path
-remains live during the transition. Until every model the user
-loads has been pre-transcoded, **Fix A is required alongside
-Fix B**.
-
-**Fix A — the stopgap (mandatory while non-arena-compatible
-sources still exist).** Any bridge path forced to allocate an
-internal arena (raw f16-GGUF → dynamic quantize, or an older
-transcoder-revision `.sp-model` that isn't byte-for-byte arena-
-compatible) MUST:
-
-1. mmap the source.
-2. Allocate the packed Q4/Q8 arena per
-   `SP_FROB_ARENA_LAYOUT_VERSION=1`.
-3. Quantize + pack tensors into the arena.
-4. **Call `sp_model_release_source(model)` the millisecond arena
-   build completes** — `munmap` / `UnmapViewOfFile` the source
-   weight blob region. The `.sp-tokenizer` mmap is preserved
-   (detokenization needs it). `sp_model_unload` becomes safe
-   after release: partial no-op for the released region +
-   normal tokenizer teardown.
-
-Add `sp_status sp_model_release_source(sp_model*)` to the L1 ABI
-(`include/sp/sp_l1.h`). It's a real function with a real
-contract; it just doesn't fire on the Fix B happy path because
-nothing was allocated to release.
-
-**What PARITY currently does (the regression).** PARITY
-E_PARITY_2 / E_PARITY_4 shipped a bridge that mmaps the
-`.sp-model`, then **builds a separate packed arena** and copies
-weights into it — even when the source `.sp-model` was already
-arena-compatible (Fix B should have applied). On top of that,
-the bridge didn't release the source mmap (Fix A wasn't wired
-either). 1458 MB on Qwen3-0.6B = 580 MB arena + 754 MB
-unreleased source + session overhead. Both fixes must land in
-this cell to unblock Phase 3 scale-up.
-
 **Bridge contract for every Phase 3 arch** (Gemma3, Gemma4,
 Qwen2.5, Qwen3.5, Qwen3.6, DeepSeek-V4):
 
@@ -1856,39 +1841,30 @@ Qwen2.5, Qwen3.5, Qwen3.6, DeepSeek-V4):
    `SP_FROB_ARENA_LAYOUT_VERSION=1` directly to disk with all
    per-tensor transforms pre-applied (Gemma's √n_embd is the
    canonical example). Every newly-transcoded model takes the
-   Fix B happy path at runtime.
-2. **Runtime side, Fix B (the happy path):** `sp_model_to_<arch>`
-   does **zero allocation for weight tensors** when source is
-   arena-compatible. Every weight tensor pointer in the
-   resulting model struct lies within the mmap'd region.
-3. **Runtime side, Fix A (the stopgap):** when the runtime
-   bridge IS forced to allocate (raw f16-GGUF, older transcoder
-   revision, dtype mismatch), `sp_model_release_source(model)`
-   is called the instant arena build completes — the source
-   mmap region is gone before the session returns to L2.
-4. If a transcoder change is needed for an arch quirk, it lands
-   as part of the same cell on the transcoder side, **not** as
-   a runtime fallback. Runtime fallbacks are the Fix A path
-   only.
+   zero-copy alias path at runtime.
+2. **Runtime side:** `sp_model_to_<arch>` does **zero allocation
+   for weight tensors**. Every weight tensor pointer in the
+   resulting model struct lies within the mmap'd region. Verified
+   via `alias_mask` bits + address-comparison gates.
+3. If a transcoder change is needed for an arch quirk, it lands
+   as part of the same cell on the transcoder side. There is no
+   runtime fallback path that allocates a weight arena.
+4. sp_transcode itself manages its own peak-RAM during pack
+   (close the source GGUF mmap before allocating the emit_list,
+   or stream-write per-tensor) — internal to the offline tool,
+   not an L1 ABI concern.
 
-**Gate.** Two measurements on Qwen3-0.6B (the PARITY test
-fixture):
+**Gate (CLOSED at 87300c9):** load pre-transcoded Qwen3-0.6B
+`.sp-model` via the corrected bridge → `T_ZERO_COPY_ALIAS`
+verifies `alias_mask == 0x3`, codes / row_scale pointer identity
+vs mmap base, shared `qm` across sessions, and survival
+post-destroy. T_SESSION 119/119, no regression. Math-core arena
+~574 MB matching engine E_CPU_10 ±0.1%.
 
-- **Fix A path:** load raw f16-GGUF via the engine bridge with
-  dynamic Q4 quantisation → math-core RSS within ±5% of engine
-  E_CPU_10 (~580 MB) **after** `sp_model_release_source()`
-  fires. The unreleased 754 MB delta is gone.
+Historical Fix A path (raw f16-GGUF dynamic-quantize at runtime)
+was deprecated — see top of §9.0 — because no runtime caller
+exists. sp_transcode handles raw GGUF offline.
 
-- **Fix B path:** load pre-transcoded Q4 `.sp-model` →
-  math-core RSS ≈ on-disk file size + tokenizer + session
-  buffers + Spinor KV at default context, within ±5%. Aliased
-  tensor pointers verified via address comparison: every
-  weight tensor pointer `(ptr - mmap_base) < mmap_size`. Zero
-  arena allocation in the heap trace.
-
-Without both, no Phase 3 cell can close on a >8B model. Gemma4-31B
-and Qwen3.6-35B-A3B fit only via Fix B; transition users with
-raw f16-GGUF files fit only via Fix A.
 
 ### 9.1 Model-family list (2026-05-26 — updated to user fixtures)
 
