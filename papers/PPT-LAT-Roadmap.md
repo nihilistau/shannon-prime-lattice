@@ -3150,6 +3150,45 @@ authoritative — only the GGUF is.
 the new sub-phase definitions. The legacy §9.3 "thin-deltas
 matrix" is kept for historical reference but marked superseded.
 
+### 2026-05-26 — Phase 3-attn UMBRELLA CLOSED (`lat-phase-3-attn-closed`)
+
+The pure-attention slice of Phase 3 is shut. Three arches run
+end-to-end through the math-core session ABI under the frozen
+L1 contract:
+
+- **Qwen3 base** — transitively closed at PARITY (Qwen3-0.6B
+  end-to-end via the SESSION/PARITY pipeline,
+  `lat-phase-2-l1-parity-closed`).
+- **Gemma3** — closed at `lat-phase-3-cell-gemma3-closed`
+  (math-core `0ec01e4` + engine `89a5b98`).
+- **Qwen2.5** — closed at `lat-phase-3-cell-qwen25-closed`
+  (math-core `aeecdba` + engine `2063496`).
+
+Math-core `T_SESSION` 365/365 across all three arches. Each
+loads via Fix B zero-copy alias from a pre-transcoded
+`.sp-model`; arena footprint matches engine within ±0.1%;
+prefill + decode bit-identical against engine reference paths.
+
+**Umbrella tag** `lat-phase-3-attn-closed` on math-core
+`aeecdba` + engine `2063496` + lattice (this commit). The
+remaining next-gen arches (Qwen3.5, Gemma4, Qwen3.6,
+DeepSeek-V4) live in their own dedicated sub-phases per
+§9.3.0 — none of them block Phase 4 or Phase 4-MTP.
+
+**What unlocks:** Phase 4 (inline cache compression validated)
+and Phase 4-MTP (multi-token prediction with transactional
+Spinor blocks) can both spawn now without waiting on the
+structural-delta sub-phases. Phase 4-MTP's primary fixture is
+Qwen3-0.6B (pure attention) + the existing
+Qwen3.6-35B-A3B-Draft as the speculative draft pairing once
+Phase 3-MoE ships.
+
+**Pre-inspection discipline carries forward.** Phase 3-G4,
+3-SSM, 3-MoE, and 3-FP8 each start with a binding GGUF
+metadata + tensor-list dump per §9.3.0 before any bridge code
+is written. Family-lineage in the roadmap is not authoritative;
+the GGUF is.
+
 
 ---
 
