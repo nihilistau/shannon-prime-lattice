@@ -100,6 +100,7 @@ environment-variable gates until they are individually proven.
 | 4 | Inline cache compression validated | PPL drift and memory savings measured per backend × model | Drift ≤ 1% on calibrated families | 4 weeks |
 | 4-MTP | Multi-Token Prediction (built-in heads) | Target-model self-drafting + verifying via auxiliary prediction heads; transactional Spinor block rewind | M_MTP_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4; native MTP-head fixture (DeepSeek-V4 or Qwen3.6 MTP variant) | 3 weeks; **UNBLOCKED 2026-05-26** by lat-phase-3-attn-closed; can spawn on any MTP-head-bearing arch |
 | 4-SPEC | Speculative decoding (separate draft) | Smaller draft model + larger target verifier; transactional Spinor block rewind on rejection | M_SPEC_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4 using Qwen3.6-35B-A3B + Qwen3.6-35B-A3B-Draft pairing, or Qwen2.5-Coder-14B + Qwen2.5-Coder-0.5B | 2 weeks; **UNBLOCKED 2026-05-26** by lat-phase-3-attn-closed; runs on already-closed Qwen2.5 cell |
+| TS | TailSlayer channel-aware memory placement | GF(2) recovery of memory controller channel-select hash + hedge-read allocation on independent DDR channels for Spinor blocks / CRT residue pairs / Frobenius row pairs / KSTE upper tier | TS.MAP graceful CI fallback + TS.HEDGE ≥ 2× tail P99 drop + TS.INTEGRATE-CRT bit-identical PPL with measurable wall-time win | 2-3 weeks parallel; cross-cutting infrastructure; downstream phases consume the primitive |
 | 5 | Lattice features (sieve, ARM, dominance) | Off-by-default ENV-gated overlays | Regression suite green when gates off | 6 weeks |
 | 6-BLOCK-SYNC | Relaxed Garner reconstruction | Per-block (4-layer) CRT reconstruction with Poncelet-deterministic Mersenne scaling + residue-polynomial activations | M_BLOCK_1: 4-layer-deferred ≡ per-layer (KL ≤ 1e-12) on Gemma3-1B | 2 weeks; blocked by Phase 5, 4-MTP close |
 | 6-TRANSPORT-CRT-RS | 3-prime CRT erasure code over QUIC | Any-two-of-three Garner over independent QUIC streams + speculative Garner during in-flight | M_TRANSPORT_1: >2× WAN throughput vs TCP at 5% packet loss | 2 weeks; blocked by 6-BLOCK-SYNC |
@@ -2747,6 +2748,254 @@ zero-SP-symbol counts, and the cross-frontend feature parity matrix
 watch is read-mostly with a single tap-to-acknowledge action).
 
 
+## 16. Phase TS — TailSlayer channel-aware memory placement
+
+**Goal.** Reverse-engineer the host memory controller's
+undocumented channel-select hash via Laurie's TailSlayer
+methodology, then use the recovered map to place latency-critical
+data structures on independent DDR channels for hedge-read
+parallelism. Specifically targets the lattice primitives whose
+algebraic structure already aligns to channel-friendly boundaries:
+63-byte Spinor blocks (one cache line each), dual-prime CRT
+residue pairs (already mathematically replicated), per-row
+Frobenius scales paired with packed Q4/Q8 codes, and the KSTE
+upper-tier dominance cache hot set.
+
+**Why this is its own phase, not a perf optimization buried in
+some other sub-phase.** The lattice's discrete substrate and
+TailSlayer's GF(2) channel-select recovery are the same
+algebraic dialect — linear systems over `GF(2)`, exact, no
+floating-point heuristics. Every lattice primitive that's
+already aligned to a hardware boundary becomes a free hedge-read
+candidate once the map exists. This is a multiplier on what's
+already shipped, not a fix to anything broken. It belongs in its
+own gated track so the optimization claims are measurable in
+isolation.
+
+**Dependencies.** None. Phase TS is cross-cutting infrastructure
+parallel to Phase 2-L3 (the L3 daemon). It does not block any
+other phase; every downstream phase benefits when it lands.
+
+### 16.0 The GF(2) channel-select oracle (Laurie's method)
+
+Memory controllers compute channel/sub-channel/bank from a subset
+of physical address bits via an undocumented XOR hash. The hash
+is **linear over GF(2)** (`f(x ⊕ y) = f(x) ⊕ f(y)`), so the
+channel-select function is a `k × N` binary matrix `M`. Recover
+`M` column-by-column:
+
+1. Allocate two huge-page-aligned virtual addresses `A` and
+   `B = A ⊕ e_i` (flip bit `i`).
+2. Issue a hedge read: race `read(A)` against `read(B)` from two
+   pinned threads; take the first to complete.
+3. Repeat ~50,000 times to estimate tail latency P99.
+4. **Same physical channel** (HoL/ROB stall, DDR refresh
+   contention) → high tail.
+5. **Independent channels** → low tail.
+6. If flipping bit `i` causes the channel selector to change, bit
+   `i` is part of the hash. `M`'s `i`-th column is then derivable
+   from the channel-select edge.
+7. Iterate over all relevant address bits.
+
+After `O(N)` probes, `M` is fully known. Allocation thereafter is
+solving `M · addr = channel` for arbitrary target channels — a
+linear system over `GF(2)`, microseconds per query.
+
+Reference: <https://github.com/nihilistau/tailslayer>.
+
+### 16.1 Phase TS.MAP — build the channel-select oracle
+
+**Deliverable.** Math-core module `core/sp_channel/` containing
+`sp_channel_map_build()` which empirically recovers `M` on the
+host's RAM topology and serialises it to
+`~/.cache/shannon-prime/channel_map_<host_fingerprint>.bin`.
+Subsequent daemon starts skip the probe and load the cached map.
+Host fingerprint covers DMI motherboard ID + memory module SPD
+hash so the cache invalidates if RAM is swapped.
+
+**Hard-gate: graceful CI/VM fallback.** TailSlayer relies on
+direct physical memory layout + cycle-accurate timing. **In a VM
+or container with virtualized memory controller, the oracle
+returns garbage.** The build routine MUST detect this at probe
+start:
+
+- Linux: check `/sys/devices/system/cpu/vulnerabilities` for
+  `Mitigation` markers indicating KVM/VMware/Hyper-V; check
+  `MAP_HUGETLB` permission via `mmap()` test; check
+  `/proc/cpuinfo` for `hypervisor` flag.
+- Windows: check `IsProcessorFeaturePresent(PF_VIRT_FIRMWARE_ENABLED)`
+  and attempt `VirtualAlloc(... MEM_LARGE_PAGES ...)`; absence
+  of large-page privilege indicates VM/restricted.
+- If virtualised OR huge pages denied: log
+  `SP_WARN: TailSlayer disabled — virtualised memory controller
+  or huge-page allocation denied. Falling back to standard
+  allocator; sp_channel_of() will return SP_CHANNEL_UNSPECIFIED.`
+  Return `SP_OK` with `map->mode = SP_CHANNEL_MAP_DISABLED`.
+  **Do NOT crash; do NOT block startup.**
+- Math-correctness invariant: ALL lattice math continues working
+  with `SP_CHANNEL_UNSPECIFIED`. TailSlayer is a perf overlay,
+  never a correctness dependency.
+
+**Tier-1 gate (TS.MAP):**
+- Bare-metal Linux gcc on dev host: recovers `M` in ≤ 60 s probe;
+  hedge-read micro-benchmark on engineered channel-diverse pair
+  shows P99 tail latency drop ≥ 2× vs random-pair control.
+- CI (GitHub Actions / WSL2 / Docker): graceful fallback fires;
+  `sp_channel_map_build` returns `SP_OK` with `map->mode =
+  SP_CHANNEL_MAP_DISABLED`; no test failure.
+- Both paths exercised in CI matrix.
+
+### 16.2 Phase TS.ALLOC — channel-aware allocator
+
+**Deliverable.** API additions in `include/sp/sp_channel.h`:
+
+```c
+sp_status sp_alloc_channel_pair(const sp_channel_map *m,
+                                size_t n_bytes,
+                                uint32_t c0, uint32_t c1,
+                                void **out_a, void **out_b);
+sp_status sp_alloc_on_channel(const sp_channel_map *m,
+                              size_t n_bytes,
+                              uint32_t pref,
+                              uint32_t *actual_out,
+                              void **out);
+uint32_t  sp_channel_of(const sp_channel_map *m, const void *addr);
+void      sp_free_channel(const sp_channel_map *m, void *p);
+```
+
+Backed by `MAP_HUGETLB` on Linux + `VirtualAlloc(MEM_LARGE_PAGES)`
+on Windows. **Graceful fallback** when `map->mode ==
+SP_CHANNEL_MAP_DISABLED`: routes to plain `malloc()`,
+`sp_channel_of()` returns `SP_CHANNEL_UNSPECIFIED`, all functions
+return `SP_OK`. Downstream code never branches on map mode; the
+allocator is the single point of policy.
+
+**Tier-1 gate (TS.ALLOC):**
+- On bare-metal: 100 random `sp_alloc_channel_pair` calls
+  verified via `sp_channel_of(a) != sp_channel_of(b)` AND
+  `sp_channel_of(a) == requested_c0` per pair.
+- In CI/VM: same calls all return `SP_OK` with addresses on the
+  same nominal channel (no enforcement); no crash.
+
+### 16.3 Phase TS.HEDGE — hedge-read primitives
+
+**Deliverable.** `core/sp_channel/sp_hedge.c` with two functions:
+
+```c
+int sp_hedge_read64(const void *a, const void *b, void *out64);
+int sp_hedge_read_spinor(const sp_spinor_block *a,
+                         const sp_spinor_block *b,
+                         sp_spinor_block *out);
+```
+
+Both kick off two read threads (or use Linux `io_uring` with
+two SQEs on x86_64 where available), return the first complete
+read, signal the other to abort (or just discard its result —
+the data is identical by caller's algebraic invariant). Return
+0/1 indicating which side won (for sticky-channel-affinity hints
+to downstream consumers).
+
+**Tier-1 gate (TS.HEDGE):**
+- Micro-benchmark on a synthetic 1 MB dual-channel Spinor arena:
+  P99 tail latency under hedge read ≥ 2× faster than serial
+  `memcpy` of either side, on bare metal.
+- In CI/VM: function returns correct data (verified bitwise);
+  speedup not asserted.
+
+### 16.4 Phase TS.INTEGRATE-CRT — channel-pair the dual-prime residues
+
+**The killer integration.** Today, the CRT-NTT kernel stores
+`(q_1, q_2)` residues in adjacent rows of one `int64_t[N][2]`
+array. With TS.MAP+ALLOC, allocate `q_1` and `q_2` residue arrays
+via `sp_alloc_channel_pair`. Garner reconstruction now issues a
+hedge read for the residue pair at each index — the slow channel
+becomes the slow-path tail; the fast channel completes the
+reconstruction.
+
+This is the within-node version of Phase 6's "any-two-of-three
+CRT erasure code over QUIC" idea. Same algebraic primitive
+(`M = q_1 · q_2`, Garner's formula), different scale (memory
+channels instead of network primes). Proves the erasure-code-
+over-CRT-residues mechanism works at the cheapest possible
+measurement scale before Phase 6's multi-node version ships.
+
+**Tier-1 gate (TS.INTEGRATE-CRT):**
+- Gemma3-1B forward, ctx=4096, full PPL pass with channel-paired
+  CRT residues: PPL bit-identical to baseline (the math is
+  unchanged; only memory layout moves).
+- Wall-time on the same forward measurably faster (≥ 5% in
+  bandwidth-bound layers; gate is "measurably non-zero" because
+  exact magnitude depends on host channel topology).
+- In CI/VM: PPL bit-identical assertion still holds (fallback
+  serves both residues from the same nominal channel; correctness
+  unaffected).
+
+### 16.5 Phase TS.INTEGRATE-KSTE — sieve hot-set channel replication
+
+**Deliverable, gated when Phase 5 sieve ships.** Identify the
+KSTE upper-tier nodes (~256 KB hot set) consulted on every sieve
+traversal; replicate across channels via `sp_alloc_channel_pair`;
+sieve evaluation hedges its tree-descent reads. For TS.MAP +
+ALLOC + HEDGE landing in §16.1-§16.3, this sub-phase ships the
+allocator hooks and a synthetic-tree micro-benchmark only; full
+sieve integration waits on Phase 5.
+
+### 16.6 Closure
+
+Umbrella tag `lat-phase-ts-closed` after §16.1–§16.4 close.
+§16.5 lands when Phase 5 sieve goes online. Phase log entry
+names the recovered hash matrix dimensions (`k × N`) for the dev
+host, the empirical hedge-read tail-latency improvement on the
+TS.INTEGRATE-CRT Gemma3 forward pass, and the CI fallback
+behaviour confirmation.
+
+### 16.7 Composition with already-locked architecture
+
+- **Phase 4-SPEC M_SPEC_3 throughput**: must be measured WITHOUT
+  TailSlayer first to establish baseline, THEN re-measured after
+  §16.3 ships and the verifier's K-cache reads are hedge-paired.
+  The delta is the empirical proof of the GF(2) memory alignment
+  win. M_SPEC_1 math gate is untouched: TailSlayer never changes
+  data, only which of two identical buffers responds first.
+- **Phase 5 sieve PoUW receipt mint rate**: scales linearly with
+  §16.5 hot-set hedge-read efficiency.
+- **Phase 6 CRT-sharded multi-node**: §16.4 is the within-node
+  prototype. If §16.4 shows speedup, Phase 6's multi-node
+  any-two-of-three Garner story has empirical grounding at the
+  cheapest measurement scale.
+- **Hexagon Mode D (§11)**: TS.ALLOC's channel preference feeds
+  directly into `rpcmem_alloc`. ARM HTTP buffers on one
+  sub-channel; DSP `ffn_out` arenas on a different sub-channel.
+  Without this, LPDDR5x sub-channel contention is the throughput
+  bound on sustained Mode D inference before the 62 °C thermal
+  trip.
+
+### 16.8 Anti-contamination + isolation
+
+Phase TS sub-phases §16.1–§16.3 live ENTIRELY in
+`shannon-prime-system/core/sp_channel/` as an independent module.
+They do NOT touch:
+- `include/sp/sp_l1.h` (frozen ABI surface — channel allocator
+  is internal, not part of the L1 contract).
+- `core/session/` (session struct stays unchanged; arena
+  allocation moves to the new allocator via a build flag).
+- `core/forward/` (forward kernels unchanged; arena layout
+  changes are transparent).
+
+§16.4 INTEGRATE-CRT is the first sub-phase to touch
+`core/ntt_crt/` and is gated separately so concurrent Phase 4-SPEC
+agents in the engine repo don't collide. Branch discipline:
+
+- Phase TS sub-phases work on `lat-ts-<X>` branches in math-core.
+- Phase 4-SPEC works on `lat-4-spec-<X>` in math-core (only if
+  `sp_session_rewind` needs debugging) and engine. The two
+  branches do not share files in §16.1–§16.3.
+- Merge to main is sequential at sub-phase close.
+
+Reference: `reference-tailslayer-integration` memory entry +
+<https://github.com/nihilistau/tailslayer>.
+
+
 ## Phase log
 
 One paragraph per closed phase (§3.3). Most recent last.
@@ -3216,6 +3465,53 @@ Phase 3-MoE ships.
 metadata + tensor-list dump per §9.3.0 before any bridge code
 is written. Family-lineage in the roadmap is not authoritative;
 the GGUF is.
+
+### 2026-05-26 — Phase TS (TailSlayer channel-aware placement) added to §16
+
+Laurie's TailSlayer methodology (github.com/nihilistau/tailslayer)
+folded into the roadmap as cross-cutting infrastructure parallel
+to Phase 2-L3. Recovers the memory controller's undocumented
+channel-select hash via GF(2) linearity (`f(x ⊕ y) = f(x) ⊕ f(y)`
+means the hash is a `k × N` binary matrix, recoverable column-
+by-column by single-bit address flips + tail-latency oracle under
+hedge-read race). Once `M` known, lattice primitives that are
+already aligned to hardware boundaries (63-byte Spinor + 1-byte
+sentinel = 64-byte cache line; dual-prime CRT residues already
+replicated by construction; per-row Frobenius scales paired with
+Q4 codes; KSTE upper tier hot set) become hedge-read pairing
+opportunities.
+
+Five sub-phases (§16.1–§16.5): TS.MAP / TS.ALLOC / TS.HEDGE /
+TS.INTEGRATE-CRT / TS.INTEGRATE-KSTE. Three tactical guardrails
+baked in:
+
+1. **Graceful CI/VM fallback** at TS.MAP. Virtualised memory
+   controllers (KVM/VMware/Hyper-V/WSL2/Docker) and huge-page-
+   denied hosts log a warning and route to plain `malloc` via
+   `SP_CHANNEL_UNSPECIFIED`. TailSlayer is a perf overlay, never
+   a correctness dependency. CI matrix exercises both bare-metal
+   and virtualised paths.
+2. **Branch isolation** between Phase TS and Phase 4-SPEC.
+   §16.1–§16.3 live entirely in `core/sp_channel/`, no touch to
+   `sp_l1.h` / `core/session/` / `core/forward/`. §16.4 is the
+   first sub-phase to touch `core/ntt_crt/` and is gated
+   separately. Phase 4-SPEC's `lat-4-spec-*` branches in the
+   engine repo do not collide with `lat-ts-*` branches in
+   math-core.
+3. **Baseline-before-TailSlayer** for Phase 4-SPEC's M_SPEC_3
+   throughput. Phase 4-SPEC measures K=4 throughput WITHOUT
+   TailSlayer first to establish the baseline. After §16.3
+   ships and verifier K-cache reads are hedge-paired, re-measure.
+   The delta is the empirical proof of the GF(2) memory
+   alignment win. Without this discipline, "TailSlayer made it
+   faster" is unfalsifiable.
+
+§2 phase table updated with TS row. Memory entry
+`reference_tailslayer_integration` records the full architectural
+framing + the eleven lattice integration points (CRT dual-prime
+hedge reads is the killer integration). Phase TS does NOT block
+any other phase; every downstream phase (4-SPEC, 5 sieve, 6
+CRT-shard, Mode D LPDDR5x segregation) benefits when it lands.
 
 
 ---
