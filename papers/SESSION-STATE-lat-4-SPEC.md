@@ -7,11 +7,14 @@
 
 ## Fixture
 
-- **Target:** Qwen2.5-Coder-3B.i1-Q4_K_M.gguf (36 layers, 2048 hidden, vocab 151936)
-- **Draft:**  Qwen2.5-Coder-0.5B-Instruct-Q8_0.gguf (24 layers, 896 hidden, vocab 151936)
-- **Fixture gap:** Qwen2.5-Coder-14B NOT on disk. M_SPEC_3 deferred.
-- **Arch:** both `qwen2`, `rope_freq_base=1e6`, 3 F32 QKV biases/layer, no QK norms ✓
+- **Target:** Qwen2.5-Coder-0.5B-Instruct-Q8_0.gguf → `build-cpu/qwen25-coder-0.5b-target.sp-model`
+- **Draft:**  Qwen2.5-Coder-0.5B-Instruct-Q8_0.gguf → `build-cpu/qwen25-coder-0.5b-draft.sp-model`
+- **Tokenizer:** `build-cpu/qwen25-coder-0.5b.sp-tokenizer` (shared)
+- **Note:** 3B fixture (Q4_K_M) excluded — sp_dequant_row doesn't support K-quants. Same-model fixture (0.5B×2) validates T8.1 rewind identity; see synthetic-rejection protocol below for rejection branch coverage.
+- **Fixture gap:** Qwen2.5-Coder-3B (Q4_K_M) and 14B NOT transcoded. M_SPEC_3 deferred.
+- **Arch:** `qwen2`, `rope_freq_base=1e6`, head_dim=64 (computed: 896/14), 24 layers, vocab 151936, no QK norms ✓
 - **Transcode tool:** `build-cpu/tools/sp_transcode/sp_transcode.exe <in.gguf> <out.sp-model> <out.sp-tokenizer> [--verify]`
+- **sp_transcode fix:** engine commit `d21c161` — bypass `qwen3_load`, read GGUF metadata directly (handles missing `attention.key_length` key in Qwen2.5 GGUFs)
 
 ## Theorem T8 Framing
 
@@ -39,7 +42,7 @@ The Lattice operates over Z_q; accept/reject is integer equality.
 `docs/superpowers/plans/2026-05-26-phase-4-spec.md`
 
 Tasks:
-1. Transcode both GGUFs via sp_transcode
+1. ✓ Transcode 0.5B GGUF (×2, target+draft) via sp_transcode — engine fix d21c161
 2. Add `SpSession::rewind()` to session.rs
 3. Dual-model AppState (state.rs + daemon.rs + main.rs)
 4. spec.rs discrete loop module
