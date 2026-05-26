@@ -1883,14 +1883,27 @@ Phase 3 in-scope arches, ordered by Phase 3 priority:
   Closer to Llama-base RoPE than Qwen3; useful for smaller test
   fixtures and spec-decode draft (the 0.5B draft for the 14B
   target is the canonical pairing from the prior cohort).
-- **Qwen3.5** (`arch_id = QWEN35`) — incremental delta on Qwen3
-  base; metadata flags + slightly different attention normalisation
-  order. Same kernel inventory.
+- **Qwen3.5** (`arch_id = QWEN35`) — **CORRECTED 2026-05-26: Mamba-
+  hybrid, not a Qwen3 attention delta.** GGUF investigation against
+  Qwen3.5-9B found `general.architecture = 'qwen35'` with 24 of 32
+  layers SSM and 8 attention (`full_attention_interval = 4`). SSM
+  layers carry tensors `ssm_a`, `ssm_alpha`, `ssm_beta`,
+  `ssm_conv1d`, `ssm_dt`, `ssm_norm`, `ssm_out` —
+  `qwen35.ssm.state_size = 128`, `qwen35.ssm.conv_kernel = 4`. The
+  bridge needs new SSM kernel work (selective scan, causal conv1d,
+  dt/softplus path). **Deferred to Phase 3-SSM sub-phase.** Math-
+  core has no SSM primitives yet; bringing them up is multi-day
+  work and belongs in its own gated track, not bolted into a
+  single-arch cell.
 - **Qwen3.6** (`arch_id = QWEN36`) — **MoE.** A3B suffix = 35B total
   parameters with ~3B active per token via top-k expert routing.
   Largest single-cell scope: routing layer, sparse FFN gather,
   expert parameter sharding. Phase 3 only requires the
-  single-machine case; multi-machine MoE is Phase 6+.
+  single-machine case; multi-machine MoE is Phase 6+. Verify via
+  GGUF inspection before assuming the routing-and-experts shape —
+  Qwen3.5's surprise teaches that family-level assumptions are
+  unsafe; each arch needs its `general.architecture` field
+  inspected first.
 - **DeepSeek V4** (`arch_id = DEEPSEEK_V4`) — large MoE with FP8
   weights. **Aspirational.** No on-disk fixture yet; lower
   priority for initial bring-up. The FP8 weights would require
@@ -1937,18 +1950,25 @@ math-core session correctness.
 The matrix is **arch × backend**. CPU is the canonical path; CUDA
 + Vulkan + Hexagon follow per-arch as each compiles. The matrix:
 
-- **Must close (5 cells, CPU only).** CPU × {Gemma3 (1B), Gemma4
-  (E4B), Qwen2.5 (3B), Qwen3.5 (9B), Qwen3.6 (35B-A3B)}. These
-  are the smallest viable cell per arch + the MoE flagship.
-  Closing these proves the bridge handles every arch shape.
-- **Should close (5 cells).** CPU scale-ups: Gemma3-12B,
-  Gemma4-31B, Qwen3-8B, Qwen3.6-27B (dense), and any one of
-  Qwen3-VL / Phi-4 / LFM2.5 as a "fourth arch family" canary.
-- **Should close (5 CUDA cells).** CUDA × {Gemma3, Gemma4-E4B,
-  Qwen2.5, Qwen3.5, Qwen3.6-A3B}. RTX 2060 12 GB VRAM gates
-  which sizes fit; pick the smallest per arch.
+- **Must close (4 cells, CPU only).** CPU × {Gemma3 (1B) ✅
+  closed 2026-05-26, Gemma4 (E4B), Qwen2.5 (3B), Qwen3.6
+  (35B-A3B)}. Smallest viable cell per pure-attention arch + the
+  MoE flagship. Closing these proves the bridge handles every
+  attention-family arch shape.
+- **Phase 3-SSM (deferred sub-phase).** Qwen3.5 family is
+  Mamba-hybrid (see §9.1 correction); SSM kernels (selective
+  scan, causal conv1d, dt/softplus) land here as their own
+  multi-day track, then Qwen3.5-9B becomes the gate cell for
+  Phase 3-SSM closure. Not on the §9.3 must-close path.
+- **Should close (5 CPU scale-ups).** Gemma3-12B, Gemma4-31B,
+  Qwen3-8B, Qwen3.6-27B (dense), and any one of Qwen3-VL /
+  Phi-4 / LFM2.5 as a "fourth arch family" canary.
+- **Should close (4 CUDA cells).** CUDA × {Gemma3, Gemma4-E4B,
+  Qwen2.5, Qwen3.6-A3B}. RTX 2060 12 GB VRAM gates which sizes
+  fit; pick the smallest per arch.
 - **Later.** Vulkan + Hexagon × non-Qwen3-0.6B cells. All
-  DeepSeek V4 cells (no on-disk fixture).
+  DeepSeek V4 cells (no on-disk fixture). All Qwen3.5 cells
+  (gated on Phase 3-SSM).
 
 ### 9.3 Per-cell deliverables
 
