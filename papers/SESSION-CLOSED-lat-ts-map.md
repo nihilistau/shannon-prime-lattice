@@ -151,12 +151,31 @@ All 5 tests, 18/18 checks passed.
 Path taken: virt detection → DISABLED → all tests exercise the graceful-DISABLED branch.  
 Linux CI verification pending (will confirm CPUID+/proc/cpuinfo path after push).
 
-### M_TS.MAP_1 — bare-metal P99 ≥2× hedge improvement ⏸ DEFERRED
+### M_TS.MAP_1 — bare-metal P99 ≥2× hedge improvement ⏸ BLOCKED (privilege)
 
-No bare-metal hardware available this session.  
-The probe path (`sp_probe_bit`, `hedge_pair`, `sp_alloc_huge`) is fully implemented and builds  
-cleanly. Gate requires a physical machine (no VM layer) to measure actual DRAM channel contention.  
-Deferred to first bare-metal run after branch merge.
+The test machine is physical hardware (Intel NUC11BTMi9, i9-11900KB) — NOT a VM.
+However two blockers prevent LIVE mode on this host:
+
+1. **Hyper-V root-partition false positive (FIXED in commit `6337bd3`):**
+   Windows 11 VBS/Hyper-V sets CPUID leaf-1 ECX bit 31 on the root partition (bare
+   metal), causing the original detection to return VM=1. Fix: check the hypervisor
+   vendor (CPUID 0x40000000 = "Microsoft Hv") then check the Hyper-V KVP registry
+   key (`HKLM\SOFTWARE\Microsoft\Virtual Machine\Guest\Parameters`) — present only
+   in guest VMs, absent on the root partition. VMware/KVM/VBox still return VM=1.
+
+2. **`SeLockMemoryPrivilege` not in token (user action required):**
+   `VirtualAlloc(MEM_LARGE_PAGES)` requires this privilege. Even as admin, it is
+   absent by default. Without huge pages, the bit-flip probes give meaningless results
+   (virtual→physical mapping unknown above bit 12). Correct DISABLED message after
+   fix: `"huge-page allocation failed — DISABLED"`.
+
+   **To enable on this NUC:**
+   `secpol.msc` → Local Policies → User Rights Assignment →
+   "Lock pages in memory" → add account → logoff/logon → rebuild → rerun.
+
+After the privilege is granted, the test should proceed to the probe loop and either
+recover M or return DISABLED if timing discrimination is insufficient (Hyper-V timer
+virtualization may still perturb P99 measurements even from the root partition).
 
 ---
 
