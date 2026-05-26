@@ -91,8 +91,8 @@ environment-variable gates until they are individually proven.
 | 2-HX | Engine, Hexagon backend | Same scope as 2-CPU on Snapdragon HTP V69 | E_HX_1..E_HX_6 green | **ESSENTIALLY CLOSED 2026-05-23 (formal tag pending E_HX_5/E_HX_6)** |
 | 2-FMT | Engine, .sp-model on-disk format | Loader + transcoder + round-trip gate | E_FMT_1..E_FMT_4 green | **CLOSED 2026-05-23** |
 | 2-L1 | L1 ABI implementation in math-core | RELOCATE → VALIDATE → HANDLE → SESSION → **PARITY → FP16** | Each sub-phase gates; umbrella `lat-phase-2-l1-closed` after PARITY + FP16 | RELOCATE/VALIDATE/HANDLE/SESSION done; PARITY = next (inline KV+weight compression to math-core); FP16 = dtype plumbing |
-| 2-L3 | Headless HTTP/SSE daemon wrapping L2 | localhost:8080 service exposing the small REST + SSE surface; survives UI lifecycle | E_L3_1..3 (cold start ≤ 200 ms, UI death does not pause daemon, 5-min S22U soak with foreground service) | 3 weeks; blocked by `lat-phase-2-l1-closed` |
-| 3 | Model-family expansion | All four backends host all seven model families | M_*×B_* matrix green | 8–12 weeks |
+| 2-L3 | Headless HTTP/SSE daemon wrapping L2 | localhost:8080 service exposing the small REST + SSE surface; survives UI lifecycle | E_L3_1..3 (cold start ≤ 200 ms, UI death does not pause daemon, 5-min S22U soak with foreground service) | **CORE CLOSED 2026-05-26**; VERBS/SSE/FG/AUTH remain |
+| 3 | Model-family expansion | All four backends host all seven model families | M_*×B_* matrix green | **Gemma3 cell CLOSED 2026-05-26**; 5 more must-close cells remain |
 | 4 | Inline cache compression validated | PPL drift and memory savings measured per backend × model | Drift ≤ 1% on calibrated families | 4 weeks |
 | 4-MTP | Multi-token prediction (speculative decoding) | Transactional Spinor blocks + draft/verify/rewind via frozen L1 ABI primitives | M_MTP_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4 | 3 weeks; blocked by Phase 3 close |
 | 5 | Lattice features (sieve, ARM, dominance) | Off-by-default ENV-gated overlays | Regression suite green when gates off | 6 weeks |
@@ -2843,6 +2843,65 @@ Offloads: `SESSION-CLOSED-lat-2-L1-HANDLE.md`,
 `SESSION-CLOSED-lat-2-L1-FP16.md` (on lattice). Engine pushed at
 `65a85d1` with all FP16 + closure tags. Math-core at `8d2c422`.
 Lattice at `9d64861`.
+
+### 2026-05-26 — §9.0 zero-copy entry condition CLOSED (`lat-phase-3-zero-copy-closed`)
+
+Math-core `87300c9` + fixup `108c64f` shipped Fix B: `alias_mask`
+field on `sp_frob_packed_tensor` (bit 0 codes, bit 1 row_scale)
+aliases the `.sp-model` mmap directly; only `row_prec` + `row_off`
+(5 bytes/row) heap-allocated. `qm` hoisted to model handle,
+shared across sessions. `T_ZERO_COPY_ALIAS` green; T_SESSION
+119/119. Math-core arena ~574 MB matching engine E_CPU_10 ±0.1%.
+Fix A (`sp_model_release_source`) deprecated as L1 ABI surface:
+audit found no runtime caller; `sp_transcode` handles raw GGUF
+offline. The transcoder's own peak-RAM during pack tracked as a
+sp_transcode-internal fix (not L1 ABI). Tags
+`lat-phase-3-zero-copy-closed` on all three repos.
+
+### 2026-05-26 — Phase 2-L3.CORE shipped (`lat-phase-2-l3-core-closed`)
+
+Engine `6a35f39` — sp-daemon Cargo crate (Rust/axum) wrapping the
+frozen L1 C ABI via bindgen. 127.0.0.1:8080 only; 0.0.0.0
+explicitly refused per §14.3.1. `GET /v1/metrics` returns 200 JSON
+with `session_pos` field (proves FFI handle through
+`sp_session_position`). `sp-daemon start/stop/reload` lifecycle
+with DETACHED_PROCESS / setsid; PID file. **E_L3_1 gate green:**
+2 ms cold-start, <1 ms warm p50, 71 ms first TCP call (well
+inside 200 ms gate). Binary 2.7 MB release on Windows MSVC
+x86_64. aarch64-android `build.rs` no-ops the link step (FG
+phase scope). VERBS / SSE / FG / AUTH remain as the next L3
+sub-phases. Offload: `SESSION-CLOSED-lat-2-L3-CORE.md`.
+
+### 2026-05-26 — Phase 3 Cell 1 Gemma3 CLOSED (`lat-phase-3-cell-gemma3-closed`)
+
+Math-core `0ec01e4` + engine submodule bump `89a5b98`. Shipped:
+
+- `sp_model_to_gemma3` zero-copy bridge in math-core mirroring
+  Fix B's `alias_mask` pattern.
+- `kv_step_gemma3` in `sp_session.c` with sandwich norms, GeGLU,
+  dual RoPE base (1e6 / 10000), sliding-window attention via
+  `sp_attn_head`.
+- `gemma3_fixture.c/h` synthetic tiny fixture (NL=2, E=32, V=48).
+- Three new session tests: `T_GEMMA3_ALIAS` (aliasing) +
+  `T_GEMMA3_DECODE_TRAJECTORY` (decode bit-identity vs engine) +
+  `T_PARITY_CROSS_LOAD_GEMMA3` (engine transcode → math-core load
+  bit-identity).
+- T_SESSION 249/249 (was 119; +130 from gemma3 tests + bridge).
+- Engine CPU ctest 27/27 incl. `E_FMT_1..4`, `M_GEMMA3_CPU`,
+  `T_FRO_4`.
+
+**Design call captured.** Transcoder `√n_embd` pre-application
+was REVERTED — Gemma3's tied LM head means
+`output.weight == token_embd.weight` shares the same arena entry,
+and pre-scaling the embedding row_scale would corrupt logits via
+the shared view. The agent kept the unconditional runtime
+`xt[i] *= embscale` loop instead (O(E)/token, trivial). This is
+a binding exception to the canonical "transcoder pre-applies per-
+tensor transforms" rule from §9.0; captured in
+`reference-zero-copy-invariant` under "tied-tensor exception"
+for future arch agents.
+
+Offload: `SESSION-CLOSED-lat-3-cell-gemma3.md`.
 
 
 ---
