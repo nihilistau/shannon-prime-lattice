@@ -92,7 +92,11 @@ environment-variable gates until they are individually proven.
 | 2-FMT | Engine, .sp-model on-disk format | Loader + transcoder + round-trip gate | E_FMT_1..E_FMT_4 green | **CLOSED 2026-05-23** |
 | 2-L1 | L1 ABI implementation in math-core | RELOCATE → VALIDATE → HANDLE → SESSION → **PARITY → FP16** | Each sub-phase gates; umbrella `lat-phase-2-l1-closed` after PARITY + FP16 | RELOCATE/VALIDATE/HANDLE/SESSION done; PARITY = next (inline KV+weight compression to math-core); FP16 = dtype plumbing |
 | 2-L3 | Headless HTTP/SSE daemon wrapping L2 | localhost:8080 service exposing the small REST + SSE surface; survives UI lifecycle | E_L3_1..3 (cold start ≤ 200 ms, UI death does not pause daemon, 5-min S22U soak with foreground service) | **CORE + VERBS + SSE CLOSED 2026-05-26**; FG/TOK/AUTH remain |
-| 3 | Model-family expansion | All four backends host all seven model families | M_*×B_* matrix green | **Gemma3 + Qwen2.5 cells CLOSED 2026-05-26**; 2 must-close cells remain (Gemma4-E4B, Qwen3.6-35B-A3B); Qwen3.5 deferred to Phase 3-SSM |
+| 3-attn | Pure-attention bridges in math-core | Gemma3 + Qwen2.5 + Qwen3 base running end-to-end via session ABI | Per-cell M_*_1 forward bit-identity | **CLOSING 2026-05-26** — Gemma3 ✅ + Qwen2.5 ✅; Qwen3 base transitively ✅. Umbrella `lat-phase-3-attn-closed` after Phase log entry. |
+| 3-SSM | Mamba-hybrid arch sub-phase | SSM kernels (selective scan, conv1d, dt) + Qwen3.5-9B bridge | Qwen3.5-9B bit-identity vs reference + RSS within Phase 3-attn envelope | Deferred; multi-day kernel work |
+| 3-G4 | Gemma4 family sub-phase | Per-layer embedding injection + dual head_dim + logit softcap + Gemma4-E4B bridge | Gemma4-E4B bit-identity vs llama.cpp gemma4 path | Deferred; ~2-3× Gemma3 cell scope |
+| 3-MoE | MoE arch sub-phase | Routing layer + sparse FFN gather + Qwen3.6 bridge | Qwen3.6 bit-identity vs reference (single-machine MoE) | Deferred; pre-inspect GGUF before scoping |
+| 3-FP8 | FP8 weight sub-phase | DeepSeek-V4 FP8 dequant + bridge | DeepSeek-V4 bit-identity vs reference | Aspirational; no fixture |
 | 4 | Inline cache compression validated | PPL drift and memory savings measured per backend × model | Drift ≤ 1% on calibrated families | 4 weeks |
 | 4-MTP | Multi-token prediction (speculative decoding) | Transactional Spinor blocks + draft/verify/rewind via frozen L1 ABI primitives | M_MTP_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4 | 3 weeks; blocked by Phase 3 close |
 | 5 | Lattice features (sieve, ARM, dominance) | Off-by-default ENV-gated overlays | Regression suite green when gates off | 6 weeks |
@@ -1950,25 +1954,117 @@ math-core session correctness.
 The matrix is **arch × backend**. CPU is the canonical path; CUDA
 + Vulkan + Hexagon follow per-arch as each compiles. The matrix:
 
-- **Must close (4 cells, CPU only).** CPU × {Gemma3 (1B) ✅
-  closed 2026-05-26, Gemma4 (E4B), Qwen2.5 (3B), Qwen3.6
-  (35B-A3B)}. Smallest viable cell per pure-attention arch + the
-  MoE flagship. Closing these proves the bridge handles every
-  attention-family arch shape.
-- **Phase 3-SSM (deferred sub-phase).** Qwen3.5 family is
-  Mamba-hybrid (see §9.1 correction); SSM kernels (selective
-  scan, causal conv1d, dt/softplus) land here as their own
-  multi-day track, then Qwen3.5-9B becomes the gate cell for
-  Phase 3-SSM closure. Not on the §9.3 must-close path.
-- **Should close (5 CPU scale-ups).** Gemma3-12B, Gemma4-31B,
-  Qwen3-8B, Qwen3.6-27B (dense), and any one of Qwen3-VL /
-  Phi-4 / LFM2.5 as a "fourth arch family" canary.
-- **Should close (4 CUDA cells).** CUDA × {Gemma3, Gemma4-E4B,
-  Qwen2.5, Qwen3.6-A3B}. RTX 2060 12 GB VRAM gates which sizes
-  fit; pick the smallest per arch.
-- **Later.** Vulkan + Hexagon × non-Qwen3-0.6B cells. All
-  DeepSeek V4 cells (no on-disk fixture). All Qwen3.5 cells
-  (gated on Phase 3-SSM).
+### 9.3.0 Correction to the original "thin-deltas matrix" framing (2026-05-26)
+
+The original §9.3 priority cells assumed Phase 3 was filling an
+arch × backend matrix where each new arch was a thin bridge
+delta on the canonical Qwen3 path. **GGUF inspections of each
+next-gen arch have proven that wrong.** Qwen3.5 is a
+Mamba-hybrid (24/32 SSM layers); Gemma4-E4B adds a per-layer
+input-embedding injection path, dual head_dim per SWA/global
+layer split, and logit softcap; Qwen3.6 has its own structural
+deltas (TBD per fresh GGUF inspection). Each next-gen arch
+deserves its own gated sub-phase, not a cell in a unified
+matrix.
+
+The actual Phase 3 split is:
+
+**Phase 3 (pure-attention bridges) — CLOSING.** Cells:
+- Gemma3 ✅ closed 2026-05-26 (`lat-phase-3-cell-gemma3-closed`)
+- Qwen2.5 ✅ closed 2026-05-26 (`lat-phase-3-cell-qwen25-closed`)
+- Qwen3 base — already runs via the SESSION/PARITY pipeline
+  on Qwen3-0.6B; counts as transitively closed for this slice
+
+The pure-attention slice of Phase 3 is effectively complete.
+Umbrella `lat-phase-3-attn-closed` can fire once we record this
+in a Phase log entry; tags the foundational matrix as done and
+unblocks Phase 4 + Phase 4-MTP without waiting on the
+structural-delta sub-phases below.
+
+**Phase 3-SSM (deferred sub-phase).** Qwen3.5 family is
+Mamba-hybrid. SSM kernels (selective scan, causal conv1d,
+dt/softplus path) land here as their own multi-day track;
+Qwen3.5-9B is the gate cell. Fixture on disk:
+`D:\Files\Models\lmstudio-community\Qwen3.5-9B-GGUF`.
+
+**Phase 3-G4 (deferred sub-phase).** Gemma4 family. New kernel
+work surfaced by GGUF inspection of Gemma4-E4B on 2026-05-26:
+
+- **Dual head_dim per layer.** SWA/local layers at HD=256
+  (35 of 42), global layers at HD=512 (7 of 42, L%6==5). All
+  attn_q / attn_k / attn_v / attn_output / attn_q_norm /
+  attn_k_norm shapes differ per layer. `qwen3_config.head_dim`
+  can't hold two values — bridge needs per-layer head_dim
+  detection from tensor shape; forward + kv_step need per-layer
+  HD dispatch.
+- **Per-layer input-embedding injection.** Every token at every
+  layer receives an additional contribution from a per-layer
+  token embedding via a new compute path:
+  - Per-layer tensors (5): `inp_gate.weight [2560,256]`,
+    `proj.weight [256,2560]`, `layer_output_scale.weight [1]`,
+    `post_norm.weight [2560]` (additional, beyond Gemma3's
+    sandwich pair).
+  - Global tensors (4): `per_layer_token_embd.weight
+    [10752,262144]` (10752 = 42×256), `per_layer_model_proj.weight
+    [2560,10752]` BF16, `per_layer_proj_norm.weight [256]`,
+    `rope_freqs.weight [256]`.
+- **Final-logit softcap.** `logits = tanh(logits/30.0) * 30.0`
+  after LM head (Gemma3-1B skipped this; Gemma4 requires it).
+- **shared_kv_layers = 18.** 18 SWA layers share KV
+  projections with their paired global layer. Tensors still all
+  present per layer; runtime decode logic can ignore the
+  sharing semantics for v0 bridge.
+
+Gemma4-E4B is the gate cell for Phase 3-G4 closure. Fixture on
+disk: `D:\Files\Models\lmstudio-community\gemma-4-E4B-it-GGUF`.
+Gemma4-31B is the scale-up after closure.
+
+**Phase 3-MoE (deferred sub-phase).** Qwen3.6 family (and
+DeepSeek-V4 eventually). Routing layer, sparse FFN gather,
+expert parameter sharding at minimum. Pre-inspection of
+Qwen3.6-35B-A3B GGUF expected to surface additional structural
+deltas — every next-gen arch has so far surprised us at the
+metadata layer. **Do not scope this sub-phase before inspecting
+the GGUF.**
+
+Fixtures on disk:
+- `D:\Files\Models\lmstudio-community\Qwen3.6-27B-GGUF` (dense
+  variant)
+- `D:\Files\Models\lmstudio-community\Qwen3.6-35B-A3B-GGUF`
+  (MoE flagship)
+- `D:\Files\Models\lmstudio-community\Qwen3.6-35B-A3B-Draft-GGUF`
+  (speculative-decode draft pairing for Phase 4-MTP)
+
+**Phase 3-FP8 (deferred sub-phase).** DeepSeek-V4 FP8 weights
+need a dequant path that overlaps with the eventual fp8
+sub-phase. Aspirational; no on-disk fixture; defer indefinitely.
+
+**Pre-inspection discipline (binding for every next-gen sub-phase).**
+Before any deferred sub-phase ships a bridge prompt, the agent
+MUST dump `general.architecture` + the full GGUF metadata + the
+tensor name list against the target fixture. Every next-gen
+arch so far has surfaced surprises at this stage. The Qwen3.5
+SSM trap, the Gemma4 per-layer embedding path, the Gemma3 tied-
+LM-head logit corruption — all caught at the GGUF-inspection
+gate. The prompt cannot assume family-level inheritance from
+the roadmap; the GGUF wins.
+
+### 9.3 Priority cells (LEGACY — superseded by §9.3.0 split)
+
+The matrix below is the original "thin-deltas" framing, kept
+for historical reference. The actual close status is in §9.3.0.
+
+- ~~Must close (4 cells, CPU only). CPU × {Gemma3 (1B), Gemma4
+  (E4B), Qwen2.5 (3B), Qwen3.6 (35B-A3B)}.~~ — Mis-framed;
+  Gemma4 + Qwen3.6 are next-gen arches with substantial new
+  kernel work, deferred to Phase 3-G4 / Phase 3-MoE per §9.3.0.
+- ~~Should close (5 CPU scale-ups).~~ — Per-arch scale-up gates
+  move into each next-gen sub-phase.
+- ~~Should close (4 CUDA cells).~~ — Same; each sub-phase
+  carries its own backend gates.
+- ~~Later: Vulkan + Hexagon × non-Qwen3-0.6B; DeepSeek V4;
+  Qwen3.5.~~ — Subsumed by Phase 3-SSM / Phase 3-G4 / Phase
+  3-MoE / Phase 3-FP8.
 
 ### 9.3 Per-cell deliverables
 
@@ -3004,8 +3100,55 @@ T_SESSION 365/365 (was 249 after Cell 1; +116 from qwen25 tests
 `SESSION-CLOSED-lat-3-cell-qwen25.md`.
 
 **Must-close set status:** 2 of 4 cells closed (Gemma3 ✅,
-Qwen2.5 ✅). Remaining: Gemma4-E4B, Qwen3.6-35B-A3B (MoE).
-Qwen3.5 deferred to Phase 3-SSM.
+Qwen2.5 ✅). Remaining cells reframed per §9.3.0 (2026-05-26)
+after Gemma4-E4B GGUF inspection — see next Phase log entry.
+
+### 2026-05-26 — Phase 3 reframed: pure-attention slice closing, next-gen arches split into dedicated sub-phases
+
+GGUF inspection of Gemma4-E4B surfaced four structural deltas
+absent from the §9.6 family lineage description:
+
+1. **Dual head_dim per layer** — SWA layers at HD=256, global
+   layers at HD=512 (`L%6==5`). All attn_q/k/v/output shapes
+   differ per layer.
+2. **Per-layer input-embedding injection** — a new compute
+   graph node not in Gemma3: 5 new per-layer tensors
+   (`inp_gate`, `proj`, `layer_output_scale`, `post_norm`) + 4
+   new global tensors (`per_layer_token_embd [10752,262144]`,
+   `per_layer_model_proj` BF16, `per_layer_proj_norm`,
+   `rope_freqs`).
+3. **Final-logit softcap** — `tanh(logits/30)*30` after LM head.
+4. **shared_kv_layers = 18** — semantic note; tensors all
+   present per layer.
+
+The §9.6 "Gemma4 = Gemma3 + vision tower the text path ignores"
+description was wrong. Combined with the Qwen3.5 Mamba-hybrid
+surprise from earlier in the day, the pattern is now clear:
+every next-gen arch ships substantial structural additions, not
+thin metadata deltas.
+
+**Phase 3 split** (per new §9.3.0):
+
+- **Phase 3-attn (CLOSING).** Pure-attention bridges: Gemma3 ✅,
+  Qwen2.5 ✅, Qwen3 base (transitive ✅ from PARITY). Umbrella
+  `lat-phase-3-attn-closed` fires next; unblocks Phase 4 +
+  Phase 4-MTP without waiting on structural-delta sub-phases.
+- **Phase 3-SSM** (deferred, Qwen3.5 Mamba-hybrid).
+- **Phase 3-G4** (deferred, Gemma4 per-layer embedding + dual
+  HD + softcap).
+- **Phase 3-MoE** (deferred, Qwen3.6 — pre-inspect GGUF before
+  scoping).
+- **Phase 3-FP8** (aspirational, DeepSeek-V4).
+
+**Pre-inspection discipline (binding):** every next-gen arch
+sub-phase MUST start with a GGUF metadata + tensor-name-list
+dump against the target fixture before any bridge code is
+written. The roadmap's family-lineage descriptions are not
+authoritative — only the GGUF is.
+
+§2 phase table updated to reflect the split. §9.3.0 captures
+the new sub-phase definitions. The legacy §9.3 "thin-deltas
+matrix" is kept for historical reference but marked superseded.
 
 
 ---
