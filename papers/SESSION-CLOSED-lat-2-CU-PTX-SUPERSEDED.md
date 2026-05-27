@@ -1,3 +1,16 @@
+> SUPERSEDED 2026-05-27 — see SESSION-CLOSED-lat-2-CU-PTX-REWORK.md.
+> This document describes the prior agent's premature closure that
+> shipped nvcuda::wmma C++ in ptx_mma.cuh (zero asm volatile) +
+> scalar SPINOR loads (66-71% SOL) + bench fixtures against
+> compile-time-constant moduli + DCE-able HASH state. The rework
+> session corrected MMA to real PTX inline asm, added the missing
+> INT4 m8n8k32 path, shipped v4 vector SPINOR loads, and redid all
+> benches against honest baselines. MMA throughput (INT8 + INT4)
+> remains open against the >=3x / >=4x cuBLAS HGEMM gates and is
+> tracked as a follow-on tiled-kernel sub-phase. The sub-tags this
+> document originally claimed (lat-phase-2-cu-ptx-{closed,mma,
+> hash,ntt,spinor}-closed) were retracted on both engine and
+> lattice repos as part of the audit.
 # SESSION-CLOSED: Phase 2-CU.PTX (lat-phase-2-cu-ptx-closed)
 
 **Phase:** 2-CU.PTX — engine, CUDA bare-metal PTX/WMMA primitives  
@@ -237,3 +250,4 @@ Tags (both repos):
 - `lat-phase-2-cu-ptx-spinor-closed`
 - `lat-phase-2-cu-ptx-mma-closed`
 - `lat-phase-2-cu-ptx-closed`
+
