@@ -3091,6 +3091,126 @@ forward pass for Q8 workloads. Composes with §17.1 SPINOR
 (K-cache reads) and §17.2 NTT (poly-ring attention) for a
 fully PTX-native discrete-kernel forward path.
 
+**M_PTX_MMA gate split (amended 2026-05-27 after rework
+audit).** A single `mma.sync.aligned` instruction is an
+*instruction-level* primitive; a *competitive matmul kernel*
+needs cp.async double-buffering, shared-memory operand
+staging, multi-warp scheduling, and register-file
+optimization on top. The rework session shipped the
+instruction layer at bit-identity correctness but the
+naive single-instruction-per-thread kernel benches at 0.1×
+cuBLAS HGEMM (RTX 2060 sm_75) — exactly the artifact you'd
+expect from an un-tiled wrapper. Gate split:
+
+- **M_PTX_MMA_correctness** (CLOSED via rework session).
+  PTX `mma.sync.aligned.m8n8k16.row.col.s32.s8.s8.s32`
+  (INT8) + `mma.sync.aligned.m8n8k32.row.col.s32.s4.s4.s32`
+  (INT4) emit verified via `cuobjdump -sass` (HMMA.16816.S8
+  / HMMA.16832.S4). Bit-identity vs math-core scalar
+  reference: byte-exact across TestA/B/C/D fixtures.
+- **M_PTX_MMA_throughput** (OPEN — tracked in §17.3.TILE
+  follow-on, below). ≥3× cuBLAS HGEMM on Q8, ≥4× cuBLAS
+  HGEMM on Q4, measured on prefill-shape GEMM (M, N, K all
+  ≥ 64) — decode-shape GEMV is out of scope for this gate
+  (Tensor Cores don't help N=1 dispatch).
+
+### 17.3.TILE Phase 2-CU.PTX.MMA.TILE — competitive tiled-kernel follow-on
+
+**Why this is its own sub-phase.** §17.3 instruction layer
+proved the primitive ("the silicon can do this; the PTX
+emits cleanly; bit-identity holds"); §17.3.TILE proves the
+kernel wraps the primitive at scale ("compiled into a real
+matmul on a real arena, it actually beats the fp16 baseline
+by the spec'd factor"). Two stacked gates — same pattern
+as §18.4 TERNLOG (correctness vs throughput split). This
+is not deferred; it is staged.
+
+**Mandated kernel structure:**
+
+- **cp.async double-buffering** on sm_80+ (Ampere RTX 30xx
+  / 40xx hosts): `cp.async.cg.shared.global` issues the
+  N+1-tile load while the N-tile compute runs against
+  smem. Two-stage smem buffer with `cp.async.commit_group`
+  / `cp.async.wait_group` barriers. On sm_75 (RTX 2060 dev
+  host): fall back to `ld.global.cg` + manual two-stage
+  smem with `cp.async`-shaped barriers (compiles to NOP
+  prefetch; bit-identity preserved).
+- **Shared-memory operand staging.** A/B fragments loaded
+  into smem in row-major layout (matching the .sp-model
+  arena byte order from Fix B aliasing), then warp-scoped
+  fragment loads (`ldmatrix.sync.aligned.m8n8.x4` on sm_80+,
+  manual lane-thread mapping on sm_75) into the mma.sync
+  input registers.
+- **Multi-warp tile size.** 64×64 output tile per
+  thread-block (4×4 grid of 8×8 mma.sync ops per warp,
+  4 warps per block = 16×16 over 4×4 = 64×64 covered).
+  Per-row Frobenius scale applied at the epilogue using
+  cooperative thread-block reduction (one fp32 scale per
+  output row, broadcast across the row's threads).
+- **Register-file budget.** Each warp owns 4×4 = 16
+  s32 fragment accumulators (2 regs each = 32 regs) + 8
+  A/B operand regs + addressing. Stay under 64 regs per
+  thread to keep occupancy ≥ 2 warps per SM on sm_75
+  (Turing has 65536 regs / SM; 64 regs × 32 threads ×
+  32 warps = 65536 → tight but achievable). Document the
+  occupancy at `cuobjdump -res-usage`.
+
+**M_PTX_MMA_TILE_1** (correctness): bit-identity vs the
+single-instruction reference path AND vs math-core scalar.
+Three-way byte-exact across prefill-shape sweeps:
+  (M, N, K) ∈ {(64, 64, 64), (256, 256, 256), (1024, 1024, 1024),
+  (3072, 3072, 8192) — Qwen3-0.6B FFN shape}.
+
+**M_PTX_MMA_TILE_2** (throughput):
+- INT8 (Q8 arena): ≥ 3× cuBLAS HGEMM on (3072, 3072, 8192)
+  workload, measured with `ncu --metrics sm__inst_executed_pipe_tensor.sum`
+  for tensor-core utilization AND wall-clock end-to-end.
+  Comparison must be against the same shape; report both
+  wall-clock and `tensor.sum` SOL percentage.
+- INT4 (Q4 arena): ≥ 4× cuBLAS HGEMM on same workload.
+  HMMA.16832.S4 has 2× the math density of HMMA.16816.S8;
+  the ≥4× factor is 2× from data type × ~2× from packed-
+  nibble bandwidth recovery.
+
+**M_PTX_MMA_TILE_3** (memory honesty): zero `cudaMalloc` on
+hot path; A/B/C all alias the mmap'd .sp-model arena via
+Fix B (memory: `reference-zero-copy-invariant`). The smem
+staging buffer is the only `__shared__` allocation.
+
+**M_PTX_MMA_TILE_4** (per-session isolation): kernel
+launches on per-session CUDA stream; no `cudaDeviceSync`
+that crosses sessions.
+
+**Reference fixture template:** `C:\Projects\New folder (2)\
+BenchmarkCustomPTX-main\benchmark.cu` (per §17.9 canonical
+reference table). Tiling pattern reference: see CUTLASS
+3.x `gemm/threadblock/default_mma_core_sm75.h` for
+sm_75-targeted layouts (read-only; do not copy — re-derive
+in lattice idiom with Frobenius-scale epilogue).
+
+**Anti-patterns to catch in review (specific to this
+sub-phase):**
+- Calling `cublasGemmEx` to do INT8 IMMA "for comparison"
+  and reporting the cuBLAS-INT8 number as if it were the
+  lattice's kernel. The lattice mandate is hand-written
+  PTX, not cuBLAS dispatch.
+- Replacing `mma.sync.aligned` with `nvcuda::wmma::fragment`
+  C++ template API "because tiling is easier in C++" —
+  the same retreat caught in the prior rework. The whole
+  point is to wield the silicon directly.
+- Tuning bench shapes (M, N, K) until a 3× number falls
+  out, rather than against the workload-realistic
+  (3072, 3072, 8192) Qwen3-0.6B FFN shape. Memory:
+  `feedback-no-silent-gate-revisions` applies in full
+  force here.
+
+Sub-tag `lat-phase-2-cu-ptx-mma-tile-int8-closed` after
+M_PTX_MMA_TILE_1 + _2 (INT8) + _3 + _4 close on
+(3072, 3072, 8192) workload.
+Sub-tag `lat-phase-2-cu-ptx-mma-tile-int4-closed` after
+the INT4 equivalent closes.
+Only then does umbrella `lat-phase-2-cu-ptx-closed` fire.
+
 ### 17.4 Phase 2-CU.PTX.HASH — KSTE / sieve hash primitives
 
 PTX-exclusive with no C++ equivalent:
@@ -4260,6 +4380,82 @@ upstream with the empirical finding BEFORE landing a revised
 gate as PASS. Closure notes cite the amended gate number,
 not the original. Bench fixtures may not be tuned until a
 number passes.
+
+### 2026-05-27 — PTX rework partial closure + AVX completion + tag retraction
+
+**Rework session result.** The corrective sub-prompts ran to
+the discipline `feedback-no-silent-gate-revisions` mandates:
+gaps surfaced upstream, sub-tags withheld where gates were
+unmet.
+
+PTX (engine 9c8e7b6, closure note
+`SESSION-CLOSED-lat-2-CU-PTX-REWORK.md`):
+- ptx_mma.cuh rewritten — 3 `asm volatile` blocks, 0
+  `nvcuda::wmma` references in code. INT8 m8n8k16 + INT4
+  m8n8k32 both shipped (INT4 was never attempted prior).
+- ptx_spinor.cuh `sp_spinor_warpload4` with
+  `ld.global.cs.v4.u32` + `ld.global.cg.v4.u32`; SPINOR
+  85% SOL gate met.
+- ptx_bench.cu redone with runtime-q kernel parameter
+  (forces software division — defeats nvcc compile-time
+  auto-Barrett), `asm volatile xor.b32` sequential dep
+  chain for HASH baseline (no DCE), cuBLAS HGEMM as MMA
+  baseline.
+- Status: REWORK PARTIAL. M_PTX_1 (correctness) PASS;
+  M_PTX_MMA_correctness PASS (instruction emission +
+  bit-identity); M_PTX_MMA_throughput OPEN at 0.1× cuBLAS
+  HGEMM — single-instruction-per-thread wrapper is not
+  a competitive matmul; tiled-kernel follow-on §17.3.TILE
+  opened to close the gate.
+- HASH M_PTX_2 throughput called "architecturally
+  unmeasurable on sm_75" (Turing — needs sm_80+ for
+  larger lop3 chains to overcome the compiler-baseline).
+- Sub-tags shipped: `lat-phase-2-cu-ptx-spinor-v4`,
+  `lat-phase-2-cu-ptx-bench-redo`. Umbrella
+  `lat-phase-2-cu-ptx-closed` NOT fired (correct).
+
+AVX (engine b21ab43, closure note relocated to
+`papers/SESSION-CLOSED-lat-2-CPU-AVX.md`):
+- M_AVX_3_PARITY PASS — NT(32MB) / cached(32MB) wall-clock
+  ratio median 0.974 across 11 trials pinned core-0.
+- M_AVX_3_SPINOR PASS — zero sentinel misses across 32MB
+  Spinor-slot stream.
+- M_AVX_PERSIST_1 PASS — 39.4 ns median wakeup on spin
+  path (M_AVX_PERSIST_2 SKIP — host i9-11900KB is Rocket
+  Lake and dropped WAITPKG vs the mobile Tiger Lake SKUs
+  the §18.5 spec assumed; UMONITOR/UMWAIT path is in the
+  binary but unexecuted; this is a host capability finding,
+  not a deferral).
+- T_ZEN4_DISPATCH_1/2/3 PASS — CPUID-mock harness exercises
+  the IFMA-absent + WAITPKG-absent fallback paths on
+  Beast Canyon silicon; three-way bit-identity (IFMA path,
+  Zen4-mock fallback, math-core scalar reference) byte-exact
+  across N=512.
+- Gates inherited the formally-amended §18.3 IFMA ≥2× +
+  §18.4 TERNLOG correctness-split as canonical.
+
+**Tag retraction.** The prior PTX agent's premature closure
+left 5 broken tags on each repo pointing at a defective
+implementation (engine: pointing at the wmma-only commits;
+lattice: pointing at plan/scaffold commits). Retracted on
+both engine + lattice origins:
+`lat-phase-2-cu-ptx-{closed,mma-closed,hash-closed,
+ntt-closed,spinor-closed}`. The AVX umbrella was repointed
+from the original-closure commit to the actual completion
+commit (engine b21ab43, lattice f5b5fa5). The original PTX
+closure note renamed to
+`SESSION-CLOSED-lat-2-CU-PTX-SUPERSEDED.md` with a banner
+pointing at the REWORK note as the live state — audit
+trail preserved, not erased.
+
+**§17.3 gate split formalized** above as
+M_PTX_MMA_correctness (closed) + M_PTX_MMA_throughput
+(open as §17.3.TILE follow-on). The follow-on sub-phase
+mandates cp.async double-buffering, smem operand staging,
+64×64 multi-warp tiling, register-file budget under 64
+regs/thread on sm_75, with sub-tags
+`lat-phase-2-cu-ptx-mma-tile-{int8,int4}-closed` before
+the §17 umbrella `lat-phase-2-cu-ptx-closed` fires.
 
 
 ---
