@@ -2,7 +2,7 @@
 
 **Date:** 2026-05-27
 **Tag:** lat-phase-5-pouw-state
-**Status:** STATE — M_POUW_1 VERIFIED (C layer); M_POUW_2/M_POUW_3 PENDING
+**Status:** STATE — M_POUW_1 VERIFIED (C layer); M_POUW_2 SOURCE DONE (hardware gate pending); M_POUW_3 PENDING
 
 ---
 
@@ -54,7 +54,7 @@ The 64-byte ed25519 signature accompanies the receipt in the stored
 |-----------|----------------------------------------------------------|------------------|
 | M_POUW_1  | Sieve correctness: known-dominating sequence found, event emitted, seq_hash verifies | **VERIFIED (C layer)** |
 | M_POUW_1  | ed25519 signature verifies against node pubkey (daemon) | PENDING (daemon runs; no live model for end-to-end test) |
-| M_POUW_2  | AVX-512 ternlog bench ≥5× over scalar sieve             | PENDING (AVX-512 masked by VBS on this host) |
+| M_POUW_2  | AVX-512 ternlog bench ≥5× over scalar sieve             | SOURCE DONE — `bench_sieve_hw.c` + `M_POUW_2` CTest registered; LIVE run blocked by VBS |
 | M_POUW_3  | TTFT degradation ≤5% under concurrent mining            | PENDING (requires live model + load test) |
 
 ---
@@ -120,10 +120,21 @@ Blocked by: no model is loaded in the test environment.
 
 ## What Is NOT Done
 
-- `bench_sieve_hw.c` (M_POUW_2 bench for AVX-512 ternlog vs scalar)
-- `sp_sieve_hash_ptx` PTX wrapper in `ptx_hash.cuh` (GPU sieve hash)
 - End-to-end ed25519 verify test (requires daemon startup + model)
 - Integration of KSTE-of-actual-KV-cache candidates (§16.5 TS.INTEGRATE-KSTE)
+
+### Completed since initial STATE
+
+`bench_sieve_hw.c` (`tests/` in engine, commit 159a8e1):
+- Registered as CTest `M_POUW_2` under `SP_ENGINE_WITH_AVX512`
+- DISABLED path: prints `REQUIRES_LIVE_MODE` and exits 0 when AVX-512F absent
+- LIVE path: benchmarks `sp_avx512_ternlog_kste_round` vs `sp_sieve_evaluate`, gate ≥5×
+- Links `sp_engine` + `sp_sieve`; `cargo build --release` clean (sp_sieve.lib resolves)
+
+`sp_sieve_hash_ptx` (`src/backends/cuda/ptx_hash.cuh`, commit 159a8e1):
+- GPU analog of `sp_avx512_ternlog_kste_round` (§18.4, imm8=0x96)
+- One lane of the 16-wide XOR3 KSTE mixing step via `ptx_xor3`
+- Caller supplies values from positions `lane`, `(lane+1)%16`, `(lane+5)%16`
 
 ---
 
