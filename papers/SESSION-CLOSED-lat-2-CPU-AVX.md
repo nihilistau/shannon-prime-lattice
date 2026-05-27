@@ -68,7 +68,7 @@ Working-set sweep (TGL-B L3=24MB):
     32MB          21.45          23.66
 
 M_AVX_3_PARITY stability (11 trials at 32MB):
-  Sorted ratios: 0.910, 0.943, 0.943, 0.958, 0.960, 0.974, 1.060, 1.073, 1.101, 1.133, 1.136
+  Sorted ratios: 0.910, 0.943, 0.943, 0.958, 0.961, 0.974, 1.060, 1.073, 1.104, 1.133, 1.136
   Median = 0.974  [need>=0.95]  PASS
 
 M_AVX_3_SPINOR: tput=18.42 GB/s  sentinel_misses=0  [need=0]  PASS
