@@ -3401,7 +3401,18 @@ assumed):
 - **Zen 4 AMD** (Ryzen 7950X): AVX-512F + VNNI yes; **IFMA
   NO**, **WAITPKG NO**. §18.3 IFMA path needs fallback.
 - **aarch64** (S22 Ultra, Apple Silicon): no AVX. Future
-  §18.NEON sub-phase; not in this phase's scope.
+  §18.NEON sub-phase; not in this phase's scope. **Reference
+  for future §18.NEON (staged 2026-05-27):**
+  `C:\Projects\New folder (2)\arm-cpusysregs-main\` — AArch64
+  system-register access, PAC (pointer authentication),
+  QARMA64 cipher, CPU feature collection per platform
+  (Linux hwcaps, macOS sysctl, custom userfeatures). The
+  `apps/armfeatures.h` (~70 KB header) is a comprehensive
+  feature-detection reference; `aarch/partial_regview.cpp`
+  + `apps/sysregs.cpp` show platform-specific dispatch.
+  Mandated reading when §18.NEON opens for the S22U
+  application-processor side (NEON FP16 + dotprod + i8mm
+  intrinsics path).
 
 ### 18.1 Phase 2-CPU.AVX.SPINOR — ZMM Spinor window load
 
@@ -3953,6 +3964,20 @@ audit found no runtime caller; `sp_transcode` handles raw GGUF
 offline. The transcoder's own peak-RAM during pack tracked as a
 sp_transcode-internal fix (not L1 ABI). Tags
 `lat-phase-3-zero-copy-closed` on all three repos.
+
+**Reference for any future Windows-mmap rework (staged
+2026-05-27):** `C:\Projects\New folder (2)\win-memory-map-master\`
+— small C++ wrapper around `CreateFileMapping` /
+`MapViewOfFile` / `UnmapViewOfFile` showing the canonical
+Windows mmap idiom with proper handle lifecycle, error
+codes, and `SEC_LARGE_PAGES` flag usage. Reference target
+when the .sp-model loader's Windows path needs to be
+audited or extended (e.g. large-page Fix B aliasing for
+multi-GB models, or named-mapping cross-process sharing
+for the L3 daemon's session model handles). Not load-bearing
+now (current loader already works with default-page mmap);
+file the reference here so a future maintainer doesn't
+re-derive the API surface from scratch.
 
 ### 2026-05-26 — Phase 2-L3.CORE shipped (`lat-phase-2-l3-core-closed`)
 
