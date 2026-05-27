@@ -3524,6 +3524,27 @@ effectively a userspace OS on the pinned core.
 `_mm_pause()` on the queue head. Higher idle power; same
 wake latency.
 
+**Windows + Hyper-V VBS host caveat (added 2026-05-27).**
+WAITPKG silicon presence is necessary but not sufficient.
+On Tiger Lake / Ice Lake / Sapphire Rapids hosts running
+Windows 11 with Virtualization-Based Security enabled
+(default for many OEM installs), the Hyper-V root partition
+masks WAITPKG out of guest CPUID *and* clears VMCS
+Secondary Processor-Based VM-Execution Control bit 26
+("Enable USER WAIT and PAUSE"). Executing UMONITOR /
+UMWAIT / TPAUSE in the root partition raises #UD regardless
+of CPUID — the mask is silicon-enforced, not advisory. The
+runtime dispatcher must check the OS-visible CPUID
+(`g_avx512_caps.has_waitpkg`) and fall back to spin when
+masked; attempting the instruction "anyway" crashes the
+process. Detection-time hints: `IsHypervisorPresent()` is
+true under VBS, and CPUID leaf 0x40000000 vendor string
+reads "Microsoft Hv". Memory entry
+`reference-hyperv-cpuid-masking` documents the broader
+class of features affected (WAITPKG, certain PCONFIG
+sub-leaves, SGX_LC) and the bcdedit hypervisorlaunchtype=off
+workaround (with VBS/HVCI/WSL2 cost tradeoff).
+
 Optional sub-phase — gated on observing real OS jitter as
 the bottleneck in sustained Phase 4-SPEC / Phase 5 mining
 workloads. Lands if needed.
@@ -4421,11 +4442,22 @@ AVX (engine b21ab43, closure note relocated to
 - M_AVX_3_SPINOR PASS — zero sentinel misses across 32MB
   Spinor-slot stream.
 - M_AVX_PERSIST_1 PASS — 39.4 ns median wakeup on spin
-  path (M_AVX_PERSIST_2 SKIP — host i9-11900KB is Rocket
-  Lake and dropped WAITPKG vs the mobile Tiger Lake SKUs
-  the §18.5 spec assumed; UMONITOR/UMWAIT path is in the
-  binary but unexecuted; this is a host capability finding,
-  not a deferral).
+  path (M_AVX_PERSIST_2 SKIP — corrected framing 2026-05-27:
+  the i9-11900KB IS Tiger Lake-B silicon, Family 6 Model
+  141 Stepping 1 (Willow Cove core, 10nm SuperFin), and
+  WAITPKG IS present in silicon. CPUID.7.0.ECX[5]=0 reads
+  because the host runs in the Hyper-V root partition
+  (VirtualizationBasedSecurityStatus=2, hypervisorlaunchtype
+  =Auto), and Hyper-V both masks WAITPKG from guest CPUID
+  and clears VMCS Secondary Processor-Based VM-Execution
+  Control bit 26 — executing UMONITOR raises #UD. Runtime
+  dispatch correctly falls back to spin; UMONITOR/UMWAIT
+  path compiled into binary, gated on guest CPUID. This is
+  a host-configuration finding, not silicon absence or
+  branding inconsistency. Memory entry
+  `reference-hyperv-cpuid-masking` documents the broader
+  pattern + §18.5 PERSIST spec amended with the Hyper-V
+  caveat).
 - T_ZEN4_DISPATCH_1/2/3 PASS — CPUID-mock harness exercises
   the IFMA-absent + WAITPKG-absent fallback paths on
   Beast Canyon silicon; three-way bit-identity (IFMA path,

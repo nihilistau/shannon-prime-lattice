@@ -21,8 +21,25 @@
 | T_ZEN4_DISPATCH_2  | Zen4-mocked path == scalar reference (byte-exact, N=512)           | PASS   |
 | T_ZEN4_DISPATCH_3  | Three-way bit-identity: IFMA == Zen4-mock == scalar                | PASS   |
 
-M_AVX_PERSIST_2 SKIP is correct: WAITPKG absent on i9-11900KB (CPUID.7.0.ECX[5]=0);
-spin fallback is expected to busy-wait; idle-cycle gate applies only to UMWAIT path.
+M_AVX_PERSIST_2 SKIP — corrected framing 2026-05-27. The i9-11900KB IS Tiger Lake-B
+silicon (Family 6 Model 141 Stepping 1, Willow Cove core, 10nm SuperFin) and DOES
+support WAITPKG natively per the Intel SDM. The CPUID.7.0.ECX[5]=0 reading reflects
+the host's hypervisor layer masking the feature, not silicon absence:
+
+  VirtualizationBasedSecurityStatus = 2   (VBS running)
+  Microsoft-Hyper-V-All             = Enabled
+  HypervisorPresent                 = True
+  hypervisorlaunchtype              = Auto
+
+Windows boots inside the Hyper-V root partition; the Hyper-V VMM does not expose
+WAITPKG to the guest by default, so userland sees CPUID.7.0.ECX[5]=0 even though
+the silicon supports the instructions. UMONITOR/UMWAIT opcodes are compiled into
+the binary (objdump confirms emission); execution gates on guest CPUID, which
+correctly falls back to _mm_pause spin. Spin path measured 39.4ns median wakeup
+(M_AVX_PERSIST_1 PASS). M_AVX_PERSIST_2 (idle-cycle gate) requires either a
+bare-metal boot (bcdedit /set hypervisorlaunchtype off + reboot, sacrificing VBS)
+or a non-Hyper-V host to actually exercise the UMWAIT path. See memory entry
+reference-hyperv-cpuid-masking for the broader class of features affected.
 
 ## Amended Gate Definitions (§18.3 + §18.4)
 
@@ -87,8 +104,15 @@ throughput parity is the primary gate.
 
 ## §18.5 PERSIST Results (UMONITOR/UMWAIT)
 
-Hardware: i9-11900KB (TGL-B). CPUID.7.0.ECX[5]=0 — WAITPKG absent on this SKU
-despite Tiger Lake B branding (Intel selectively enables per product segment).
+Hardware: i9-11900KB (Tiger Lake-B silicon, Family 6 Model 141 Stepping 1, Willow
+Cove core, 10nm SuperFin). The CPUID.7.0.ECX[5]=0 reading is a Hyper-V root-partition
+masking artifact, not silicon absence — the host runs with VBS enabled
+(VirtualizationBasedSecurityStatus=2, hypervisorlaunchtype=Auto), and the Hyper-V
+VMM hides WAITPKG from guest CPUID. Silicon supports the instructions; the OS
+cannot see them under the current boot configuration. To actually exercise the
+UMWAIT path: bcdedit /set hypervisorlaunchtype off + reboot (loses VBS/HVCI/Hyper-V
+containers), or validate on a non-Hyper-V Linux boot. See memory:
+reference-hyperv-cpuid-masking.
 
 ```
 TSC: 3.302 GHz
@@ -147,8 +171,12 @@ sentinel page).
 
 - IFMA SKIP on Zen 4 (no AVX-512IFMA): scalar `modmul` fallback; T_ZEN4_DISPATCH_1/2/3
   confirm byte-exact parity between IFMA, mocked-Zen4, and independent scalar reference.
-- WAITPKG absent on i9-11900KB (CPUID.7.0.ECX[5]=0): spin fallback active; WAITPKG path
-  compile-verified via `__attribute__((target("waitpkg")))`.
+- WAITPKG silicon present on i9-11900KB (Tiger Lake-B, Family 6 Model 141) but
+  CPUID.7.0.ECX[5]=0 in the OS — masked by Hyper-V VBS root partition (Status=2,
+  hypervisorlaunchtype=Auto). UMONITOR/UMWAIT compiled into binary; runtime
+  dispatch correctly falls back to spin per guest CPUID. To exercise the WAITPKG
+  path: disable VBS (bcdedit /set hypervisorlaunchtype off + reboot) or use a
+  non-Hyper-V host. See memory: reference-hyperv-cpuid-masking.
 - M_AVX_3 WB-memory finding: `vmovntdqa` on WB memory is implementation-defined on Intel
   (SDM §10.4.6.2); DRAM-bound throughput convergence is the expected and documented gate.
 - M_AVX_3 PMC: L1-miss-rate requires elevated wpr + custom .wprp; access limitation documented.
