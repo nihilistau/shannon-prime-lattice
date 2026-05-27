@@ -3183,10 +3183,20 @@ that crosses sessions.
 
 **Reference fixture template:** `C:\Projects\New folder (2)\
 BenchmarkCustomPTX-main\benchmark.cu` (per §17.9 canonical
-reference table). Tiling pattern reference: see CUTLASS
+reference table — bench-harness layer).
+
+**Mandatory PTX-style references (added 2026-05-27).** The
+tile agent MUST open and cite specific patterns from:
+- `C:\Projects\New folder (2)\DeepEP-main\DeepEP-main\deep_ep\include\deep_ep\common\ptx.cuh` — `__forceinline__ __device__` wrapper style for cp.async + mbarrier + elect.sync. Mirror this skeleton for the lattice's cp.async + mbarrier orchestration.
+- `C:\Projects\New folder (2)\DeepEP-main\DeepEP-main\csrc\kernels\legacy\utils.cuh` — `LD_NC_FUNC` macro pattern (`ld.global.nc.L1::no_allocate.L2::256B` → `LDG.E.NA.CONSTANT` SASS) is the canonical "keep weights out of L1" reference for Q8/Q4 arena reads that are streaming-only (each weight byte read once per matmul, never reused within the same kernel). The MMA tile kernel's weight-side load MUST use this idiom; the activation-side load uses `ld.global.cg` for L1 caching since activations ARE reused.
+- `C:\Projects\New folder (2)\DeepEP-main\DeepEP-main\csrc\kernels\legacy\internode.cu` / `intranode.cu` — production usage of the PTX wrappers in real all-to-all dispatch kernels. Read the smem-staging + mbarrier-wait + payload-compute composition; substitute mma.sync for the all-to-all transfer payload to get the lattice's tiled matmul skeleton.
+
+Shape reference (NOT style — DeepEP owns style): CUTLASS
 3.x `gemm/threadblock/default_mma_core_sm75.h` for
-sm_75-targeted layouts (read-only; do not copy — re-derive
-in lattice idiom with Frobenius-scale epilogue).
+sm_75-targeted warp tile layouts, `gemm/warp/mma_tensor_op_sm75.h`
+for warp-fragment loading via ldmatrix. Read-only; do not
+copy — re-derive in lattice idiom with Frobenius-scale
+epilogue.
 
 **Anti-patterns to catch in review (specific to this
 sub-phase):**
@@ -3317,19 +3327,39 @@ cite in the closure note. Do NOT copy — re-derive in lattice
 idiom — but DO read the patterns + cite specific files for
 traceability.
 
+**Primary PTX-style references (added 2026-05-27 for the
+§17.3.TILE follow-on and any future PTX-heavy work).**
+DeepSeek's DeepEP repo is production-grade hand-written PTX
+at the scale we're targeting: 38 `asm volatile` blocks in
+`ptx.cuh`, 55 in `kernels/legacy/utils.cuh`, with full
+cp.async + mbarrier + fence + cache-modifier discipline.
+This is the right *style* reference for hand-written PTX
+wrappers and cp.async/smem staging. CUTLASS 3.x remains
+relevant for *shape* references (warp tile layouts,
+fragment-loading via ldmatrix) but hides everything behind
+C++ templates — DeepEP keeps `asm volatile` visible, which
+matches the lattice's "wield the silicon directly" mandate.
+
 | Reference | Host path | Use for |
 |---|---|---|
-| **BenchmarkCustomPTX** | `C:\Projects\New folder (2)\BenchmarkCustomPTX-main\benchmark.cu` | Canonical template for any PTX benchmark. Shows `asm volatile` block structure, cycle-accurate timing, SASS-inspection workflow. Phase 2-CU.PTX SPINOR/NTT/HASH/MMA bench fixtures MUST follow this pattern, not invented oscillating-N-grid schemes. |
-| **TailSlayer hedged_reader** | `C:\Projects\New folder (2)\tailslayer-main\include\tailslayer\hedged_reader.hpp` | Cache-modifier discipline + hedge-read primitive. Reference for `ld.global.cs` / `ld.global.cg` / `ld.global.nc` selection — how to keep L1 from evicting hot state, when to bypass L2 for streaming. |
-| **TailSlayer probe** | `C:\Projects\New folder (2)\tailslayer-main\discovery\trefi_probe.c` | GF(2)-linear channel-select recovery via TREFI-aware probing. Same algebraic dialect as the lattice's CRT residues — useful frame for SPINOR streaming-load decisions. |
-| **TailSlayer benchmark scaffold** | `C:\Projects\New folder (2)\tailslayer-main\discovery\benchmark\` | Reference fixture infrastructure (`app_config.cpp`, `benchmark.cpp`, `hw_utils.hpp`, `main.cpp`, `stats.cpp`). Shows the level of rigour the Phase 2-CU.PTX SPINOR bench should have followed — proper baseline isolation, hot/cold state control, percentile reporting. |
-| **BinderIPC** | `C:\Projects\New folder (2)\BinderIPC-main\source\*\native-lib.cpp` | Android binder/JNI patterns. Reference for cross-process state-pinning idioms relevant to PERSIST (§17.5) persistent-kernel session lifetime. |
+| **DeepEP ptx.cuh** | `C:\Projects\New folder (2)\DeepEP-main\DeepEP-main\deep_ep\include\deep_ep\common\ptx.cuh` | Canonical PTX inline-asm wrapper style. 38 `asm volatile` blocks: TMA + cp.async + mbarrier (init/inval/arrive/wait/expect_tx) + elect.sync + lane/warp identity. `__forceinline__ __device__` wrapper discipline + `#ifndef DISABLE_SM90_FEATURES` fallback pattern (direct analogue of our sm_75 vs sm_80+ split). The MMA tile agent MUST mirror this wrapper style for cp.async + mbarrier orchestration. |
+| **DeepEP utils.cuh** | `C:\Projects\New folder (2)\DeepEP-main\DeepEP-main\csrc\kernels\legacy\utils.cuh` | Production cache-modifier + barrier patterns at scale. Defines `LD_NC_FUNC` macro `"ld.global.nc.L1::no_allocate.L2::256B"` — translates to `LDG.E.NA.[width].CONSTANT` SASS, the "tell L1 not to evict by not loading it there" pattern. Shows `cp.async.bulk.shared::cluster.global.mbarrier::complete_tx::bytes.L2::cache_hint` (Hopper) + `cp.async.bulk.commit_group` + `cp.async.bulk.wait_group` patterns. Translates down to sm_80 `cp.async.cg.shared.global` for our work. |
+| **DeepEP internode + intranode kernels** | `C:\Projects\New folder (2)\DeepEP-main\DeepEP-main\csrc\kernels\legacy\{internode.cu, intranode.cu, internode_ll.cu}` | Production usage of the PTX wrappers in real all-to-all dispatch/combine kernels — see how smem staging + mbarrier sync + warp-tile coordination compose end-to-end. The lattice's tiled MMA kernel structure follows the same skeleton (load-tile via cp.async → mbarrier wait → compute via mma.sync → epilogue → repeat) with mma.sync substituted in place of the all-to-all transfer payload. |
+| **BenchmarkCustomPTX** | `C:\Projects\New folder (2)\BenchmarkCustomPTX-main\benchmark.cu` | Bench-harness template: warm-up discard, repeat counts, cycle-accurate timing, SASS-inspection workflow. Use for the *measurement* layer, not the kernel-style layer (DeepEP owns that now). |
+| **TailSlayer hedged_reader** | `C:\Projects\New folder (2)\tailslayer-main\include\tailslayer\hedged_reader.hpp` | Cache-modifier discipline + hedge-read primitive. Reference for `ld.global.cs` / `ld.global.cg` / `ld.global.nc` selection at the application level — DeepEP shows the same primitives at the kernel level. |
+| **TailSlayer probe** | `C:\Projects\New folder (2)\tailslayer-main\discovery\trefi_probe.c` | GF(2)-linear channel-select recovery via TREFI-aware probing. Same algebraic dialect as the lattice's CRT residues. |
+| **TailSlayer benchmark scaffold** | `C:\Projects\New folder (2)\tailslayer-main\discovery\benchmark\` | Fixture rigour reference for hot/cold L1 state control, percentile reporting, hardware-event correlation. |
+| **BinderIPC** | `C:\Projects\New folder (2)\BinderIPC-main\source\*\native-lib.cpp` | Cross-process state-pinning patterns relevant to §17.5 PERSIST persistent-kernel session lifetime. |
 
 The corrective MMA / SPINOR / NTT / HASH rework agent MUST
 open `BenchmarkCustomPTX-main\benchmark.cu` before
-redesigning bench fixtures and explain in the closure note
-how the redesigned fixtures match the BenchmarkCustomPTX
-rigour pattern.
+redesigning bench fixtures.
+
+The §17.3.TILE follow-on agent MUST open DeepEP's
+`ptx.cuh` AND `utils.cuh` BEFORE drafting the tiled
+kernel, and cite the specific patterns (cp.async wrapper
+style, mbarrier orchestration, `LD_NC_FUNC` macro
+analogue) the lattice's kernel mirrors.
 
 
 ## 18. Phase 2-CPU.AVX — bare-metal x86 AVX-512 intrinsics for discrete algebra
