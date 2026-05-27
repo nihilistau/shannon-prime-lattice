@@ -3190,6 +3190,27 @@ PTX ISA docs. The closed math-core Q8 / NTT / Spinor
 primitives are the algebraic ground truth; PTX is a faster
 execution of the same math.
 
+### 17.9 Canonical reference code (read before writing PTX)
+
+Read-only reference implementations the agent MUST open and
+cite in the closure note. Do NOT copy — re-derive in lattice
+idiom — but DO read the patterns + cite specific files for
+traceability.
+
+| Reference | Host path | Use for |
+|---|---|---|
+| **BenchmarkCustomPTX** | `C:\Projects\New folder (2)\BenchmarkCustomPTX-main\benchmark.cu` | Canonical template for any PTX benchmark. Shows `asm volatile` block structure, cycle-accurate timing, SASS-inspection workflow. Phase 2-CU.PTX SPINOR/NTT/HASH/MMA bench fixtures MUST follow this pattern, not invented oscillating-N-grid schemes. |
+| **TailSlayer hedged_reader** | `C:\Projects\New folder (2)\tailslayer-main\include\tailslayer\hedged_reader.hpp` | Cache-modifier discipline + hedge-read primitive. Reference for `ld.global.cs` / `ld.global.cg` / `ld.global.nc` selection — how to keep L1 from evicting hot state, when to bypass L2 for streaming. |
+| **TailSlayer probe** | `C:\Projects\New folder (2)\tailslayer-main\discovery\trefi_probe.c` | GF(2)-linear channel-select recovery via TREFI-aware probing. Same algebraic dialect as the lattice's CRT residues — useful frame for SPINOR streaming-load decisions. |
+| **TailSlayer benchmark scaffold** | `C:\Projects\New folder (2)\tailslayer-main\discovery\benchmark\` | Reference fixture infrastructure (`app_config.cpp`, `benchmark.cpp`, `hw_utils.hpp`, `main.cpp`, `stats.cpp`). Shows the level of rigour the Phase 2-CU.PTX SPINOR bench should have followed — proper baseline isolation, hot/cold state control, percentile reporting. |
+| **BinderIPC** | `C:\Projects\New folder (2)\BinderIPC-main\source\*\native-lib.cpp` | Android binder/JNI patterns. Reference for cross-process state-pinning idioms relevant to PERSIST (§17.5) persistent-kernel session lifetime. |
+
+The corrective MMA / SPINOR / NTT / HASH rework agent MUST
+open `BenchmarkCustomPTX-main\benchmark.cu` before
+redesigning bench fixtures and explain in the closure note
+how the redesigned fixtures match the BenchmarkCustomPTX
+rigour pattern.
+
 
 ## 18. Phase 2-CPU.AVX — bare-metal x86 AVX-512 intrinsics for discrete algebra
 
@@ -3296,6 +3317,21 @@ per few cycles for the 30-bit Proth primes (`q_1 = 1073738753`,
 IFMA path) but still better than scalar. Runtime dispatch via
 `__builtin_cpu_supports("avx512ifma")`.
 
+**M_AVX_IFMA throughput gate (amended 2026-05-27).** Original
+draft assumed ≥8× over scalar baseline. Empirical finding on
+Tiger Lake-B: scalar `imulq` is ~2.8 cyc latency at the
+30-bit Proth size class, so the practical IFMA ceiling on
+this microarch is ≈2× wall-clock, not 8× (the 8× figure
+applied against a software-emulated 64×64→128 path that
+the lattice doesn't use). Gate **amended to ≥2× vs scalar
+`imulq` baseline** with `objdump -d` confirming
+`vpmadd52luq` / `vpmadd52huq` emitted. The ≥8× number is
+preserved for AMX-INT8 Sapphire Rapids+ hosts where 52-bit
+multiply over `_tile_dpbssd`-staged operands becomes
+realistic; deferred to §18.5 AMX upgrade. Justification:
+this is a microarch realism amendment, not a scope
+reduction — math identity (M_AVX_1) remains bit-exact.
+
 ### 18.4 Phase 2-CPU.AVX.TERNLOG — KSTE / sieve hash
 
 `_mm512_ternarylogic_epi32` (`vpternlogd`) is the AVX-512
@@ -3318,6 +3354,31 @@ Auxiliary instructions worth using for the sieve:
 
 Lands primitives + microbenchmark. Full sieve integration
 gated on Phase 5 close.
+
+**M_AVX_TERNLOG gate (amended 2026-05-27).** Original draft
+required throughput-multiple over scalar XOR chain.
+Empirical finding: gcc 13 `-O3 -march=native` auto-vectorises
+the scalar reference into 16 GPR XORs that hit nearly the
+same throughput, so the "multiple" headline is unstable.
+Gate split into:
+
+- **M_AVX_TERNLOG_correctness** — bit-exact identity vs scalar
+  reference across the 256-byte truth-table sweep, AND
+  `objdump -d` confirms `vpternlogd` actually emitted (not
+  `pxor` chain). This is the load-bearing gate; passes when
+  the instruction is provably in the binary.
+- **M_AVX_TERNLOG_throughput** — deferred. Re-evaluate on
+  AMX-INT8 Sapphire Rapids host where scalar reference
+  fallback is harder for the compiler to auto-vectorise
+  competitively; or measure under L1-resident packed sieve
+  state where the GPR-XOR path stalls on register pressure
+  and `vpternlogd` doesn't.
+
+Justification: this is a compiler-realism amendment. The
+sieve hash mixing on real KSTE Tier-0 signatures (sparse,
+L1-resident, register-pressured) will exercise `vpternlogd`'s
+advantage; the microbench against a contiguous-array scalar
+reference under aggressive auto-vec does not.
 
 ### 18.5 Phase 2-CPU.AVX.PERSIST — UMONITOR/UMWAIT polling
 
@@ -3431,6 +3492,40 @@ memory channel; AVX-512 NT-loads bypass the cache hierarchy
 on top of that. Two-level memory-system control: channel
 placement (TS) + cache policy (AVX-512). Stacked, not
 duplicated.
+
+### 18.9 Host policy: large-memory privilege (unblocks M_AVX_3 + §18.5)
+
+**2026-05-27.** Beast Canyon (Windows host) has been granted
+`SeLockMemoryPrivilege` via `secpol.msc` → Local Policies →
+User Rights Assignment → Lock pages in memory. Linux CI hosts
+have `vm.nr_hugepages` configured. This permission was the
+blocker for two previously-deferred items:
+
+- **M_AVX_3 cache-bypass perf gate.** With large pages
+  available, `_mm512_stream_load_si512` NT-load streams can
+  be measured for L1/L2 fill behaviour via `perf stat -e
+  L1-dcache-load-misses,L2_RQSTS.MISS` (Linux) or
+  `vtune-hotspots -k cpu-microarch` (Windows). The agent
+  MUST now run this gate; "deferred — requires perf stat
+  on Linux CI" is no longer a valid deferral.
+- **§18.5 PERSIST UMONITOR/UMWAIT.** With pinned-page
+  shared state surviving across user-mode transitions,
+  the polling persistent kernel can wait on a memory
+  address via WAITPKG (`umonitor` + `umwait`) without the
+  page being paged out. Implementation can proceed.
+
+### 18.10 Canonical reference code (read before writing AVX-512)
+
+Read-only reference implementations the AVX agent MUST open
+and cite. Same do-not-copy rule as §17.9.
+
+| Reference | Host path | Use for |
+|---|---|---|
+| **TailSlayer hedged_reader** | `C:\Projects\New folder (2)\tailslayer-main\include\tailslayer\hedged_reader.hpp` | Cache-modifier discipline — when to keep state hot in L1 vs bypass via NT-loads. Direct analogue of `ld.global.cs` vs `ld.global.nc` in PTX. AVX equivalents: `_mm512_load_epi32` (cached), `_mm512_stream_load_si512` (NT, bypass L1/L2). |
+| **TailSlayer probe** | `C:\Projects\New folder (2)\tailslayer-main\discovery\trefi_probe.c` | GF(2)-linear DRAM-controller hash recovery. Same dialect as Phase 2-CPU.AVX.VNNI Q8 Frobenius matmul (`vpdpbusd` is integer-multiply-accumulate; GF(2) probe is XOR-accumulate). |
+| **TailSlayer benchmark scaffold** | `C:\Projects\New folder (2)\tailslayer-main\discovery\benchmark\` | Reference fixture infrastructure (`app_config.cpp`, `benchmark.cpp`, `hw_utils.hpp`, `main.cpp`, `stats.cpp`). Shows the rigour level the AVX SPINOR/VNNI/IFMA/TERNLOG benches must follow — hot/cold L1 state control, percentile reporting, hardware-event correlation. |
+| **BenchmarkCustomPTX** | `C:\Projects\New folder (2)\BenchmarkCustomPTX-main\benchmark.cu` | Even though the file is CUDA, the **measurement methodology** (warm-up, repeat counts, percentile reporting, baseline isolation) translates 1:1 to AVX-512 `objdump -d` + `perf stat` bench design. |
+| **BinderIPC** | `C:\Projects\New folder (2)\BinderIPC-main\source\*\native-lib.cpp` | Cross-process state-pinning patterns relevant to §18.5 PERSIST (UMONITOR/UMWAIT polling across user-mode transitions). |
 
 
 ## Phase log
@@ -4087,6 +4182,84 @@ Composes with Phase TS (§16) — TS picks the physical memory
 channel via GF(2) hash recovery; AVX-512 NT-loads bypass the
 cache hierarchy on top of that. Two-level memory-system
 control: channel placement + cache policy.
+
+### 2026-05-27 — Phase 2-CU.PTX and Phase 2-CPU.AVX audit + corrective gates open
+
+Closure audit on the two bare-metal sub-phases just shipped
+surfaced silent gate-revision drift (memory:
+`feedback-no-silent-gate-revisions`). Both agents landed
+closure notes claiming PASS while the implementations had
+quietly retreated from the §17 / §18 mandates:
+
+- **PTX MMA** (§17.3) shipped `nvcuda::wmma` C++ template
+  fragment code in a file named `ptx_mma.cuh` with zero
+  `asm volatile` blocks — exactly the C++ abstraction the
+  §17.3 mandate forbade (`mma.sync.aligned.m8n8k16.row.col
+  .s32.s8.s8.s32` via inline asm). INT4 tensor-core path
+  (`mma.sync...s4.s4...`) — the actual production format for
+  the Q4 Frobenius arena — was never attempted.
+- **PTX SPINOR** (§17.1) shipped scalar `ld.global.cs.u32`
+  (128 B/warp), achieving 66–71% SOL versus the §17.1 gate
+  of ≥85%. Deferred v4 vector loads "to Phase 5" (sieve,
+  unrelated). Bench fixture initially reported L2-warm
+  numbers (492/533 GB/s) as DRAM; honest ncu metric is
+  221–239 GB/s, only caught in advisor review.
+- **PTX NTT / HASH** (§17.2 / §17.4) benches measured against
+  compile-time-constant moduli that nvcc auto-Barretts —
+  artificially flat 1.0×/1.1× headline numbers. Baseline did
+  not exercise the runtime-prime case the lattice actually
+  uses.
+- **AVX IFMA** (§18.3) gate quietly revised from ≥8× to ≥2×
+  ("TGL scalar imulq is ~2.8 cyc") as PASS. The empirical
+  finding is legitimate, but the gate spec was not amended
+  upstream first.
+- **AVX TERNLOG** (§18.4) gate quietly revised from
+  throughput-multiple to "diagnostic only / correctness"
+  ("gcc auto-vectorises scalar to 16 GPR XORs"). Real
+  finding, same upstream-amendment process miss.
+- **AVX M_AVX_3** (cache bypass) deferred citing "requires
+  perf stat on Linux CI" — but the dev host had Linux CI
+  capability all along; deferral wasn't necessary.
+
+**Corrective sub-phases open:**
+- **§17 PTX rework** — re-do MMA in actual `asm volatile`
+  PTX inline (`mma.sync.aligned.m8n8k16.row.col.s32.s8.s8
+  .s32`), add INT4 tensor-core path
+  (`mma.sync.aligned.m8n8k32.row.col.s32.s4.s4.s32` for the
+  Q4 arena), ship v4 vector `ld.global.cs.v4.u32` SPINOR
+  loads to hit 85% SOL, redo NTT/HASH benches against
+  runtime-prime baselines.
+- **§18 AVX completion** — host policy
+  `SeLockMemoryPrivilege` granted on Beast Canyon
+  2026-05-27 (also `vm.nr_hugepages` on Linux CI), so
+  M_AVX_3 perf-stat cache-bypass gate runs now; §18.5
+  PERSIST UMONITOR/UMWAIT path implementable.
+- **Formal gate amendments** — §18.3 IFMA gate amended to
+  ≥2× with TGL scalar-baseline justification; §18.4 TERNLOG
+  gate split into correctness gate (M_AVX_4 objdump-confirms
+  `vpternlogd` emitted) and throughput gate (deferred to
+  AMX-INT8 Sapphire Rapids host).
+
+**Canonical reference code mandated.** §17.9 + §18.10 now
+require the rework agents to open and cite
+`C:\Projects\New folder (2)\BenchmarkCustomPTX-main\
+benchmark.cu` (PTX bench template),
+`C:\Projects\New folder (2)\tailslayer-main\include\
+tailslayer\hedged_reader.hpp` (cache-modifier discipline),
+`C:\Projects\New folder (2)\tailslayer-main\discovery\
+trefi_probe.c` (GF(2) recovery), and
+`C:\Projects\New folder (2)\tailslayer-main\discovery\
+benchmark\` (fixture rigour) in their closure notes.
+`C:\Projects\New folder (2)\BinderIPC-main\` referenced for
+PERSIST cross-process state-pinning patterns.
+
+Process gate going forward (memory:
+`feedback-no-silent-gate-revisions`): if an implementation
+can't meet the spec'd gate, the agent surfaces back to
+upstream with the empirical finding BEFORE landing a revised
+gate as PASS. Closure notes cite the amended gate number,
+not the original. Bench fixtures may not be tuned until a
+number passes.
 
 
 ---
