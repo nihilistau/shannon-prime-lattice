@@ -4611,6 +4611,99 @@ gate as PASS. Closure notes cite the amended gate number,
 not the original. Bench fixtures may not be tuned until a
 number passes.
 
+### 2026-05-29 — Two-node integration smoke CLOSED (`lat-smoke-2node`)
+
+Lattice ignition validated end-to-end. Engine F4 patch
+(`bd437fc`, tag `lat-phase-f4`) + smoke harness shipped;
+closure note `papers/SESSION-CLOSED-lat-smoke-2node.md`.
+
+**F4 patch** parameterized two hardcoded ports + added
+manual peer dial:
+- `--port` / `SP_HTTP_PORT` (default 8080) for main HTTP
+- `--console-port` / `SP_CONSOLE_PORT` (default 3000) for
+  operator console (second hardcoded port the original
+  smoke spec missed; surfaced in pre-impl audit)
+- `--peer <ip:port>` for one-shot QUIC coordinator dial
+  with 60s keep-alive loop (manual unblock; auto-discovery
+  is Phase F5 scope, not done here)
+
+**Six gates PASS:**
+
+| Gate | Verdict | Notes |
+|---|---|---|
+| G_SMOKE_F4 | PASS | Both nodes bound 8080/3000/5000 and 8081/3001/5001 cleanly |
+| G_SMOKE_1 | PASS | `peers.active=1`; B registered at A's `/v1/mesh/peers` within seconds of dial |
+| G_SMOKE_2 | PASS (soft) | No WS client available; substituted HTTP `active=1` confirmation at same observation time |
+| G_SMOKE_3 | PASS | **11 receipts in 30s**; sieve mining at healthy rate |
+| G_SMOKE_4 | PASS (**strict**) | **35 tokens bit-identical** solo vs two-node — decode is deterministic by construction; mesh-peer state does NOT perturb forward pass |
+| G_SMOKE_TEARDOWN | PASS | No zombie processes |
+
+**Strict bit-identity is the strongest possible result.**
+It confirms Theorem T8 transactional invariance + Frobenius-
+lift exactness hold under live mesh — the inference path
+is deterministic across mesh-state perturbations at this
+prompt + context + spec-decode configuration. Memory entry
+`reference-lattice-decode-determinism` documents the
+invariant + the conditions under which it holds (greedy
+sampling + fixed K + same model checkpoint). Future CI
+can use strict string comparison instead of logits-
+distance metrics for regression gating.
+
+**Findings filed as named follow-on sub-phases:**
+
+- **Phase F5 — peer auto-discovery + QUIC keep-alive.**
+  Two concrete issues:
+  - `--peer` is manual one-shot; production deployments
+    need actual discovery (mDNS for local lattice, DHT
+    gossip for WAN, bootstrap-node-list config for
+    fixed-topology clusters — design TBD).
+  - QUIC connection idle-timeout drops peers after ~3
+    min with no traffic; no `keep_alive_interval`
+    configured on either endpoint. Production
+    deployments where peers don't continuously exchange
+    blocks will see silent peer disconnects. Fix:
+    `transport_config.keep_alive_interval(Some(Duration::from_secs(30)))`
+    on both `SpQuicCoordinator` and `SpQuicWorker`
+    quinn endpoints.
+
+- **Phase F6 — dual-server architecture consolidation.**
+  The Phase C/D/E/F operator-console work landed all
+  load-bearing routes (`/v1/chat` via `chat_handler`,
+  `/v1/mesh/peers`, `/v1/pouw/ledger`,
+  `/v1/node/telemetry`) on the 3000 console server.
+  The main 8080 server retained legacy stubs including a
+  `/v1/peers` returning `[]` regardless of actual peer
+  state. The split is architectural rot from parallel
+  Phase C/D/E development; the 8080 stubs are dead code
+  and actively misleading (someone debugging will hit
+  them and see "no peers" when peers ARE registered on
+  3000). F6 scope: either move the operator-console
+  routes onto the main server and retire 3000, OR delete
+  the main-server stubs and document the console as the
+  v1 API surface. Pick one shape, ship it.
+
+- **PID file collision (minor).** `sp-daemon stop`
+  signals via PID file but doesn't disambiguate when
+  multiple daemons run on one host. Two-node teardown
+  requires `Stop-Process -Id` directly. Not blocking
+  anything; file as known constraint or fold into F5
+  process-lifecycle pass.
+
+**What this smoke proves (and doesn't):**
+
+PROVES — the mesh registration layer works end-to-end;
+single-node inference path is deterministic and coexists
+with mesh state without perturbation; PoUW sieve mints
+receipts at production rate; both daemons run cleanly
+side-by-side and tear down without zombies.
+
+DOES NOT PROVE — distributed inference. The forward pass
+runs entirely on the node receiving the chat request.
+`run_garner_loop` accepts QUIC blocks but no actual work
+is sharded across nodes yet. That's separate Phase G
+work, gated on this smoke + §16.5 TS.INTEGRATE-KSTE
+sieve replication + dynamic shard assignment design.
+
 ### 2026-05-28 — Multi-phase ignition: PTX-FINAL + TS-probe + 5-PoUW + 6-NET + L3 daemon Phase C..F3
 
 Eight closure events landed between 2026-05-27 (late) and
