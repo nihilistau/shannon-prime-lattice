@@ -2317,6 +2317,102 @@ and the empirical `thermal_pause_us` for the S22U.
   per-arch static archives ship in the engine library. Runtime
   JIT requires Halide runtime on Android which we don't pay for.
 
+### 11.6 Signed PD + developer-account path (added 2026-05-29 late)
+
+Mode D v0 targets **Signed Process Domain directly**, not
+Unsigned PD with a "Signed PD when vendor cooperation
+materializes" deferral. The earlier framing where Signed PD
+was treated as a future-vendor-blocker was incorrect for a
+Qualcomm-Developer-Account holder; corrected. See memory
+entry `reference-signed-pd-developer-path` for the full
+framing + the specific signing toolchain.
+
+**Developer-account access (Knack has):**
+- OEM test signature credentials via Qualcomm developer portal.
+- Signing toolchain in Hexagon SDK: `hl_signnow` (inline,
+  preferred for single-host build) or `hl_signsav` +
+  `hl_signuse` (split build — sign on dev host, deploy via
+  CI).
+- S22U test device must have `testsig` installed to permit
+  dev-signed binaries.
+
+**Sprint A pre-flight discipline** (carries forward to
+Sprint B, C):
+- Before any `remote_handle_open` call, verify the device
+  `vendor.fastrpc.process.attrs` system property is NOT set
+  to `0x8` (FASTRPC_MODE_UNSIGNED_MODULE — forces Unsigned
+  Sandbox even with signed skels).
+- Map FastRPC error `0x80000600` (FASTRPC_IOCTL_INIT_CREATE
+  failure) to `SP_ERR_SIGNATURE_MISMATCH` with diagnostic
+  pointing at: (a) test signature mismatch, (b) stale cDSP
+  firmware-signed-shell pair, (c) skel path missing from
+  ADSP_LIBRARY_PATH (trailing-semicolon issue per
+  `reference-hexagon-working-setup`).
+
+### 11.7 Phased sprint structure (added 2026-05-29 late)
+
+Rather than ship Mode D as one big agent run (per Gemini's
+draft mandates which bundled FastRPC FFI + DMA-BUF allocator
++ Axum integration), split into three focused sprints —
+each its own plan-first + multi-file + commit-between-stages
+cycle, each gates closure independently:
+
+- **Sprint A — `Phase 3-HX-MODE-D.RPC`**: FastRPC dynamic
+  FFI bridge ONLY. `FastRpcSession` Rust struct (no-op
+  echo skel for test). Ships before Sprint B starts.
+  Proves the IPC handshake + Signed PD admission.
+- **Sprint B — `Phase 3-HX-MODE-D.DMA`**: DMA-BUF Heaps
+  allocator ONLY. `DmaBuffer` struct + cache-sync ioctls
+  + unit tests. No DSP integration in this sprint. Proves
+  zero-copy ARM-side primitive.
+- **Sprint C — `Phase 3-HX-MODE-D.LOOP`**: Integration into
+  Axum chat_handler. Combines A + B + Halide AOT skel.
+  Inference loop with cache coherency. SSE streaming.
+
+The §11.1 E_HXD_1..7 deliverables map across the three
+sprints: E_HXD_2 (IDL + FastRPC) → Sprint A; the implicit
+DMA-BUF allocation in E_HXD_2 → Sprint B; E_HXD_1
+(Halide generator) + E_HXD_3..7 → Sprint C plus a Halide
+generator sub-sprint.
+
+### 11.8 V69 HVX expert practices reference (added 2026-05-29 late)
+
+The Halide schedule + assembly idioms for §11.1 E_HXD_1
+deliverable are captured in memory entry
+`reference-v69-hvx-expert-practices`. Key load-bearing
+items the agent must respect:
+
+- **SSR:XA programming is arch-version-dependent.** V69
+  uses SSR:XA={4,5,6,7} → vector contexts 0..3; V79 uses
+  SSR.XA={0..7} → 0..7. Hard-coding V69 values breaks on
+  V73+ silicon. Production code must dispatch via the
+  `HEXAGON_ARCH_VERSION` preprocessor or runtime check.
+- **V69 has 4 scalar threads / 2 vector contexts.** At
+  most 2 threads run HVX simultaneously; remaining 2
+  threads run scalar-only work in parallel (K/V cache
+  addressing, FastRPC handshake, etc.).
+- **`.tmp` loads** skip VRF writeback → free up VLIW slot
+  for additional instruction in same packet. Use for
+  single-consumption streaming inputs.
+- **`.cur` loads** write VRF for reuse across packets.
+  Use for weight tiles loaded once + used many times.
+- **vhist / vwhist consume all 32 V registers** as
+  histogram bins (256-entry × 16-bit each); VRF must be
+  cleared before run. Composes with KSTE Tier-0
+  signature counting + sieve frequency tabulation.
+- **VTCM 8 MB on V69:** pin Frobenius per-row scales +
+  KSTE Tier-0 LUTs via `qurt_mem_l2cache_lock` for the
+  active layer; stream K/V tiles through the remaining
+  budget via DMA-BUF. Full K-cache stays in DDR (Qwen3-0.6B
+  K-cache ~234 MB doesn't fit; MTP-in-VTCM is *tiled*
+  streaming, not VTCM-resident).
+- **Cache coherency on shared physical memory:**
+  flush-before-DSP-read, invalidate-before-ARM-read via
+  `DMA_BUF_IOCTL_SYNC`. Alternative: allocate from
+  `qcom,system-uncached` heap to skip the sync-cache
+  ioctl overhead (slower ARM-side access; faster DSP-
+  stream-then-result-back patterns).
+
 ---
 
 ## 12. Phase 4-MTP and Phase 4-SPEC — multi-token speedup overlays
