@@ -1,9 +1,9 @@
 # SESSION STATE — Phase TS.MAP & TS.ALLOC
 ## §16.1: GF(2) Channel Oracle + Channel-Pair Allocator
 
-**Date:** 2026-05-27
-**Tag:** lat-phase-ts-map-alloc
-**Status:** STATE (not CLOSED) — infrastructure complete, M_TS_HEDGE pending bare-metal Linux
+**Date:** 2026-05-28
+**Tag:** lat-ts-probe
+**Status:** STATE (not CLOSED) — probe timing fixed, limited-recovery LIVE on bare metal; M_TS_HEDGE pending huge-page privilege
 
 ---
 
@@ -49,6 +49,31 @@ detected, disabling TailSlayer` and returns two pointers from a single
 `calloc(128)` block. `sp_channel_of` on these returns `SP_CHANNEL_UNSPECIFIED`.
 `sp_free_channel_pair` frees correctly in both paths.
 
+### Deliverable 4 — Probe Rewrite: Persistent Thread Pool + Race-Free Spin-Barrier (2026-05-28)
+
+`core/sp_channel/sp_channel_probe.c` rewritten. Previous implementation called
+`CreateThread`/`pthread_create` per sample, adding 1–100 µs thread-creation jitter
+— 1000× the ~100 ns DRAM channel signal. Replace with:
+
+- **Persistent pool** (`sp_probe_pool_create` / `sp_probe_pool_destroy`): two worker
+  threads spawned once per probe session, not once per sample.
+- **Spin-barrier protocol**: workers pin to distinct physical cores (0, 2); main
+  flushes the cache lines, sets `cmd=1`; workers time `*addr` with RDTSC and set
+  `done=1`; main reads `max(latA, latB)`.
+- **Race-free IDLE condition**: IDLE spin uses `cmd && !done` instead of just `cmd`.
+  x86 TSO store ordering guarantees that when a worker observes `cmd=1` it also
+  observes all prior main-thread stores including `done=0`, so the two-field check
+  is race-free without any extra fence. This eliminates the old "second spin"
+  (`while cmd && !quit`) which had a window where the next probe's `cmd=1` arrived
+  before workers had observed the preceding `cmd=0`, causing a spin-barrier deadlock
+  (43 ms+/probe under load — all 3 threads spinning at 100 % with no progress).
+
+**Result:** T_CHANNEL 5/5 PASS in ~20 ms total (was 200–600 s or hanging
+indefinitely). BUILD_BARE_1 now recovers M in LIVE mode on the bare-metal Windows
+host via the limited-recovery path (bits [6,21), no huge-page privilege required).
+
+Commit: `ba54c87` pushed to `origin/lat-ts-map`.
+
 ### Deliverable 3 — M_TS_HEDGE Bench
 
 `core/sp_channel/bench_ts_hedge.c` — standalone executable wired in
@@ -76,9 +101,10 @@ M_TS_HEDGE: REQUIRES_LIVE_MODE (DISABLED — VM/container/no huge-pages)
 | Gate | Description | Status |
 |------|-------------|--------|
 | M_TS.MAP_2 | Oracle infrastructure, 18 checks (DISABLED path) | **VERIFIED 18/18** |
-| M_TS.MAP_1 | Oracle bare-metal GF(2) recovery ≤60s | BLOCKED (§Blockers) |
+| M_TS.MAP_1 | Oracle bare-metal GF(2) recovery ≤60s | **PARTIAL** — limited recovery (bits [6,21)) passes on Windows bare-metal; full recovery requires huge-page privilege |
 | M_TS_FALLBACK | bench exits 0 cleanly in DISABLED/VM env | **VERIFIED** |
-| M_TS_HEDGE | P99_same / P99_diverse ≥ 2.0 on bare-metal | PENDING (§Blockers) |
+| M_TS_PROBE | Persistent pool spin-barrier, T_CHANNEL 5/5 in ≤120s | **VERIFIED** (~20 ms) |
+| M_TS_HEDGE | P99_same / P99_diverse ≥ 2.0 on bare-metal | PENDING (huge-page privilege) |
 
 ---
 
@@ -111,7 +137,7 @@ reporting DISABLED. The remaining block is solely the privilege gate above.
 
 ---
 
-## Files Changed (this session)
+## Files Changed
 
 | File | Change |
 |------|--------|
@@ -120,6 +146,7 @@ reporting DISABLED. The remaining block is solely the privilege gate above.
 | `core/sp_channel/sp_channel_map.c` | Added `sp_alloc_channel_pair` + `sp_free_channel_pair` implementation |
 | `core/sp_channel/bench_ts_hedge.c` | New: M_TS_HEDGE bench with DISABLED-path graceful exit |
 | `core/sp_channel/CMakeLists.txt` | Added `bench_ts_hedge` as separate `add_executable` target |
+| `core/sp_channel/sp_channel_probe.c` | **Rewritten** (2026-05-28): persistent thread pool, race-free `cmd && !done` IDLE spin, affinity pinning to cores 0/2 — commit `ba54c87` |
 
 ---
 
@@ -129,12 +156,13 @@ reporting DISABLED. The remaining block is solely the privilege gate above.
 T_CHANNEL_BUILD_VIRT_1:    PASS
 T_CHANNEL_OF_DISABLED_1:   PASS
 T_CHANNEL_CACHE_RT_1:      PASS
-T_CHANNEL_BUILD_BARE_1:    PASS
+T_CHANNEL_BUILD_BARE_1:    PASS   ← LIVE: recovered M (k=2..4 × 15), limited recovery bits [6,21)
 T_CHANNEL_HEDGE_BENCH_1:   PASS
 
-T_CHANNEL: 5/5 PASS (0 failures)
+T_CHANNEL: 5/5 PASS, 22-23 checks, 0 failures
+Total wall time: ~20 ms  (was 200–600 s or hanging indefinitely before probe rewrite)
 
-bench_ts_hedge (DISABLED path):
+bench_ts_hedge (DISABLED path — no huge-page privilege):
   M_TS_HEDGE: REQUIRES_LIVE_MODE (DISABLED — VM/container/no huge-pages)
               exit=0  ← M_TS_FALLBACK VERIFIED
 ```
