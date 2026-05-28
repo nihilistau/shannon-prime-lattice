@@ -2881,58 +2881,132 @@ allocator is the single point of policy.
 
 ### 16.3 Phase TS.HEDGE — hedge-read primitives
 
-**Implementation model amended 2026-05-28** (memory:
-`feedback-oracle-vs-production-hedge`). Original draft
-described "two read threads" — that pattern belongs to the
-§16.1 oracle, NOT to production hedge-read application.
-Conflating the two patterns defeats the win. Reference:
-TailSlayer `include/tailslayer/hedged_reader.hpp` (the
-production-pattern source), not `discovery/trefi_probe.c`
-(the oracle pattern).
+**Implementation model amended 2026-05-29 (twice)**:
+- (2026-05-28) Original spec said "two read threads," conflated
+  with §16.1 oracle.
+- (2026-05-29 morning) Corrected to "single-thread PREFETCH +
+  LOAD" — that was ALSO wrong, reasoned from theory before
+  reading the production reference.
+- (2026-05-29 late) Final corrected pattern after Knack flagged
+  the multi-core nature of production hedge: **persistent
+  worker pool with one thread per channel pinned at startup;
+  atomic-flag signal-wait on hot path.** Matches Laurie's
+  `include/tailslayer/hedged_reader.hpp` (`HedgedReader`
+  class, lines 124, 138-152, 155). Memory:
+  `feedback-oracle-vs-production-hedge` (corrected version)
+  and `feedback-lead-with-reference-then-theory` (the
+  meta-lesson).
 
-**Deliverable.** `core/sp_channel/sp_hedge.c` with two functions:
+**Host requirements (Beast Canyon + Linux equivalents):**
+
+- **`SeLockMemoryPrivilege` enabled in process token**
+  (Windows) for `VirtualAlloc(MEM_LARGE_PAGES)` and
+  `VirtualLock`. Linux equivalent: `hugetlb` group
+  membership or `CAP_SYS_ADMIN` for `MAP_HUGETLB`.
+  Already wired in tree via `core/sp_channel/sp_channel_map.c::
+  force_enable_large_pages()` (calls `AdjustTokenPrivileges`
+  at startup). §16.3 inherits this via `sp_alloc_channel_pair`
+  used by the bench; the production primitive itself doesn't
+  allocate huge pages, but its bench scaffolding does.
+- **Two P-cores reserved** for hedge workers. Beast Canyon
+  i9-11900KB has 8 P-cores; dedicating 2 to hedge work is a
+  fine trade for production deployment. Smaller hosts may
+  need to dial N=1 (no hedge, just direct read) — the pool
+  API should support N=1 as a no-op pass-through fallback.
+
+**Deliverable.** `core/sp_channel/sp_hedge.c` + extended
+`include/sp/sp_channel.h`:
 
 ```c
-int sp_hedge_read64(const void *a, const void *b, void *out64);
-int sp_hedge_read_spinor(const sp_spinor_block *a,
-                         const sp_spinor_block *b,
-                         sp_spinor_block *out);
+typedef struct sp_hedge_pool sp_hedge_pool;
+
+/* Create at daemon startup. Spawns n_channels worker
+ * threads, each pinned to core_ids[i]. Each worker spins
+ * on an atomic publication address; on signal, reads its
+ * replica's address into a worker-local result slot,
+ * then atomic-increments the completion count. */
+sp_status sp_hedge_pool_create(sp_hedge_pool **out_pool,
+                               const sp_channel_map *m,
+                               const int *core_ids,
+                               size_t n_channels);
+
+void sp_hedge_pool_destroy(sp_hedge_pool *pool);
+
+/* Hot path. Caller publishes (a, b) addresses + size via
+ * atomic store-release; workers see publication via
+ * atomic load-acquire, read their respective address on
+ * their pinned core, store result, fetch_add completion.
+ * Caller spins on completion count == n_channels. */
+void sp_hedge_read_pair(sp_hedge_pool *pool,
+                        const void *a, const void *b,
+                        size_t n_bytes,
+                        void *out_a, void *out_b);
+
+/* Spinor-specific wrapper (63-byte block, frozen layout). */
+void sp_hedge_read_spinor(sp_hedge_pool *pool,
+                          const sp_spinor_block_t *a,
+                          const sp_spinor_block_t *b,
+                          sp_spinor_block_t *out_a,
+                          sp_spinor_block_t *out_b);
+
+/* N=1 fallback: pool was created with n_channels=1;
+ * sp_hedge_read_pair degenerates to a direct memcpy
+ * of side a only (b ignored). Lets callers write
+ * channel-aware code that runs on hedge-disabled hosts. */
 ```
 
-**Mandatory implementation pattern: single-thread
-instruction-level parallelism via PREFETCH + LOAD.**
+**Required pattern (worker hot-path body):**
 
 ```c
-static inline int sp_hedge_read64(const void *a, const void *b,
-                                  void *out64) {
-    /* prefetch both into L1; memory controller pipelines them
-     * through the (channel-paired) independent DDR channels */
-    _mm_prefetch((const char*)a, _MM_HINT_NTA);
-    _mm_prefetch((const char*)b, _MM_HINT_NTA);
-    /* both loads in-flight; whichever channel completes first
-     * fills its cache line; the slower one is hidden behind it */
-    uint64_t va = *(const volatile uint64_t*)a;
-    uint64_t vb = *(const volatile uint64_t*)b;
-    /* algebraic invariant: a == b by caller (CRT replica,
-     * Spinor channel-pair, etc.); take either */
-    *(uint64_t*)out64 = va;
-    return 0;
+/* worker_func — runs on pinned core, spins on signal */
+static void *sp_hedge_worker_func(void *arg) {
+    sp_hedge_worker_ctx *ctx = arg;
+    sp_pin_to_core(ctx->core_id);
+    while (atomic_load_explicit(&ctx->should_exit,
+                                memory_order_relaxed) == 0) {
+        /* spin on publication slot (acquire to see addr writes) */
+        const void *src = atomic_load_explicit(&ctx->src_addr,
+                                               memory_order_acquire);
+        if (src == NULL) continue;  /* no work */
+        /* read on this core's load queue, against this channel */
+        memcpy(ctx->local_result, src, ctx->n_bytes);
+        /* clear publication to indicate we consumed it */
+        atomic_store_explicit(&ctx->src_addr, NULL,
+                              memory_order_relaxed);
+        /* signal completion */
+        atomic_fetch_add_explicit(ctx->completion_count, 1,
+                                  memory_order_release);
+    }
+    return NULL;
 }
 ```
 
 **Forbidden in `sp_hedge.c` (catch in code review):**
-- `_mm_pause` / `__pause` / spin loops on hot path
-- `pthread_create` / `std::thread` / two-thread race
-- TSC rendezvous (`fire_tsc` / `rdtsc_now()`-loop)
-- `__syncthreads` / `MemoryBarrier` / condvars / futexes
-- Calling into `sp_channel_probe.c` (oracle apparatus)
+- Per-read `pthread_create` / `std::thread` — workers MUST
+  be persistent (created once in pool_create)
+- Per-read `sched_setaffinity` / `SetThreadAffinityMask` —
+  affinity set ONCE per worker, not per read
+- TSC rendezvous (`fire_tsc` / RDTSC-spin) on hot path —
+  oracle-only
+- Mutex / condvar / futex / `WaitOnAddress` on the inter-
+  worker signal-wait — kernel-mediated wakeup is µs-scale,
+  destroys the hedge win
+- `_mm_pause` on the worker spin (cores are dedicated;
+  pause defeats responsiveness) — note this differs from
+  general spin-loop guidance; here the cores are reserved
+  and burning cycles is the right trade
+- LFENCE / MFENCE on hot path (atomic acquire/release
+  ordering is sufficient)
+- CLFLUSH before reads — that's oracle apparatus
+- Copying from `sp_channel_probe.c`'s per-sample race
+  pattern
 
-If the production primitive uses any of the above, it has
-re-implemented the oracle in the wrong place and the
-hedge has no effect. The point of TailSlayer is that the
-oracle does the hard work ONCE to discover M; production
-loads then pipeline naturally on one thread because the
-channels are known-independent.
+If the production primitive uses anything from the
+forbidden list, it has re-implemented the oracle in the
+wrong place. The point of TailSlayer is that the oracle
+does the hard work ONCE to discover M; the production pool
+does the read on two pinned cores in parallel, with
+atomic-signal-wait as the only synchronization.
 
 **Tier-1 gate (TS.HEDGE):**
 
