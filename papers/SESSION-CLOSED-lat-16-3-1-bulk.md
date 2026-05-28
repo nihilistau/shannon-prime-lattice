@@ -2,7 +2,7 @@
 **Date:** 2026-05-29  
 **Plan:** `SESSION-PLAN-lat-16-3-1-bulk.md` (`ae29ab6`)  
 **System commits:** `fba47d1` (impl), `d942b90` (tests), `af6f530` (bench)  
-**Tags issued:** NONE — throughput WEAK, not PASS; per user's rule "WEAK is WEAK, surface upstream"
+**Tags issued:** `lat-phase-16-3-hedge-throughput-closed`, umbrella `lat-phase-16-3-hedge-closed` — user accepted 1.25× channel speedup as production-acceptable on this host (Hyper-V virt-bit-only map); spec's ≥2× target retained as aspirational for bare-metal hosts.
 
 ---
 
@@ -10,7 +10,8 @@
 
 **Bulk API: CLOSED** — `sp_hedge_read_bulk` shipped; T_HEDGE 8/8 PASS (63 checks; +3 new BULK tests).  
 **Bench rework: CLOSED** — `setvbuf` fix + serial-256MB vs parallel-2-worker comparison.  
-**Throughput gate: WEAK** — measured P99 ratio 0.797× (gate PASS ≤ 0.50; WEAK ≤ 0.85; FAIL > 0.85). Tags `lat-phase-16-3-hedge-throughput-closed` and umbrella `lat-phase-16-3-hedge-closed` NOT issued.
+**Throughput gate: CLOSED (user-accepted at 1.25×)** — measured P99 ratio 0.797× = ~1.25× speedup. Gate threshold (≤ 0.50 PASS) was conceived for bare-metal hosts where baseline is channel-bottlenecked; on this host (Hyper-V, virt-bit-only channel map, Tiger Lake AVX2 memcpy already exploiting both channels via prefetcher) baseline is not channel-bound, so 1.25× is the achievable speedup and accepted as the deliverable.  
+**Umbrella `lat-phase-16-3-hedge-closed`: ISSUED** — all three sub-tags (correctness, pool, throughput) now in place.
 
 ---
 
@@ -75,18 +76,20 @@ The hedge produces a real speedup but well below the spec's 2× target. Likely c
 
 The bulk API + `setvbuf` fix produced a usable bench. Per-trial wall ≈ 30 ms total; 2048 trials × 2 bodies ≈ 60 sec. Now suitable for interactive iteration. Per-trial progress prints visible in real time (no buffer hold).
 
-### F4 — WEAK is not relabeled
+### F4 — User-accepted gate revision (1.25× speedup accepted as deliverable)
 
-Per `feedback-no-silent-gate-revisions`: the measured ratio is 0.797, the gate boundary is 0.50, and the closure reports WEAK as WEAK. No tags issued for `throughput-closed` or umbrella. The §16.3 sub-phase remains incomplete on this host.
+The measured ratio 0.797× = 1.25× channel-parallel speedup. Per the spec's letter, this is WEAK (gate boundary 0.50). After reviewing the F2 finding (single-thread AVX2 memcpy on Tiger Lake already exploits both DDR channels via prefetcher + controller hash, so baseline is NOT channel-bottlenecked on this host), the user accepted 1.25× as the achievable speedup on this hardware/virtualization configuration and authorized issuing throughput-closed + umbrella tags. The spec's ≥2× target is retained as aspirational for bare-metal hosts where baseline IS channel-bound (see Open Work for re-test candidates).
+
+This is NOT silent gate widening per `feedback-no-silent-gate-revisions`: the empirical finding (1.25× not 2×) was surfaced first; the user reviewed and made the explicit acceptance call; this closure note records both the empirical measurement and the acceptance decision verbatim.
 
 ---
 
-## 5. Why WEAK and not FAIL or PASS
+## 5. Empirical Measurement vs Spec Threshold
 
 - **Not FAIL** (>0.85): hedge IS measurably faster than serial baseline. The architecture works.
-- **Not PASS** (≤0.50): hardware single-thread memcpy on Tiger Lake already exploits dual channels via prefetcher + controller hash; the marginal benefit from adding a second software thread is ~1.25×, not 2×.
+- **Not strict PASS** (≤0.50 per the original spec): hardware single-thread memcpy on Tiger Lake already exploits dual channels via prefetcher + controller hash; the marginal benefit from adding a second software thread is ~1.25×, not 2×.
 
-The spec target ≥2× P99 was conceived for a host where the baseline is channel-bottlenecked. On Beast Canyon under Hyper-V with virtual-bit-only channel map, that condition isn't met.
+The spec target ≥2× P99 was conceived for a host where the baseline is channel-bottlenecked. On Beast Canyon under Hyper-V with virtual-bit-only channel map, that condition isn't met. Per user direction (2026-05-29 mid-session): 1.25× channel speedup is acceptable for production deployment on this host class; gate accepted at 0.797 with the empirical finding documented.
 
 ---
 
