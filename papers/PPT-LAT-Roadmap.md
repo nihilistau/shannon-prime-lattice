@@ -2897,17 +2897,51 @@ allocator is the single point of policy.
   and `feedback-lead-with-reference-then-theory` (the
   meta-lesson).
 
-**Host requirements (Beast Canyon + Linux equivalents):**
+**Host requirements (post-Offline-Map-Bypass framing, 2026-05-29 late):**
+
+The earlier framing of "M_TS_HEDGE LIVE gate requires
+permanent Hyper-V disable on Windows" is RETIRED. The
+correct mechanism is the **Offline Map Bypass** (memory:
+`reference-offline-map-bypass`) — Knack's pattern:
+
+1. **Offline calibration (one-time per host):** boot bare-
+   metal Windows (`bcdedit /set hypervisorlaunchtype off`
+   + reboot), run the §16.1 oracle bench, write cached
+   GF(2) channel map to
+   `~/.cache/shannon-prime/channel_map_<host_fingerprint>.bin`.
+2. **Restore host:** `bcdedit /set hypervisorlaunchtype
+   auto` + reboot. Hyper-V / VBS / WSL2 / Docker all
+   back online.
+3. **Daemon runtime under Hyper-V:** `sp_channel_map_load_cached`
+   loads cached map. `sp_alloc_channel_pair` uses 2MB huge
+   pages; bits 0-20 of virtual address are identity-mapped
+   to physical (structural property of 2MB page alignment).
+   The channel-select hash operates on bits in this range,
+   so SLAT scrambling is structurally bypassed for the bits
+   that matter. Cached map remains valid under Hyper-V.
+
+**At §16.3 agent run time (now):** the cached .bin already
+exists on the dev host (Knack ran the offline calibration).
+The §16.3 bench runs under normal Hyper-V conditions and
+should hit the M_TS_HEDGE_PROD ≥2× P99 gate directly.
+
+**Permission requirements that remain in force:**
 
 - **`SeLockMemoryPrivilege` enabled in process token**
-  (Windows) for `VirtualAlloc(MEM_LARGE_PAGES)` and
-  `VirtualLock`. Linux equivalent: `hugetlb` group
-  membership or `CAP_SYS_ADMIN` for `MAP_HUGETLB`.
-  Already wired in tree via `core/sp_channel/sp_channel_map.c::
-  force_enable_large_pages()` (calls `AdjustTokenPrivileges`
-  at startup). §16.3 inherits this via `sp_alloc_channel_pair`
-  used by the bench; the production primitive itself doesn't
-  allocate huge pages, but its bench scaffolding does.
+  (Windows, runtime) for `VirtualAlloc(MEM_LARGE_PAGES)`
+  / `VirtualLock`. Already wired via
+  `core/sp_channel/sp_channel_map.c::force_enable_large_pages()`.
+- **`hugetlb` pool configured** (Linux, runtime):
+  `vm.nr_hugepages` non-zero; process in
+  `hugetlb_shm_group` or hugetlbfs access.
+- **`CAP_SYS_ADMIN`** (Linux) — needed ONLY for the
+  offline calibration step (reading `/proc/self/pagemap`,
+  which returns zero entries to non-CAP_SYS_ADMIN since
+  Linux 4.0). Not needed for daemon runtime once the .bin
+  is cached.
+
+**Compute reservation:**
+
 - **Two P-cores reserved** for hedge workers. Beast Canyon
   i9-11900KB has 8 P-cores; dedicating 2 to hedge work is a
   fine trade for production deployment. Smaller hosts may
