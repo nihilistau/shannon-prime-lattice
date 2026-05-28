@@ -3042,14 +3042,58 @@ does the hard work ONCE to discover M; the production pool
 does the read on two pinned cores in parallel, with
 atomic-signal-wait as the only synchronization.
 
-**Tier-1 gate (TS.HEDGE):**
+**Tier-1 gate (TS.HEDGE) — amended 2026-05-29 late after
+in-tree single-thread implementation at `416417b` produced
+WEAK signal due to (a) wrong architecture and (b) L3-saturated
+bench arena:**
 
-**Tier-1 gate (TS.HEDGE):**
-- Micro-benchmark on a synthetic 1 MB dual-channel Spinor arena:
-  P99 tail latency under hedge read ≥ 2× faster than serial
-  `memcpy` of either side, on bare metal.
-- In CI/VM: function returns correct data (verified bitwise);
+The 1 MB arena from the original draft is **superseded.**
+Beast Canyon i9-11900KB has 12 MB L3; after the first
+trial all 1 MB of bench data lives in L3 and every subsequent
+read is an L3 hit, not a DRAM transaction. There is no
+DRAM-channel signal to measure when both arenas fit in L3.
+The corrected bench requirements:
+
+- **Arena size formula: `N_ELEM × 8 ≥ 4 × L3_size`**. On
+  Beast Canyon (L3 = 12 MB): minimum 48 MB per side; the
+  spec default is **64 MB per side** to leave clean DRAM
+  margin. The bench should detect host L3 via CPUID leaf 4
+  (cache parameters) and scale `N_ELEM` accordingly;
+  hard-coding for Beast Canyon is acceptable as v0 but the
+  derivation MUST be commented.
+- **Hard-abort on `VirtualAlloc(MEM_LARGE_PAGES)` failure.**
+  The in-tree fallback to plain `malloc` at
+  `bench_sp_hedge.c:111-122` silently produces garbage
+  (4 KB pages have only bits 0-11 virt=phys identity-
+  mapped; the channel hash operates on scrambled bits and
+  the bench measures noise). REPLACE the malloc fallback
+  with a clean exit emitting `M_TS_HEDGE_PROD:
+  REQUIRES_LIVE_MODE — VirtualAlloc(MEM_LARGE_PAGES)
+  failed. Check: (a) SeLockMemoryPrivilege granted via
+  secpol.msc, (b) logged out + back in after grant
+  (token-cache staleness), (c) Hyper-V memory
+  fragmentation — reboot fresh + run bench early in
+  uptime.` No silent fallback. No fake numbers.
+- **Bare-metal P99 ratio gate (post-fix):** P99(hedge) ≤
+  0.5 × P99(serial-baseline) per the persistent-pool
+  architecture. Floor = any measurable improvement;
+  stretch = ≤ 0.5×. Measured against PRIOR LATTICE serial
+  read on the same arena, NOT against an alien-library
+  reference (memory:
+  `feedback-lattice-baseline-is-prior-lattice`).
+- In CI/VM (DISABLED channel mode): function returns
+  correct data (verified bitwise on plain arenas);
   speedup not asserted.
+
+**Supersession note.** The in-tree commit `416417b` on
+shannon-prime-system main shipped a single-thread inline
+PREFETCH+LOAD implementation matching the prior (wrong)
+spec framing. T_HEDGE_* correctness tests (5/5 PASS) are
+salvageable — they validate bitwise correctness independent
+of architecture. The `sp_hedge_read_*` function bodies are
+superseded by the persistent-pool rewrite; the
+`bench_sp_hedge.c` arena size + fallback path are
+superseded by the formula + hard-abort above.
 
 ### 16.4 Phase TS.INTEGRATE-CRT — channel-pair the dual-prime residues
 
