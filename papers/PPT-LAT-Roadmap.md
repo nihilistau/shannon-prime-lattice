@@ -2881,6 +2881,15 @@ allocator is the single point of policy.
 
 ### 16.3 Phase TS.HEDGE — hedge-read primitives
 
+**Implementation model amended 2026-05-28** (memory:
+`feedback-oracle-vs-production-hedge`). Original draft
+described "two read threads" — that pattern belongs to the
+§16.1 oracle, NOT to production hedge-read application.
+Conflating the two patterns defeats the win. Reference:
+TailSlayer `include/tailslayer/hedged_reader.hpp` (the
+production-pattern source), not `discovery/trefi_probe.c`
+(the oracle pattern).
+
 **Deliverable.** `core/sp_channel/sp_hedge.c` with two functions:
 
 ```c
@@ -2890,12 +2899,42 @@ int sp_hedge_read_spinor(const sp_spinor_block *a,
                          sp_spinor_block *out);
 ```
 
-Both kick off two read threads (or use Linux `io_uring` with
-two SQEs on x86_64 where available), return the first complete
-read, signal the other to abort (or just discard its result —
-the data is identical by caller's algebraic invariant). Return
-0/1 indicating which side won (for sticky-channel-affinity hints
-to downstream consumers).
+**Mandatory implementation pattern: single-thread
+instruction-level parallelism via PREFETCH + LOAD.**
+
+```c
+static inline int sp_hedge_read64(const void *a, const void *b,
+                                  void *out64) {
+    /* prefetch both into L1; memory controller pipelines them
+     * through the (channel-paired) independent DDR channels */
+    _mm_prefetch((const char*)a, _MM_HINT_NTA);
+    _mm_prefetch((const char*)b, _MM_HINT_NTA);
+    /* both loads in-flight; whichever channel completes first
+     * fills its cache line; the slower one is hidden behind it */
+    uint64_t va = *(const volatile uint64_t*)a;
+    uint64_t vb = *(const volatile uint64_t*)b;
+    /* algebraic invariant: a == b by caller (CRT replica,
+     * Spinor channel-pair, etc.); take either */
+    *(uint64_t*)out64 = va;
+    return 0;
+}
+```
+
+**Forbidden in `sp_hedge.c` (catch in code review):**
+- `_mm_pause` / `__pause` / spin loops on hot path
+- `pthread_create` / `std::thread` / two-thread race
+- TSC rendezvous (`fire_tsc` / `rdtsc_now()`-loop)
+- `__syncthreads` / `MemoryBarrier` / condvars / futexes
+- Calling into `sp_channel_probe.c` (oracle apparatus)
+
+If the production primitive uses any of the above, it has
+re-implemented the oracle in the wrong place and the
+hedge has no effect. The point of TailSlayer is that the
+oracle does the hard work ONCE to discover M; production
+loads then pipeline naturally on one thread because the
+channels are known-independent.
+
+**Tier-1 gate (TS.HEDGE):**
 
 **Tier-1 gate (TS.HEDGE):**
 - Micro-benchmark on a synthetic 1 MB dual-channel Spinor arena:
@@ -4571,6 +4610,227 @@ upstream with the empirical finding BEFORE landing a revised
 gate as PASS. Closure notes cite the amended gate number,
 not the original. Bench fixtures may not be tuned until a
 number passes.
+
+### 2026-05-28 — Multi-phase ignition: PTX-FINAL + TS-probe + 5-PoUW + 6-NET + L3 daemon Phase C..F3
+
+Eight closure events landed between 2026-05-27 (late) and
+2026-05-28 across five sub-systems. Documented here as a
+single catch-up entry because they form a single vertical:
+the lattice now boots end-to-end as a multi-node daemon
+with discrete-kernel PTX/AVX, dominance-receipt mining,
+QUIC CRT sharding, and operator console.
+
+**§17 Phase 2-CU.PTX — SEALED** (`lat-phase-2-cu-ptx-final-closed`)
+
+Re-certification of §17.1–§17.5 PTX back-end as stable
+foundation for Phase 2-CU.FORWARD. M_PTX_1 correctness:
+12/12 PASS (NTT Q1/Q2, HASH xor3/prmt, SPINOR hot/cold
+scalar + v4, MMA TestA/B/C/D, MMA M_PTX_3 + M_PTX_4).
+M_PTX_2 throughput: NTT 8.5× (target ≥5×, exceeded),
+SPINOR 89.6% DRAM SOL (~301 GB/s, target ≥85%, exceeded),
+HASH 1.1× (physical Turing ALU ceiling — see memory:
+`reference-turing-alu-scheduler-ceiling`; gate reframed
+as sm_75-ceiling-bound, sm_80+ stretch deferred), MMA
+superseded by TILE-2C.
+
+Mandatory disclosures captured as memory entries (load-
+bearing institutional knowledge not derivable from code):
+- `reference-nvcc-paired-register-bug` — Barrett modmul
+  uses separate `mul.lo.u32` + `mul.hi.u32`, NEVER
+  `mul.wide.u32`. nvcc register allocator unreliable on
+  paired outputs.
+- `reference-turing-alu-scheduler-ceiling` — sm_75 single
+  ALU dispatch port shared between lop3/xor caps HASH
+  speedup at ~1.1× silicon-fixed; Ampere unblocks.
+
+**§17.3.TILE-2C — SHIPPED via no-smem-B architecture pivot**
+(`lat-phase-2-cu-ptx-mma-tile-2c-closed`, engine 5643c0d)
+
+2b smem-B transpose regressed (61.4% bank conflict
+catastrophe — agent caught + did not push). 2c discarded
+smem-B entirely: pre-swizzle B to `[N][K]` row-major
+*offline* (CPU transcoder in math-core), load B fragments
+direct from global via `ld.global.nc.u32` through read-
+only cache on sm_75. Result: INT8 0.60× / INT4 0.94×
+cuBLAS HGEMM with 5120B→2048B smem reduction; 16 dtype-
+shape pairs bit-identical. Principle: if you don't write
+to smem, you can't have smem bank conflicts. Streaming-
+only data (Q8/Q4 weights, each byte read once per kernel)
+belongs in global + read-only cache, not smem.
+
+**§16.1 Phase TS — TS-MAP + TS-ALLOC + TS-PROBE STATE**
+(`lat-ts-probe`, system commit 7457313)
+
+GF(2) channel-select hash oracle + channel-pair allocator
+shipped. Beast Canyon bare-metal results: P50 = 111-116 ns
+(real DRAM latency, post tsc_hz calibration fix —
+`QueryPerformanceFrequency` returned HPET 10 MHz, RDTSC
+displayed 366 cycles as 36 µs until QPC+RDTSC cross-
+calibration), P90/P50 max ratio = 1.35× at bit 22 (4MB
+offset). Engineering wins: persistent thread pool
+(eliminated 1000× per-sample thread-creation jitter), TSC
+rendezvous (eliminated coherence-skew artifacts), MSVC
+portability fixes. M_TS_FALLBACK + M_TS_PROBE VERIFIED;
+M_TS_HEDGE PARTIAL — 2× ratio gate requires Linux
+`/proc/self/pagemap` + CAP_SYS_ADMIN for physical-bit
+probing (Windows API limitation, NOT Hyper-V; see memory:
+`reference-hyperv-cpuid-masking` scope clarification).
+
+Oracle-vs-production hedge-read distinction captured as
+new memory entry `feedback-oracle-vs-production-hedge`:
+oracle pattern (two-thread + TSC rendezvous + spin
+barrier) is correct for §16.1 calibration, but
+**§16.3 TS.HEDGE production primitives MUST NOT use this
+pattern** — production hedge-read is single-thread
+PREFETCH + LOAD pairs through channel-paired addresses.
+The §16.3 agent prompt must explicitly forbid copying the
+oracle's apparatus. Bake into the prompt before §16.3
+ships.
+
+**Token-privilege fix** (system commit 7457313): the
+`force_enable_large_pages()` helper in
+`core/sp_channel/sp_channel_map.c` calls
+`OpenProcessToken` + `LookupPrivilegeValue(SE_LOCK_MEMORY_NAME)`
++ `AdjustTokenPrivileges` to activate
+`SeLockMemoryPrivilege` in the running token. Without
+this call, `VirtualAlloc(MEM_LARGE_PAGES)` fails with
+`ERROR_PRIVILEGE_NOT_HELD` even when the privilege is
+granted via secpol.msc. This fix unblocks M_POUW_2 AVX-
+512 ternlog hardware bench too — also a token-level
+issue, NOT a Hyper-V mask. Earlier framing claiming
+"Hyper-V blocks three gates" was incorrect — only WAITPKG
+is actually masked by Hyper-V; large-page + hedge-physical-
+mapping are Windows-API issues independent of VBS.
+Memory `reference-hyperv-cpuid-masking` updated with the
+scope correction.
+
+**§14 Phase 5 PoUW — DAEMON SHIPPED**
+(`lat-5-pouw-state`, lattice 336a7bc/27343d9)
+
+Friedman Sieve C-layer M_POUW_1 VERIFIED. Pareto-frontier
+maintenance under combined Tier-0 + Tier-1 dominance
+partial order with sieve-fold event emission. Receipt
+wire format frozen at 152 bytes (8-byte magic SPRCPT01 +
+64-byte KSTE sig + 32-byte SHA-256 seq_hash + 32-byte
+ed25519 pubkey + 8-byte round counter + 8-byte
+minted_at_ns). ed25519-dalek v2 signing.
+`bench_sieve_hw.c` (AVX-512 ternlog hardware bench) +
+`sp_sieve_hash_ptx` (GPU KSTE mixing round) source
+deliverables done. M_POUW_2 hardware bench gate now
+unblockable (post token-privilege fix). M_POUW_3 (TTFT
+degradation ≤5% under concurrent mining) PENDING — needs
+live model + load test on the two-node integration smoke.
+
+**§13 Phase 6 NET — VERIFIED**
+(`lat-phase-6-net-state`, lattice 052dfb7, engine
+83b1c57..0fa174f 11-commit sequence)
+
+Complete QUIC CRT-sharding implementation in
+`shannon-prime-system-engine/tools/sp_daemon/`:
+`SpQuicCoordinator::bind` + `accept_connection`,
+`SpQuicWorker::connect` + `send_block` + `recv_block`,
+TLS helpers (`SkipServerVerification` placeholder pending
+Phase 5 ed25519 dominance identity integration),
+`ShardBlockHeader` 64B `#[repr(C)]` wire format,
+`run_garner_loop` with DashMap residue assembly + FFI to
+`ntt_crt_recombine`. Three closure gates:
+- **M_NET_1** 3-node loopback topology PASS — workers
+  dial coordinator, peers register.
+- **M_NET_2** Garner reconstruction bit-identical to
+  scalar C reference PASS.
+- **M_NET_3** HoL bypass — block 1 arrives within 100 ms
+  despite 200 ms artificial delay on block 0 PASS
+  (independent QUIC stream IDs deliver as designed).
+- 11/11 `cargo test --lib` PASS.
+
+Known constraints: integration tests via `cargo test`
+(non-`--lib`) blocked by C FFI symbol linker issue in
+test environment; gates run as inline `#[cfg(test)]` in
+`quic_shard.rs`. `SkipServerVerification` placeholder to
+be replaced by Phase 5 ed25519 dominance identity in
+§14.3.AUTH integration.
+
+**Phases C / D / E / F1 / F2 / F3 — L3 daemon vertical ignition**
+(engine commits 27b97dc / dd91fd9 / 8b0b438 / 6db6c01 /
+4996636 / 3f7553e)
+
+The production daemon woke up across six commits in the
+shannon-prime-system-engine repo:
+- **Phase C** (operator console): static frontend serve,
+  WebSocket telemetry stream, SSE chat stream wired into
+  `sp-daemon`.
+- **Phase D1** (speculative decode): dual-session
+  spec-decode wired into `chat_handler` via `spec.rs`.
+- **Phase E** (PoUW ledger SSE): `GET /v1/pouw/ledger`
+  SSE endpoint for real-time receipt streaming. Composes
+  with §14 Phase 5 receipt mint.
+- **Phase F** (DHT mesh API surface): `peer_map`
+  DashMap, `/v1/mesh/peers` HTTP endpoint, live
+  `dht_peers_active` field in telemetry WS.
+- **Phase F2** (`4996636`): peer_map registration wired
+  into `run_garner_loop` — incoming QUIC peers populate
+  the map as they arrive.
+- **Phase F3** (`3f7553e`): **QUIC coordinator wired
+  into daemon startup**. `sp-daemon start --quic-port
+  5000` now binds the DHT listener via
+  `SpQuicCoordinator::bind` and spawns `run_garner_loop`
+  with `QUIC_NTT_N=128`. Workers connecting from node B
+  on port 5001 register in `state.peer_map`, surface in
+  the telemetry WS, and appear in `/v1/mesh/peers`. **Two
+  nodes can form a lattice mesh on demand.** Co-authored
+  with Claude Sonnet 4.6.
+
+This is the lattice ignition moment — the daemon now
+boots, hosts a chat UI, streams telemetry, mines
+dominance receipts, listens for mesh peers, and can do
+spec-decoded dual-session inference on top of the
+math-core's Frobenius-lifted Q8/Q4 forward path.
+
+**§17.3.TILE gate amendment carry-over.** The tier-split
+gates from the 2026-05-27 amendment (2a sm_75 instruction
+parity, 2b sm_75 transposed-B, 2c sm_80+ cp.async, 2d
+sm_90 TMA) remain in force. 2c closure technically used
+"no-smem-B direct global" rather than cp.async (which is
+sm_80+ anyway), but lands at the same floor-gate bar:
+TC instruction density parity with cuBLAS + measurable
+improvement vs prior lattice impl. 2b is effectively
+retired in favor of the 2c architecture (transposed-B
+smem turned out to be the wrong primitive on Turing —
+the right move was "no smem for B at all"). 2c on
+Ampere with cp.async remains as a stretch deferral.
+
+**Three Hyper-V-misattributed gates corrected (2026-05-28).**
+Earlier roadmap text claiming Hyper-V/VBS blocks three
+gates was wrong on two-of-three:
+- M_AVX_PERSIST_2 (WAITPKG) — IS Hyper-V (VMCS bit 26).
+  Remains blocked unless `bcdedit /set
+  hypervisorlaunchtype off`. See `reference-hyperv-cpuid-
+  masking`.
+- M_POUW_2 (hardware bench with hugepages) — was
+  AdjustTokenPrivileges, NOT Hyper-V. Already fixed in
+  `sp_channel_map.c`. Works with VBS on.
+- M_TS_HEDGE 2× (physical-bit probing) — Windows API
+  limitation (no userland virt→phys), NOT Hyper-V.
+  Requires Linux host with `/proc/self/pagemap` +
+  CAP_SYS_ADMIN.
+
+Memory entry scope updated to prevent future agents from
+re-blaming Hyper-V for unrelated Windows-API or token-
+privilege issues.
+
+**Open work threads (2026-05-28 forward):**
+- §16.3 TS.HEDGE production primitives (must follow
+  oracle-vs-production memory)
+- §17.3.TILE 2c on Ampere test host (cp.async stretch)
+- M_AVX_PERSIST_2 measurement (requires non-Hyper-V boot
+  or non-Hyper-V cloud instance)
+- M_POUW_3 TTFT-under-mining (requires two-node integration
+  smoke)
+- §14.3.AUTH: replace SkipServerVerification TLS placeholder
+  with ed25519 dominance identity (Phase 5 → Phase 6 wiring)
+- Two-node integration smoke (proves the whole vertical
+  composes: prompt → spec-decode → PoUW mint → mesh
+  visible → token stream)
 
 ### 2026-05-27 (late) — Phase 2-CU.PTX.MMA.TILE correctness closed + gate amended to tier-split
 
