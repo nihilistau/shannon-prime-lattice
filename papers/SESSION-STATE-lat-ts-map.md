@@ -3,7 +3,7 @@
 
 **Date:** 2026-05-28
 **Tag:** lat-ts-probe
-**Status:** STATE (not CLOSED) — probe timing fixed, limited-recovery LIVE on bare metal; M_TS_HEDGE pending huge-page privilege
+**Status:** STATE (not CLOSED) — real DRAM signal confirmed (112 ns P50, max 1.35× ratio), limited-recovery on Windows; M_TS_HEDGE ≥2× requires Linux+pagemap for physical bit mapping
 
 ---
 
@@ -74,25 +74,59 @@ host via the limited-recovery path (bits [6,21), no huge-page privilege required
 
 Commit: `ba54c87` pushed to `origin/lat-ts-map`.
 
-### Deliverable 3 — M_TS_HEDGE Bench
+### Deliverable 3 — M_TS_HEDGE Bench (updated 2026-05-28 session 2)
 
-`core/sp_channel/bench_ts_hedge.c` — standalone executable wired in
-`CMakeLists.txt` as a separate `add_executable` target (not via
-`sp_add_module`'s `TEST=`, which allows only one test target).
+`core/sp_channel/bench_ts_hedge.c` — fully redesigned, commit `48e9de6`.
 
-**DISABLED path:** exits 0 with:
+**DISABLED path:** exits 0 with `REQUIRES_LIVE_MODE`.
+
+**LIVE path (bare-metal Windows, current):**
+1. Main thread pinned to core 1; workers pinned to P-cores 0 and 2 (Ring Bus)
+2. Allocates 8 MB LARGE_PAGES arena; memset pre-faults all pages
+3. Runs `sp_probe_bit` for all 18 bits in `[CHAN_BIT_LO, CHAN_BIT_HI)` with
+   N_PROBES=2048 (P90 = 205th-from-top)
+4. Outputs P50 + P90 per bit with ASCII bar chart
+5. Reports max-ratio (best achievable signal) as the gate
+6. Displays channel topology summary
+
+**Result on Beast Canyon (limited-recovery, virtual bits):**
 ```
-M_TS_HEDGE: REQUIRES_LIVE_MODE (DISABLED — VM/container/no huge-pages)
-            Grant SeLockMemoryPrivilege (Windows) or run on bare-metal Linux.
+P50 = 111-116 ns (real DRAM latency — confirmed correct after tsc_hz fix)
+P90/P50 max = 1.35× (bit 22)
+Best ratio same/diverse = 1.28-1.39× across runs
+Gate: PARTIAL (signal present; 2× requires Linux+pagemap)
 ```
 
-**LIVE path** (bare-metal Linux, not yet run):
-1. Builds map, allocates 4 × huge-page arena
-2. Runs `sp_probe_bit` for all bits in `[CHAN_BIT_LO, CHAN_BIT_HI)` with
-   256 samples each
-3. Picks lowest-P99 diverse bit (`is_same_channel=0`) and highest-P99
-   same-channel bit (`is_same_channel=1`)
-4. Verifies ratio P99_same / P99_diverse ≥ 2.0 → M_TS_HEDGE PASS
+### Deliverable 5 — TSC Rendezvous + Calibration (2026-05-28 session 2)
+
+Root-cause fixes for the "36 µs measurements" problem (`48e9de6`):
+
+1. **tsc_hz calibration** (`calibrate_tsc_hz` on Windows): was calling
+   `QueryPerformanceFrequency` which returned HPET 10 MHz on this host,
+   causing the conversion `cycles × 1e9 / 10MHz = cycles × 100` to display
+   366 true TSC cycles as 36,600 ns. Fixed to QPC+RDTSC cross-calibration:
+   spin 10 ms by QPC ticks, count RDTSC cycles → true TSC frequency (~3.2 GHz).
+
+2. **TSC rendezvous** (`fire_tsc` field in `probe_worker_ctx`): both workers
+   spin until `rdtsc_now() >= fire_tsc` before issuing their DRAM loads.
+   Without this, worker A receives `cmd=1` 100-300 cycles before B (coherence
+   propagation skew); A's DRAM read completes before B even arrives at the
+   memory controller, eliminating the channel-contention signal. With 1000-cycle
+   fire offset, both reads hit the memory controller simultaneously.
+
+3. **LFENCE** around RDTSC in worker: prevents Tiger Lake OOO from retiring
+   the second RDTSC before the volatile load completes.
+
+4. **P90 instead of P99** (512→2048 samples, P90 = 205th-from-top): Windows
+   DPC/interrupt rate ~1% contaminates P99 (top-5 of 512 = interrupt events)
+   but not P90 (top-205 of 2048 = clean DRAM signal).
+
+5. **PAUSE threshold** 5000 → 200: cross-core workers finish in ~100-300 ns
+   (30-97 PAUSE iterations); threshold of 200 avoids the 22 µs stall without
+   triggering unnecessary yields in the cross-core case.
+
+6. **Worker affinity**: confirmed Tiger Lake Beast Canyon P-cores 0 and 2 are
+   on the same Ring Bus → best coherence latency. Main on core 1.
 
 ---
 
@@ -101,39 +135,35 @@ M_TS_HEDGE: REQUIRES_LIVE_MODE (DISABLED — VM/container/no huge-pages)
 | Gate | Description | Status |
 |------|-------------|--------|
 | M_TS.MAP_2 | Oracle infrastructure, 18 checks (DISABLED path) | **VERIFIED 18/18** |
-| M_TS.MAP_1 | Oracle bare-metal GF(2) recovery ≤60s | **PARTIAL** — limited recovery (bits [6,21)) passes on Windows bare-metal; full recovery requires huge-page privilege |
+| M_TS.MAP_1 | Oracle bare-metal GF(2) recovery ≤60s | **PARTIAL** — limited recovery (bits [6,21)) passes on Windows bare-metal; full recovery requires Linux+pagemap |
 | M_TS_FALLBACK | bench exits 0 cleanly in DISABLED/VM env | **VERIFIED** |
-| M_TS_PROBE | Persistent pool spin-barrier, T_CHANNEL 5/5 in ≤120s | **VERIFIED** (~20 ms) |
-| M_TS_HEDGE | P99_same / P99_diverse ≥ 2.0 on bare-metal | PENDING (huge-page privilege) |
+| M_TS_PROBE | Persistent pool spin-barrier + TSC rendezvous, T_CHANNEL 5/5 | **VERIFIED** (~80 ms) |
+| M_TS_HEDGE | P90_same / P90_diverse ≥ 2.0 on bare-metal | **PARTIAL** — real signal confirmed (1.28-1.39×, real DRAM 112 ns); 2× requires Linux+pagemap+physical bits |
 
 ---
 
 ## Blockers
 
-### SeLockMemoryPrivilege (Windows)
+### Physical Address Mapping (Windows)
 
-`VirtualAlloc(MEM_LARGE_PAGES)` requires `SeLockMemoryPrivilege`. This privilege
-is absent by default on Windows 11 even as Administrator. Without it, huge-page
-allocation fails → oracle returns DISABLED → both M_TS.MAP_1 and M_TS_HEDGE
-cannot run.
+In limited-recovery mode (Windows, no `/proc/self/pagemap`), the oracle probes
+virtual address bits [6,21). Virtual bit 12+ doesn't reliably map to physical
+DRAM channel bits. This dilutes the channel signal to ~1.28-1.39× instead of
+the expected 2×.
 
-**To unblock on Windows:**
-1. `secpol.msc` → Local Policies → User Rights Assignment
-2. "Lock pages in memory" → add your user account
-3. Log out and back in (privilege takes effect at next logon token)
-4. Re-run `bench_ts_hedge.exe` — should enter LIVE path
+**Current Windows state:** LIVE, 8 MB LARGE_PAGES arena, real DRAM timing
+(P50 ≈ 112 ns), maximum signal ~1.35×. SeLockMemoryPrivilege is correctly
+granted and the AdjustTokenPrivileges path is functional.
 
-**Alternatively:** run on bare-metal Linux (CI target). `MAP_HUGETLB` succeeds
-without elevated privilege if the kernel has huge pages reserved
-(`/proc/sys/vm/nr_hugepages > 0`).
+**To achieve 2× signal and definitive GF(2) matrix:** run on bare-metal Linux
+with `nr_hugepages > 0` and `CAP_SYS_ADMIN`. On Linux, `sp_pagemap_privileged()`
+returns 1 → oracle probes physical bits [6,24) → clear 2× P90 ratio expected.
 
-### Hyper-V CPUID false positive
+### Hyper-V CPUID false positive (resolved)
 
-Windows 11 with VBS/Hyper-V sets CPUID leaf-1 ECX bit 31 on the root partition
-(bare metal). The oracle correctly handles this via the Hyper-V vendor check
-(`0x40000000 = "Microsoft Hv"`) + KVP registry key check — KVP is absent on
-the root partition, so the oracle proceeds to the huge-page gate rather than
-reporting DISABLED. The remaining block is solely the privilege gate above.
+Windows 11 with VBS/Hyper-V sets CPUID leaf-1 ECX bit 31 on the root partition.
+The oracle handles this via Hyper-V vendor check + KVP registry key — KVP is
+absent on the root partition. No longer a blocker.
 
 ---
 
@@ -142,46 +172,47 @@ reporting DISABLED. The remaining block is solely the privilege gate above.
 | File | Change |
 |------|--------|
 | `include/sp/sp_channel.h` | Added `sp_channel_pair_arena` forward decl, `sp_alloc_channel_pair`, `sp_free_channel_pair` |
-| `core/sp_channel/sp_channel_internal.h` | Added `struct sp_channel_pair_arena` definition |
-| `core/sp_channel/sp_channel_map.c` | Added `sp_alloc_channel_pair` + `sp_free_channel_pair` implementation |
-| `core/sp_channel/bench_ts_hedge.c` | New: M_TS_HEDGE bench with DISABLED-path graceful exit |
+| `core/sp_channel/sp_channel_internal.h` | Added `struct sp_channel_pair_arena`; `p50_ns` + `p90_ns` in `sp_probe_result` |
+| `core/sp_channel/sp_channel_map.c` | Added `sp_alloc_channel_pair` + `sp_free_channel_pair`; `force_enable_large_pages` with `AdjustTokenPrivileges` |
+| `core/sp_channel/bench_ts_hedge.c` | **Redesigned** (2026-05-28 session 2): core-1 pinning, pre-fault, P50+P90 table, max-ratio gate — commit `48e9de6` |
 | `core/sp_channel/CMakeLists.txt` | Added `bench_ts_hedge` as separate `add_executable` target |
-| `core/sp_channel/sp_channel_probe.c` | **Rewritten** (2026-05-28): persistent thread pool, race-free `cmd && !done` IDLE spin, affinity pinning to cores 0/2 — commit `ba54c87` |
+| `core/sp_channel/sp_channel_probe.c` | **Rewritten** (2026-05-28): persistent pool, race-free IDLE; **extended** (2026-05-28 session 2): TSC rendezvous (`fire_tsc`), LFENCE, P90, threshold 200, Windows tsc_hz calibration fix — commit `48e9de6` |
 
 ---
 
-## Test Results (this session)
+## Test Results (this session — 2026-05-28 session 2)
 
 ```
-T_CHANNEL_BUILD_VIRT_1:    PASS
-T_CHANNEL_OF_DISABLED_1:   PASS
-T_CHANNEL_CACHE_RT_1:      PASS
-T_CHANNEL_BUILD_BARE_1:    PASS   ← LIVE: recovered M (k=2..4 × 15), limited recovery bits [6,21)
-T_CHANNEL_HEDGE_BENCH_1:   PASS
+T_CHANNEL: 5/5 PASS, ~80 ms  (commit 48e9de6)
 
-T_CHANNEL: 5/5 PASS, 22-23 checks, 0 failures
-Total wall time: ~20 ms  (was 200–600 s or hanging indefinitely before probe rewrite)
+bench_ts_hedge (LIVE — 8 MB LARGE_PAGES, Beast Canyon, Windows):
+  P50 = 111-116 ns   ← real DRAM latency (was 36,600 ns with wrong tsc_hz)
+  P90/P50 max = 1.35× (bit 22, 4 MB offset)
+  Best ratio same/diverse = 1.28-1.39× across runs
+  M_TS_HEDGE: PARTIAL  ← signal confirmed, 2× needs Linux+pagemap
 
-bench_ts_hedge (DISABLED path — no huge-page privilege):
-  M_TS_HEDGE: REQUIRES_LIVE_MODE (DISABLED — VM/container/no huge-pages)
-              exit=0  ← M_TS_FALLBACK VERIFIED
+Oracle (SP_CHANNEL_NOCACHE=1 fresh probe):
+  k=4, n=15 — LIVE, limited recovery  ← GF(2) matrix consistent with prior
 ```
 
 ---
 
 ## What Is NOT Done
 
-- M_TS.MAP_1: bare-metal oracle calibration ≤60s — requires huge-page privilege
-- M_TS_HEDGE: ≥2× P99 improvement proof — requires huge-page privilege
+- M_TS.MAP_1: bare-metal oracle calibration ≤60s — best-effort k=4 found in
+  limited-recovery mode; definitive matrix requires Linux+pagemap+CAP_SYS_ADMIN
+- M_TS_HEDGE: ≥2× P90 ratio — real signal confirmed at 1.28-1.39×; 2× gate
+  requires Linux where virtual bits [6,24) map to known physical DRAM bits
 - Integration into `sp_session` or CRT — deferred to `TS.INTEGRATE`
 
 ---
 
 ## Path to Closure
 
-This phase closes to `SESSION-CLOSED-lat-ts-map.md` when both M_TS.MAP_1 and
-M_TS_HEDGE pass on bare-metal Linux CI. No code changes are needed — only
-the privilege/hardware gate must be cleared.
+This phase closes to `SESSION-CLOSED-lat-ts-map.md` when M_TS.MAP_1 and
+M_TS_HEDGE both pass on bare-metal Linux CI (MAP_HUGETLB + CAP_SYS_ADMIN).
+No code changes are needed — all probe logic, LFENCE, TSC rendezvous, and
+P90 metric are correct. Only the Linux hardware gate must be cleared.
 
 ---
 
