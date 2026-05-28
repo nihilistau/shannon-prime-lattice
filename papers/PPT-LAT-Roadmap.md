@@ -4611,6 +4611,120 @@ gate as PASS. Closure notes cite the amended gate number,
 not the original. Bench fixtures may not be tuned until a
 number passes.
 
+### 2026-05-29 (late) — Phase F5 + F6 paired sprint CLOSED (`lat-phase-f5-f6`)
+
+Both follow-on sub-phases from the smoke closure landed in
+a single sprint. Engine commits `542bf1d` (F5.1+F5.2),
+`8f66e3b` (F5.3), `b1ee71e` (F6); lattice plan `8643cbc`
++ closure `f9b1725`; tag `lat-phase-f5-f6` on engine,
+`lat-phase-f5-f6-closed` on lattice. Closure note:
+`papers/SESSION-CLOSED-lat-phase-f5-f6.md`.
+
+**F5 — QUIC hardening:**
+- **F5.1** `TransportConfig::keep_alive_interval(Duration::
+  from_secs(30))` + `max_idle_timeout(120s)` on both
+  `make_server_config` and `make_client_config` in
+  `quic_shard.rs`. Closes the ~3-min idle disconnect
+  flagged in the original smoke.
+- **F5.2** Explicit `conn.closed().await` watcher task
+  spawned alongside the existing `accept_uni` loop
+  cleanup. Both fire on disconnect; `DashMap::remove`
+  is idempotent so double-fire is harmless. Production
+  peer churn is now visible in real time.
+- **F5.3** `--peers <addr,...>` + `SP_PEERS` env var
+  with comma-delimited bootstrap list. `spawn_peer_dial`
+  helper refactored from F4's inline block. `--peer`
+  singular stays as back-compat alias. Dial failures
+  log + skip; daemon doesn't crash on unreachable peer.
+
+**F6 — Dual-server consolidation:**
+- 5 handlers migrated from `console.rs` to `routes.rs`:
+  `v1_node_telemetry` (WS), `v1_mesh_peers`, `v1_pouw_ledger`,
+  `v1_chat_stream_stub`, helpers.
+- Deletions: `console.rs` entirely (-435 LOC), the
+  duplicate `/v1/peers` stub on the main router,
+  `--console-port` CLI flag + env, the second `axum::serve`
+  bind in `daemon.rs`.
+- Net diff: **136 insertions, 435 deletions, -299 LOC**.
+  Architectural-rot removal as deletion, the right shape.
+- Single `Router` on `--port` (default 8080); `--console-port`
+  retired.
+
+**Chat handler conflict resolved (`routes.rs::v1_chat`
+selected over `console.rs::chat_handler`).** Advisor
+flagged during plan-commit that BOTH handlers were real
+(not stubs as my F5+F6 prompt mis-framed): `v1_chat` had
+the OpenAI-compatible input surface
+(`messages`/`max_tokens`/`stop`/JSON-delta SSE + chat_id
++ tokens_decoded metrics); `chat_handler` had Phase D
+spec decode. Sprint chose `v1_chat` per scope-discipline
+(rich client API is load-bearing for any caller; spec
+decode is feature-regressed pending **Phase D2** re-wire
+follow-on, NOT silently dropped). G_SMOKE_4 strict
+bit-identity preserved because the smoke runs AR-only
+(no draft model loaded) → both handlers' AR paths called
+the same `sp_session::step`.
+
+**Smoke re-run — all 6 gates PASS, G_SMOKE_2 upgraded:**
+
+| Gate | Result | vs Prior smoke |
+|---|---|---|
+| G_SMOKE_F4 | PASS — single `--port` only | ✓ |
+| G_SMOKE_1 | PASS — `--peers` dial registered active=1 | ✓ |
+| **G_SMOKE_2** | **PASS (hard)** — active=1 confirmed ~7 min post-dial | **upgraded from soft** |
+| G_SMOKE_3 | PASS — 9 receipts/30s | ✓ |
+| G_SMOKE_4 | PASS strict — 35 tokens bit-identical | ✓ (requires `messages:` format) |
+| G_SMOKE_TEARDOWN | PASS | ✓ |
+
+The G_SMOKE_2 upgrade is the concrete proof F5.1
+keep_alive_interval works at production-timescale: the
+original smoke saw the peer drop at ~3 min idle; this
+smoke confirms the peer is still registered at +7 min.
+Production-deployment concern actually closed.
+
+**Key finding — `prompt:` vs `messages:` request-shape
+divergence (backwards-incompatible API change).** Pre-F6
+the two routers accepted different request shapes: the
+8080 `v1_chat` took OpenAI-compatible `messages: [...]`;
+the 3000 `chat_handler` took bare `prompt: "..."`. Both
+were happy in isolation; consolidation surfaced the
+silent divergence. Post-F6 the single handler takes
+`messages:` only; any pre-F6 client using `prompt:`
+breaks. Documented as the F6 client-contract finding —
+chat-template clients must use `messages:` format.
+There is no formal "v1 API stable" promise yet (this is
+Phase 12 pre-release scaffolding), so the
+backwards-incompatible change is acceptable, but it
+needs to be in the changelog when v1 freezes.
+
+**Phase D2 filed explicitly as follow-on** (not silent
+regression — `feedback-no-silent-gate-revisions` honored):
+
+Re-wire spec decode into `routes.rs::v1_chat`. Read
+`spec.rs` (engine module, commit `dd91fd9` from Phase
+D1) + the deleted `console.rs::chat_handler` spec-decode
+dispatch pattern in git history at the pre-F6 commit
+`f9b1725^`. Add draft-session-conditional branch in the
+v1_chat decode loop: if `draft_session.is_some()` →
+`spec.rs::step`, else `sp_session::step`. Verify with
+a draft-model two-node smoke that draft-decoded output
+matches expected (and ideally bit-identical to the
+pre-F6 spec-decode output if the daemon ever ran one).
+Phase D2 is its own focused sprint; not folded into
+F5+F6.
+
+**Phase F7 (out of scope, still open):** mDNS
+auto-discovery for zero-config local lattice; DHT
+gossip for transitive peer discovery; connection retry
+with backoff. Filed as follow-on; bootstrap-list
+(F5.3) is the sufficient floor for production fixed-
+topology deployments.
+
+**§14.3.AUTH still open:** TLS placeholder
+`SkipServerVerification` in `quic_shard.rs` needs
+ed25519 dominance-identity replacement. Composes with
+Phase 5 PoUW receipt-chain identity. Separate sub-phase.
+
 ### 2026-05-29 — Two-node integration smoke CLOSED (`lat-smoke-2node`)
 
 Lattice ignition validated end-to-end. Engine F4 patch
