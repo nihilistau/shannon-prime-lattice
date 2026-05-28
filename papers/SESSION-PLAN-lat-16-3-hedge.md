@@ -1,162 +1,228 @@
-# SESSION PLAN — lat-16-3-hedge: TS.HEDGE Production Primitives
-
+# SESSION PLAN — lat-16-3-hedge (persistent-pool revision)
 **Date:** 2026-05-29  
-**Spec:** PPT-LAT-Roadmap.md §16.3, amended 2026-05-28
+**Supersedes:** session 416417b (PREFETCH+LOAD single-thread — wrong pattern)  
+**Spec revision:** PPT-LAT-Roadmap.md §16.3 amended 2026-05-29 late (commit 22e7971)
 
 ---
 
-## 1. Scope + Discipline
+## 1. Reference Summary (Stage 0 reads)
 
-The §16.3 primitives are the OPPOSITE of the oracle machinery in `bench_ts_hedge.c`. The oracle (§16.1 TS.MAP) uses two-thread TSC rendezvous, LFENCE pairs, and spin barriers to measure DRAM channel timing. The production primitives use single-thread PREFETCH + LOAD — no pauses, no threads, no TSC rendezvous on the hot path.
+### TailSlayer hedged_reader.hpp
 
-**Canonical in-tree disclaimer** (from `bench_ts_hedge.c` line 8):
-> "The TSC rendezvous (fire_tsc), LFENCE pairs, and percentile measurement are diagnostic machinery that exists only here — TailSlayer's runtime path (sp_alloc_channel_pair) loads the cached bin file and does O(1) channel selection with zero probe or pause overhead."
+`HedgedReader` (lines 76-218) is a C++ template that implements **multi-replica hedged reads** via a persistent worker pool:
 
-This plan implements THAT runtime path.
+- **Line 7**: `#include <thread>` + `#include <atomic>` — production pattern is multi-threaded, not single-thread.
+- **Lines 23-25**: `CORE_MEAS_A=11`, `CORE_MEAS_B=12`, `CORE_MAIN=14` — worker threads are pinned to DEDICATED cores, separate from the caller. Affinity set ONCE at startup.
+- **Line 122-127** (`start_workers`): `workers_[i] = std::thread(worker_func, this, i)` — N persistent threads spawned at pool creation, not per-read.
+- **Lines 138-152** (`worker_func`): Each worker does:
+  1. `pin_to_core(cores_[i])` — affinity set inside the thread function
+  2. `std::size_t read_index = wait_work(WaitArgs...)` — waits for a signal (user-provided callback; in production this is the trigger that a new KV value is ready to read)
+  3. `T* target_addr = get_next_logical_index_address(i, read_index)` — compute address for this worker's replica
+  4. `final_work(*target_addr, WorkArgs...)` — read and process; no TSC, no LFENCE
+- **Lines 154-155**: `std::array<int, N> cores_{}; std::array<std::thread, N> workers_{}` — both arrays held for pool lifetime.
+- **Line 29** (detail:: comment): "These functions are really only used as timing examples for dev purposes" — the TSC/LFENCE/CLFLUSH machinery is diagnostic only, not on the production hot path.
 
-**TailSlayer reference:** `hedged_reader.hpp` uses a multi-threaded model where each replica is serviced by a dedicated worker thread pinned to a specific core. The sp_hedge primitives mirror the same goal (channel-parallel data access) in a single-thread idiom that fits the C math-core ABI.
+### Mapping to math-core C99
+
+| Laurie (C++) | Math-core (C99) |
+|---|---|
+| `std::atomic<T*>` | `_Atomic(const void *)` via `<stdatomic.h>` |
+| `wait_work(WaitArgs...)` — user-pluggable callback | Hard-coded atomic-spin on `src_addr != NULL`; cores are dedicated so atomic-spin is the only reasonable production sync |
+| `final_work(*addr, WorkArgs...)` — user-pluggable | Hard-coded `memcpy(ctx->local_result, src, ctx->n_bytes)` |
+| `std::array<std::thread, N>` | `HANDLE hThreads[N]` (Windows) / `pthread_t tids[N]` (POSIX) |
+| `setup_replica_cores()` sets cores_[] | Caller passes explicit `core_ids[]` to `sp_hedge_pool_create` |
+| `insert(T val)` writes all N replicas | NOT present — lattice pool is read-only; caller provides two already-allocated addresses |
+
+### Framework reuse from sp_channel_probe.c
+
+The oracle pool (`sp_probe_pool`) already implements the correct C99 lifecycle:
+- Lines 255-300: `sp_probe_pool_create` — aligned malloc, thread spawn (CreateThread/pthread_create), affinity set inline after spawn
+- Lines 303-317: `sp_probe_pool_destroy` — set quit=1, wait join, free
+- Lines 96-108: `probe_worker_ctx` — 128-byte cache-line aligned struct with control words and payload
+
+I REUSE this lifecycle shape and struct-alignment technique; I write a NEW worker_func body that does `memcpy + completion-count increment` instead of `clflush + TSC rendezvous + timed LFENCE read`.
 
 ---
 
-## 2. API Decision
+## 2. Divergences from Reference
 
-**Decision: Extend `include/sp/sp_channel.h`** — not a new header.
-
-Justification:
-- `sp_hedge_*` functions are direct consumers of the `sp_alloc_channel_pair` contract
-- They belong to the same "channel-aware memory" framing
-- One header keeps the API surface coherent for callers who use both allocator and hedge reads
-- The roadmap §16.8 confirms §16.1–§16.3 live in `core/sp_channel/`
-
-The header already depends on `<stdint.h>` and `<stddef.h>`. Add `#include "sp/spinor_block.h"` to satisfy `sp_hedge_read_spinor`.
+| Aspect | Laurie | Math-core |
+|---|---|---|
+| Data replication | `insert()` writes N replicas | Caller provides 2 pre-allocated replica addresses via `sp_alloc_channel_pair` |
+| wait_work | User-pluggable callback | Atomic-spin on `src_addr` (hard-coded) |
+| N | Template parameter | Runtime param to `pool_create`; default N=2 |
+| N=1 fallback | Not needed (N ≥ 2 asserted) | Supported: `pool_create(n=1)` spawns no thread; `read_pair` is `memcpy(out_a, a, n)` |
 
 ---
 
-## 3. Function Signatures (4 variants)
+## 3. API Decision
+
+**Extend `include/sp/sp_channel.h`** — same module, same channel-aware memory framing. The hedge pool is the production read primitive for channel-pair-allocated memory; it belongs with `sp_alloc_channel_pair`. No new header.
+
+---
+
+## 4. API Signatures
 
 ```c
-/* ── Hedge-read primitives ─────────────────────────────────────────────────
- * All functions require `a` and `b` to be valid, readable pointers.
- * The caller is responsible for channel placement via sp_alloc_channel_pair.
- * These functions are CORRECTNESS-INDEPENDENT of channel topology: they return
- * bitwise-correct data even when a and b are on the same channel (CI/DISABLED).
+/* Opaque pool handle. Persistent N-thread worker pool, one thread per channel,
+ * each pinned to core_ids[i] at startup (hedged_reader.hpp:124,138-152 pattern). */
+typedef struct sp_hedge_pool sp_hedge_pool;
+
+/* Create at daemon/module startup. Spawns n_channels threads, pinned to
+ * core_ids[i]. max_bytes is the max n_bytes accepted per sp_hedge_read_pair call;
+ * larger requests return SP_EBADARG. Default: 64 (covers uint64 + Spinor).
+ * N=1: no thread is spawned; read_pair degenerates to direct memcpy of side a.
+ * Returns SP_ENOMEM on allocation failure, SP_EBADARG on NULL args. */
+sp_status sp_hedge_pool_create(sp_hedge_pool **out,
+                               const int *core_ids,
+                               size_t n_channels,
+                               size_t max_bytes);
+
+void sp_hedge_pool_destroy(sp_hedge_pool *pool);
+
+/* Hot path: caller publishes (a, b, n_bytes) to worker slots via atomic
+ * store-release; each worker sees the slot, reads its address via memcpy into
+ * a worker-local buffer, increments a shared completion counter (release);
+ * caller spins on completion count == n_channels (acquire), then copies
+ * worker-local results to out_a / out_b.
  *
- * Prefetch hint: NTA (non-temporal) — correct for streaming Q8/Q4 arena and
- * Spinor KV reads where data is not reused within the same kernel call.
- * §16.5 TS.INTEGRATE-KSTE may warrant a T0-hinted variant for the KSTE
- * upper-tier hot set (reused per sieve walk). Not in this sprint.
- */
+ * N=1 fallback: memcpy(out_a, a, n_bytes); out_b unchanged.
+ * Requires n_bytes <= max_bytes (set at pool_create). NOT reentrant. */
+sp_status sp_hedge_read_pair(sp_hedge_pool *pool,
+                             const void *a, const void *b,
+                             size_t n_bytes,
+                             void *out_a, void *out_b);
 
-/* Replica hedge: a and b carry IDENTICAL data (caller's algebraic invariant,
- * e.g. replicated KV block).  Both channels are prefetched; the load streams
- * data from a while channel B's prefetch runs in parallel.  In a tight loop
- * of successive hedge reads, this warms channel B for the NEXT iteration —
- * channel-pair load balancing across a stream, not winner-takes-all per call. */
-void sp_hedge_read64_replica(const void *a, const void *b, uint64_t *out);
-
-/* Pair hedge: a and b carry INDEPENDENT data (e.g. q1 and q2 CRT residues).
- * Both channels are prefetched simultaneously; total latency ≈ max(lat_A, lat_B)
- * instead of lat_A + lat_B.  Results written to out_a and out_b. */
-void sp_hedge_read_pair64(const void *a, const void *b,
-                          uint64_t *out_a, uint64_t *out_b);
-
-/* Block hedge: general n_bytes variant; interleaves PREFETCH with LOAD in
- * 64-byte (cache-line) strides.  Writes n_bytes from a→out_a, b→out_b.
- * Used as the inner primitive by sp_hedge_read_spinor. */
-void sp_hedge_read_block(const void *a, const void *b, size_t n_bytes,
-                         uint8_t *out_a, uint8_t *out_b);
-
-/* Spinor hedge: typed 63-byte block; REPLICA semantic (caller's invariant:
- * a and b contain the same block on independent channels).  Writes a's content
- * to *out; channel B is warmed for stream-pipelining benefit. */
-void sp_hedge_read_spinor(const sp_spinor_block_t *a,
-                          const sp_spinor_block_t *b,
-                          sp_spinor_block_t *out);
+/* Spinor wrapper: exactly 63 bytes, both channels.
+ * out_a and out_b each receive their respective block (not replica — both
+ * outputs are populated so the CRT path can work with both residues). */
+sp_status sp_hedge_read_spinor(sp_hedge_pool *pool,
+                               const sp_spinor_block_t *a,
+                               const sp_spinor_block_t *b,
+                               sp_spinor_block_t *out_a,
+                               sp_spinor_block_t *out_b);
 ```
 
-**Block-level decision:** Both `sp_hedge_read_block` (byte-length, general) and `sp_hedge_read_spinor` (typed 63-byte block). Spinor is the primary production consumer; block is needed for §16.4 CRT integration (arbitrary-size NTT residue windows). Both are public.
+---
+
+## 5. Worker_func Design
+
+### Context struct (two cache lines; no false sharing)
+
+```c
+/* Line 0 (0-63): should_exit + core_id + n_bytes + src_addr.
+ * Line 1 (64-127): local_result[64] (or malloc'd for larger max_bytes). */
+typedef struct {
+    _Atomic(int)           should_exit;      /* set by pool_destroy */
+    int                    core_id;
+    size_t                 n_bytes;          /* set by caller before publish */
+    _Atomic(const void *)  src_addr;         /* NULL = idle, non-NULL = work */
+    char                   _pad[...];        /* pad to 64 bytes */
+    uint8_t                local_result[64]; /* result buffer (line 1) */
+} sp_hedge_worker_ctx;
+```
+
+For `max_bytes > 64`, `local_result` is a malloc'd pointer (separate allocation).
+
+### Completion counter
+
+Shared `_Atomic(int) completion` in the pool struct. Reset to 0 by caller before each read. Workers do `atomic_fetch_add(completion, 1, release)` after memcpy.
+
+### Worker function (the production hot path)
+
+```c
+static THREAD_RETURN_T sp_hedge_worker_func(void *arg) {
+    sp_hedge_worker_ctx *ctx = arg;
+    sp_hedge_pin_to_core(ctx->core_id);  /* affinity set ONCE, inside thread */
+
+    while (!atomic_load_explicit(&ctx->should_exit, memory_order_relaxed)) {
+        /* Idle spin: wait for src_addr to become non-NULL.
+         * No _mm_pause: cores are dedicated; full-speed spin for sub-µs latency. */
+        const void *src;
+        while ((src = atomic_load_explicit(&ctx->src_addr, memory_order_acquire))
+               == NULL) {
+            if (atomic_load_explicit(&ctx->should_exit, memory_order_relaxed))
+                return THREAD_RETURN_VAL;
+        }
+        /* Drain the work — always complete after seeing non-NULL src.
+         * should_exit check NOT re-checked here: worker drains pending work
+         * before exiting to prevent caller from spinning forever on completion. */
+        memcpy(ctx->local_result, src, ctx->n_bytes);
+        atomic_store_explicit(&ctx->src_addr, NULL, memory_order_relaxed);
+        atomic_fetch_add_explicit(ctx->completion, 1, memory_order_release);
+    }
+    return THREAD_RETURN_VAL;
+}
+```
+
+**Why no post-spin should_exit check:** if the worker sees `src_addr != NULL`, it MUST drain the work (memcpy + completion increment) regardless of `should_exit`. Otherwise, if `pool_destroy` sets `should_exit` while a `read_pair` call is in progress, the worker exits without incrementing completion and the caller spins forever. Workers exit only from the idle spin (src_addr == NULL path).
+
+### Caller side (sp_hedge_read_pair)
+
+```
+1. Reset pool->completion = 0 (relaxed — ordered by release-acquire on src_addr)
+2. For each worker i: set ctx[i].n_bytes = n_bytes  (non-atomic; visible via release below)
+3. For each worker i: atomic_store(ctx[i].src_addr, srcs[i], release)
+4. Spin: while (atomic_load(pool->completion, acquire) < n_channels) {}
+5. Copy ctx[0].local_result → out_a, ctx[1].local_result → out_b
+```
+
+Memory ordering correctness:
+- Step 2 (write n_bytes) is sequenced-before step 3 (release store to src_addr)
+- Worker's acquire load on src_addr synchronizes-with step 3's release store
+- Therefore worker sees n_bytes correctly at step 2 ✓
+- Worker's fetch_add release (step D) synchronizes-with caller's acquire load (step 4)
+- Therefore caller sees local_result correctly at step 5 ✓
 
 ---
 
-## 4. Prefetch Hint Choice
+## 6. Bench Design
 
-**NTA (`_MM_HINT_NTA` / `__builtin_prefetch(p, 0, 0)`)** for all functions in this sprint.
+### LIVE path (requires huge pages + channel map)
 
-Reasoning:
-- Q8/Q4 weight rows: read once per matmul forward call, no reuse within the call
-- Spinor KV blocks: read once per decode-step layer traversal
-- NTA bypasses L2/L3 on write-back (reduces pollution of working caches)
-- NTA on read fetches to L1 without warming L2/L3 unnecessarily
+1. `sp_channel_map_build` (loads cached .bin — already on dev host, no re-probe)
+2. If DISABLED: print `M_TS_HEDGE_PROD: REQUIRES_LIVE_MODE`, exit 0
+3. `sp_alloc_channel_pair(m, &ptr_a, &ptr_b, &arena)` — 1 MB each side
+   - Pre-fault both with `memset(ptr_a, 0x42, 1MB); memset(ptr_b, 0xBE, 1MB)`
+4. `sp_hedge_pool_create(&pool, core_ids={0,2}, n=2, max_bytes=8)`
+5. Bind caller thread to core 1 (CORE_MAIN analogue; separate from worker cores)
+6. **Baseline body:** 131072 sequential volatile uint64 reads from `ptr_a`.  
+   RDTSC start → loop → RDTSC end → record cycles. 2048 trials.
+7. **Hedge body:** 131072 `sp_hedge_read_pair(pool, &a64[i], &b64[i], 8, &ra, &rb)`.  
+   Same trial count. Same RDTSC bracketing.
+8. Sort each trial array; compute P50 / P90 / P99 per body.
+9. Gate: `P99(hedge) / P99(baseline)`:
+   - ≤ 0.50 → `M_TS_HEDGE_PROD: PASS`
+   - ≤ 0.85 → `M_TS_HEDGE_PROD: WEAK`
+   - > 0.85 → `M_TS_HEDGE_PROD: FAIL`
 
-Documented caveat: for §16.5 KSTE upper-tier (256 KB hot set reused per sieve walk), T0 hint (`_MM_HINT_T0`) will be preferable. That variant is Phase F7+ scope; do not add it in this sprint.
+No LFENCE inside the inner loop. No per-element RDTSC. Whole-loop cycles only.
 
----
+### Why this bench should PASS (not WEAK as the prior attempt predicted)
 
-## 5. Bench Design (Path A — honest WEAK/PARTIAL)
+The prior attempt (commit 416417b) placed both arrays on the SAME logical channel via virtual-bit-only probing (no huge pages). `sp_alloc_channel_pair` with huge pages GUARANTEES physical-channel diversity (using pagemap on Linux / huge-page fixed VA on Windows). With real channel diversity, the two workers read from different DDR channels simultaneously; P99 speedup ≈ 2× is achievable.
 
-**Explicit cache-residency prediction (before measurement, per advisor directive):**
-
-Beast Canyon (Tiger Lake) L3 = 12 MB. 1 MB bench data fits in L3 after trial 1 of 2048. Starting from trial 2, baseline and hedge both hit L3, not DRAM. The PREFETCH+LOAD pair gives ~2× benefit on cold DRAM misses; on L3 hits, the gain is minimal (~1.05–1.3×). Expected bench result: **WEAK** (ratio > 0.5×) or at best **PARTIAL** on Beast Canyon.
-
-This is an honest finding, not a failure to implement correctly. The primitive is correct. The bench cannot demonstrate the full DRAM-channel benefit with 1 MB on a 12 MB L3 system.
-
-The closure note will file `feedback-bench-cache-residency` and propose §16.3.1 as a follow-on bench with a properly sized arena (≥ 2× LLC = 24+ MB) to force cold DRAM access.
-
-**Bench structure:**
-1. Build channel map via `sp_channel_map_build`
-2. If DISABLED: print `M_TS_HEDGE_PROD: REQUIRES_LIVE_MODE` and exit 0
-3. LIVE path:
-   a. Allocate 2× huge-page arena (via `sp_alloc_huge`, internal API) of size 8 MB
-   b. Scan arena at 64-byte stride using `sp_channel_of` → collect ch0[] and ch1[] address lists
-   c. If `count(ch0) < N_ELEM || count(ch1) < N_ELEM`: print shortage warning, use smaller N_ELEM
-   d. `memset` both lists' memory to pre-fault pages
-   e. `SetThreadAffinityMask` / `sched_setaffinity` to a P-core
-   f. Time 2048 trials of:
-      - Baseline: N_ELEM sequential reads from ch0[] only (loop, volatile u64 loads)
-      - Hedge: N_ELEM `sp_hedge_read_pair64(ch0[i], ch1[i])` calls
-   g. Sort trial times (TSC cycles); compute P50/P90/P99 per body
-   h. Print results table
-   i. Gate: `P99(hedge) / P99(baseline) ≤ 0.5` → PASS; `≤ 0.85` → WEAK; `> 0.85` → FAIL
-
-**N_ELEM = 65536** (not 131072): the 8 MB arena at 64-byte stride gives exactly 131072 cache-line slots; with 2-channel interleaving, ~65536 per channel. Matches `0.5 × 131072`.
-
-**Timing: TSC cycles** (not nanoseconds) — no calibration code required. Ratio is dimensionless.
-
-**Inner loop:** NO `_mm_pause`, NO LFENCE per-element, NO per-element RDTSC. Outer RDTSC brackets the whole N_ELEM loop.
+The dev host (Beast Canyon) has the cached channel map .bin already; bench runs under normal Hyper-V conditions (SeLockMemoryPrivilege already wired in the daemon startup chain).
 
 ---
 
-## 6. Gate Definition
+## 7. Files Modified / CMake
 
-| Ratio P99(hedge) / P99(baseline) | Verdict |
+| Action | File |
 |---|---|
-| ≤ 0.50 | `M_TS_HEDGE_PROD: PASS` |
-| 0.50 < ratio ≤ 0.85 | `M_TS_HEDGE_PROD: WEAK` |
-| > 0.85 | `M_TS_HEDGE_PROD: FAIL` |
+| UPDATE (new API) | `include/sp/sp_channel.h` — add pool typedef + 4 function decls |
+| REPLACE (416417b wrong pattern) | `core/sp_channel/sp_hedge.c` |
+| REPLACE | `core/sp_channel/test_sp_hedge.c` |
+| REPLACE | `core/sp_channel/bench_sp_hedge.c` |
+| UPDATE | `core/sp_channel/CMakeLists.txt` — targets unchanged, sources unchanged |
 
-Expected on Beast Canyon + 1MB + 12MB L3: **WEAK**. Per `feedback-no-silent-gate-revisions`, WEAK is reported as WEAK and not relabeled.
-
-CI/VM gate: function exits 0 in DISABLED mode, bitwise correctness verified by T_HEDGE tests (channel-independent).
-
----
-
-## 7. Files to Create
-
-| File | Role |
-|---|---|
-| `include/sp/sp_channel.h` | Add 4 hedge declarations + `#include "sp/spinor_block.h"` |
-| `core/sp_channel/sp_hedge.c` | Implement all 4 variants |
-| `core/sp_channel/test_sp_hedge.c` | Correctness tests T_HEDGE_PAIR/REPLICA/BLOCK/SPINOR/DISABLED |
-| `core/sp_channel/bench_sp_hedge.c` | Performance bench with LIVE/DISABLED path |
-| `core/sp_channel/CMakeLists.txt` | Add sp_hedge.c to sp_channel sources; add test + bench targets |
+`sp_hedge.c` already in sp_channel sources from 416417b — no CMake change needed for source list. The test and bench targets are already registered.
 
 ---
 
-## 8. Forbidden-Pattern Checklist (code review gates)
+## 8. Sub-tag Taxonomy
 
-- [ ] No `_mm_pause` / `__pause` / spin loops in sp_hedge.c or bench_sp_hedge.c
-- [ ] No `pthread_create` / `std::thread` / `CreateThread`
-- [ ] No TSC rendezvous (`fire_tsc`, per-element RDTSC loop)
-- [ ] No LFENCE surrounding the hedge loads
-- [ ] No call into `sp_channel_probe.c` (oracle apparatus)
-- [ ] Prefetch-then-volatile-load order maintained (prefetch must precede loads)
+- `lat-phase-16-3-hedge-correctness-closed` — T_HEDGE_* all bitwise PASS
+- `lat-phase-16-3-hedge-pool-closed` — pool lifecycle (create, repeat reads, destroy) clean
+- `lat-phase-16-3-hedge-throughput-closed` — M_TS_HEDGE_PROD gate PASS on bare metal
+- `lat-phase-16-3-hedge-closed` — umbrella after all three
