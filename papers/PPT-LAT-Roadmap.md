@@ -3048,19 +3048,36 @@ WEAK signal due to (a) wrong architecture and (b) L3-saturated
 bench arena:**
 
 The 1 MB arena from the original draft is **superseded.**
-Beast Canyon i9-11900KB has 12 MB L3; after the first
-trial all 1 MB of bench data lives in L3 and every subsequent
-read is an L3 hit, not a DRAM transaction. There is no
-DRAM-channel signal to measure when both arenas fit in L3.
+Beast Canyon i9-11900KB (Intel ARK: 8 cores, 48 KB L1d
+per core, 512 KB L2 per core = 4 MB total L2, **24 MB L3
+shared**) holds 1 MB of bench data entirely in L1+L2;
+after the first trial all bench data lives in L3 (or
+higher), and every subsequent read is a cache hit, not
+a DRAM transaction. There is no DRAM-channel signal to
+measure when both arenas fit inside L3.
+
 The corrected bench requirements:
 
 - **Arena size formula: `N_ELEM × 8 ≥ 4 × L3_size`**. On
-  Beast Canyon (L3 = 12 MB): minimum 48 MB per side; the
-  spec default is **64 MB per side** to leave clean DRAM
-  margin. The bench should detect host L3 via CPUID leaf 4
-  (cache parameters) and scale `N_ELEM` accordingly;
-  hard-coding for Beast Canyon is acceptable as v0 but the
-  derivation MUST be commented.
+  Beast Canyon (L3 = 24 MB): minimum 96 MB per side; the
+  spec default is **128 MB per side** (= 16M × 8 bytes
+  elements) to leave clean DRAM margin past the 4× bar.
+  The bench should detect host L3 via CPUID leaf 4 (cache
+  parameters, EAX[7:5]=2 for L3, EAX[31:22]=ways-1,
+  EBX[11:0]=line_size-1, EBX[21:12]=partitions-1,
+  EBX[31:22]=ways-1, ECX=sets-1, total = (ways)×
+  (partitions)×(line_size)×(sets)) and scale `N_ELEM`
+  accordingly; hard-coding for Beast Canyon is acceptable
+  as v0 but the derivation MUST be commented with the
+  exact L3 size pulled from CPUID at startup.
+- **Huge-page count implication: 128 MB / 2 MB = 64 huge
+  pages per side.** Under Hyper-V fragmentation, allocating
+  64 contiguous 2MB physical regions is harder than 1
+  region. If `sp_alloc_huge(n_pages=64, hp_size=2MB)` fails,
+  the spec'd hard-abort fires (see next bullet). DO NOT
+  fall back to fewer pages with implicit smaller arena —
+  that would silently shrink the working set below 4× L3
+  and the bench would measure cache hits.
 - **Hard-abort on `VirtualAlloc(MEM_LARGE_PAGES)` failure.**
   The in-tree fallback to plain `malloc` at
   `bench_sp_hedge.c:111-122` silently produces garbage
