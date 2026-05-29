@@ -5512,6 +5512,128 @@ two kernel variants (`sp_matmul_q8_q1.so` mod q_1 =
 1073738753; `sp_matmul_q8_q2.so` mod q_2 = 1073732609)
 from one source.
 
+### 2026-05-30 (later still) — Sprint J.5 CLOSED + Sprint K v0.alpha CLOSED: manifesto Trick #1 SILICON-CONFIRMED
+
+Two parallel sprints closed cleanly within hours of each
+other. This is the architectural ignition moment.
+
+**Sprint J.5 (production-deployment polish):** sp_daemon
+cross-compiles to aarch64-android (NDK r27d, 5.5 MB PIE
+ELF). All 5 gates PASS on S22U:
+- T_NDK_CROSS_COMPILE: clean
+- T_APPSTATE_INTEGRATION: /v1/dsp/model_info → 28 layers,
+  1433 MB DMA, 448 MB KV, 734 ms load
+- T_ENDPOINT_REGRESSION_ANDROID: mesh/peers + dsp/echo +
+  model_info all 200; chat + ledger 501 (C-path host-
+  gated per the agreed disposition)
+- T_ENDPOINT_REGRESSION_HOST: all 5 endpoints green on
+  Windows host build
+- T_J5_GRACEFUL_DEGRADE: cfg fences clean
+
+The agent surfaced a scope discovery before committing:
+sp_daemon's L1 C-ABI path (ffi/session/forward) and
+sieve_ffi/mining path never cross-compiled for android —
+build.rs explicitly defers C linking as "Phase 2-L3.FG
+scope." Agreed Option A (host-gate the C path); filed
+**Phase 2-L3.FG-CROSS-COMPILE** as the explicit follow-on
+sub-phase to unblock /v1/chat and /v1/pouw/ledger on the
+android binary. Anti-pattern callout in closure: do NOT
+bundle the C cross-compile into any other sprint.
+
+Engine commits: 92f1a59 (NDK config) / 15bfdd8 (host-gate)
+/ 841160c (AppState) / cf7837d (on-device). Sub-tags:
+`lat-phase-4-sprint-j5-{ndk-unblock, c-path-host-gated,
+appstate-wire, endpoint-regression, closed}`.
+
+**Sprint K v0.alpha (the architectural moment):**
+manifesto Trick #1 (CRT-sharded compute across silicon
+islands) is now **empirically silicon-confirmed on
+cDSP-internal scale** via V69's dual HVX vector contexts.
+
+Verbatim measurement from S22U:
+
+```
+Single-invoke wall:           17.7 ms
+Bench-A (seq 2 invokes):      35.8 ms  (= 2× single, baseline)
+Bench-C (dual concurrent):    18.3 ms  (≈ 1× single!)
+overlap_fraction:              0.9699  (97% of wall window concurrent)
+speedup vs sequential:         1.935×  (97% of theoretical 2.0×)
+```
+
+Gate decision rule applied (overlap ≥ 0.5): **K v0.beta
+dispatch AUTHORIZED.** Barrett-reduction CRT kernel
+rewrite proceeds with confirmed dispatch-parallelism
+premise. No K.2 (NPU integration) pivot needed at this
+shape; K.2 remains as future scope for cross-island
+amplification.
+
+**Critical design correction by the agent (recorded as
+memory entry `reference-fastrpc-concurrent-dispatch`):**
+my Sprint K mandate specified two errors that would have
+shipped a false-negative parallelism conclusion if
+implemented verbatim:
+
+1. **`Mutex<FastRpcSession>` is wrong.** The Mutex would
+   serialize at the lock before either invoke fired,
+   producing overlap = 0.0 regardless of underlying
+   cDSP parallelism. Correct primitive is
+   `Arc<FastRpcSession>` — `FastRpcSession` is auto-
+   Send+Sync because `libloading::Library` + bare fn
+   pointers + u64 handle are all Send+Sync.
+
+2. **pcycle ratio is mathematically wrong as a
+   parallelism gate.** `max(thread_pcyc) / (t_a + t_b) ≈
+   0.5` always for equal-work threads, regardless of
+   concurrent vs sequential execution. The right
+   discriminator is wall-clock based: `speedup =
+   sequential_wall / parallel_wall`; threshold ≥ 1.5×
+   for "parallelism real."
+
+The agent verified Send+Sync via the libloading source
+that I should have verified at spec-write time. Third
+instance of the same pattern (Sprint H tail-loop theory,
+Sprint J cross-compile scope, now this) — each time the
+agent's empirical discipline caught a load-bearing spec
+error before false-conclusion shipped.
+
+Engine commits: K v0.alpha 4-commit sequence; sub-tags
+`lat-phase-13-6-k-alpha-{functional, pcycle-measured,
+leak-free, closed}`.
+
+**What Sprint K v0.alpha empirically confirms:**
+
+- V69 cDSP dual HVX vector contexts ARE engageable via
+  FastRPC concurrent invokes on a single Arc handle.
+- Halide-emitted kernel does NOT contend on shared L1/
+  VTCM/DDR at the 128×128 / B=8 shape (larger shapes
+  TBD; possible contention surface for K v0.beta + K.3).
+- Concurrent invokes do not corrupt each other's
+  DmaBuffer state (bitwise-equal hidden outputs across
+  both threads).
+- ARM thread spawn overhead ~3.5 ms per dual-dispatch
+  cycle — small but measurable.
+
+**Sprint K v0.beta scope** (filed in K v0.alpha closure
++ awaiting operator authorization): Halide generator
+emits Barrett-reduction matmul mod q_1 and mod q_2
+(MU_Q1 = 1073744895, MU_Q2 = floor(2^60/q_2) — cross-
+checked against Phase 2-CU.PTX NTT lineage at engine
+63d7e2d). Dispatcher uses K v0.alpha's Arc-pattern.
+Garner recombine on ARM (2 muls + 1 add per element).
+Math identity gate per operator's corrected conditional
+formulation:
+- Sprint J output bitwise-equal to CRT-recombined output
+  at the no-saturation test shapes, AND
+- Sprint J accumulator stays within ±INT32_MAX across
+  test data (asserted in scalar reference path during
+  K's verification run; if assertion fires, identity
+  claim is vacuous and that's surfaced upstream).
+
+~500-600 LOC kernel rewrite. Plan-first + multi-file +
+commit-between-stages discipline. K v0.beta closes the
+internal CRT-sharded compute substrate; Sprints K.2
+(NPU) + Sprints L/M/N follow.
+
 ### 2026-05-30 (late) — Phase 3-HX-MODE-D path forward: Sprint H (G.1 fixes) → Sprint I (single-layer smoke) → Sprint J (full model loader)
 
 After Sprint G, Gemini proposed jumping straight to Phase 4
