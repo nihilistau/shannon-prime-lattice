@@ -87,7 +87,17 @@ That commit contains **both** lanes. File-level attribution:
 `41963ac` is already on `origin/main`, so it was **not** rewritten (no
 force-push of shared history; unbundling would also touch K-beta's lane, which
 this sprint must not). The code is correct and live; only the commit boundary
-is impure. **Recommendation for future parallel cohorts: give each agent its
+is impure.
+
+**Provenance (tested ≡ committed):** the device binary was built from the
+working tree; no edits were made between that build and the commit attempt;
+K-beta's `git add` snapshots files into history without mutating the working
+tree; `git diff` for my 7 files was then empty (working tree == HEAD ==
+`41963ac`). So **tested binary ≡ working tree ≡ committed source**. The
+empirical clincher: the daemon behaved exactly as the re-unify designed (CPU
+chat coherent, DSP fields populated) — impossible if K-beta had also edited
+those files. Post-closure `git status` confirms nothing of L3.FG's is left
+uncommitted in the engine tree. **Recommendation for future parallel cohorts: give each agent its
 own git worktree** so concurrent `git add` cannot cross-contaminate. L3.FG
 Stage 2 (`c01662b`) and this closure are cleanly isolated.
 
