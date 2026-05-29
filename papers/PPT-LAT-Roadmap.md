@@ -4876,6 +4876,174 @@ gate as PASS. Closure notes cite the amended gate number,
 not the original. Bench fixtures may not be tuned until a
 number passes.
 
+### 2026-05-30 — Phase 3-HX-MODE-D Sprints A–G CLOSED on S22U (Path B Unsigned PD)
+
+Seven sprints landed on Knack's S22U (R5CT22445JA)
+between 2026-05-29 late and 2026-05-30 afternoon. Full
+Mode D bridge stack working end-to-end with discrete
+math actually running in VTCM under FastRPC. This is
+the ignition moment for the Hexagon backend.
+
+**Why Path B (Unsigned PD) instead of the Signed PD path
+the spec assumed.** Sprint A pre-flight discovered
+`testsig` was MISSING in `/vendor/etc/` on Knack's S22U
+test device. Rather than block the entire Mode D track
+on getting testsig configured, the agent shipped Path B
+admission via `DSPRPC_CONTROL_UNSIGNED_MODULE` before
+`remote_handle_open`. Per
+`reference-signed-pd-developer-path` (corrected
+post-Sprint F): VTCM access works fine under Unsigned PD
+on this device; the Signed-PD requirement applies to
+real-time priority claims + specific privileged hardware
+drivers, not to VTCM-backed compute. Mode D v0 ships on
+Path B; Signed PD is a future upgrade gated on testsig
+install + the use cases that need it.
+
+**Sprints summary:**
+
+- **Sprint A — FastRPC bridge** (`lat-phase-3-hx-mode-d-rpc-closed`).
+  `FastRpcSession` Rust struct in `tools/sp_daemon/src/dsp_rpc.rs`;
+  dynamic libcdsprpc.so via libloading; Path B admission;
+  Drop-based session cleanup; 4 sub-tags (pre-flight-pass +
+  unsigned-pd-admitted + bridge-correctness + leak-free) +
+  umbrella. Echo skel (180 KB V69 ELF) built via SDK
+  `hexagon_toolchain.cmake:150-166` PIC_SHARED template with
+  rtld_init.a whole-archive + SigVerify_* stubs. T_RPC_ECHO
+  (16B/4KB/1MB) bitwise + 1000-cycle leak-free.
+
+- **Sprint B — DmaBuffer (zero-copy)** (`lat-phase-3-hx-mode-d-dma-closed`).
+  `rpcmem_alloc(HEAP_ID_SYSTEM=25, DEFAULT|TRY_MAP_STATIC)`;
+  4 symbols resolved from same libcdsprpc.so (no new dynamic
+  link). 4.2% speedup on 1MB × 1000 iter vs heap-malloc
+  baseline. T_DMA_ALLOC + bitwise + leak gates green.
+
+- **Sprint C — Axum endpoint** (`lat-phase-3-hx-mode-d-axum-closed`).
+  POST `/v1/dsp/echo` on sp-daemon (android path) + standalone
+  `dsp_axum_server` binary for on-device verification.
+  Mutex<FastRpcSession> serializes FFI cleanly; 4 concurrent
+  curls bitwise-correct; clean shutdown on SIGINT.
+
+- **Sprint D MVP — hand-written HVX axpby**. C kernel
+  (`y[i] = sat_i16((a*x[i] + b) >> q_bits)`) demonstrating
+  HVX SIMD via auto-vec from `hexagon-clang -mhvx -mhvx-length=128B`.
+  64 int16 = 1 HVX vector. Closed; opened Sprint E for explicit
+  intrinsics path.
+
+- **Sprint E — explicit HVX intrinsics + batched calls**.
+  `Q6_Ww_vmpy_VhRh` (widening i16×i16→i32 pair) +
+  `Q6_Vw_vadd` + `Q6_Vw_vasr` + `Q6_Vh_vpack_VwVw_sat`
+  chain. Batched FastRPC call amortizes per-call overhead
+  (~400 µs/call).
+
+- **Sprint F — Halide AOT + VTCM litmus** (`lat-phase-3-hx-mode-f-halide-vtcm-closed`).
+  Halide AOT pipeline functional end-to-end. VTCM litmus
+  ADMITTED at 64 KB / 1 MB / 4 MB sizes. **This empirically
+  settled the question of whether VTCM access needs Signed
+  PD — it doesn't.** Initial conclusion "VTCM hot-copy with
+  Halide unviable" because vmemu loads crashed on VTCM-region
+  host pointers.
+
+- **Sprint F.1 — VTCM staging retry** (`lat-phase-3-hx-mode-f1-vtcm-staging-closed`).
+  Reversed F's conclusion via 3-variable bundled change:
+  `set_host_alignment(128)` + `.prefetch(x, r, 2)` +
+  all-buffers-in-VTCM. ALL GATES PASS. Honest closure
+  disclosure: most-likely root cause is "mixing DDR and
+  VTCM in one kernel call," not the vmemu theory. Sprint F's
+  closure tag stands as written for historical accuracy;
+  F.1 ADDS to the record. Memory:
+  `feedback-bundled-changeset-root-cause-ambiguity`.
+
+- **Sprint G — dual-VTCM matmul FFN slice** (`lat-phase-3-hx-mode-d-ffn-closed`).
+  2-stage matmul FFN via Halide AOT with ALL 4 I/O buffers
+  in external VTCM (HAP_request_VTCM) + hidden intermediate
+  in internal VTCM (.store_in(MemoryType::VTCM)). Both
+  allocations colocated in V69 4 MB pool without collision.
+  Per-kernel pcycle measurement via `HAP_perf_get_pcycles()`.
+  T_HALIDE_FFNVTCM{ZEROS,B4,B8,B16,B64} all PASS with
+  vtcm_used=1 every call. **Pcycles scale linearly:
+  7.9M → 15.7M → 31.4M → 125.8M for batches 4 / 8 / 16 / 64
+  — the signature of a memory-bound architecture transitioning
+  to compute-bound. HVX pipes saturated; SMMU/DDR
+  bottlenecks zeroed.**
+
+**Two G.1 constraints documented as Sprint H precondition:**
+
+- **Tail-loop predication in VTCM:** matmul kernels diverge
+  from scalar reference when shape dims aren't multiples
+  of 128 (Halide tile width). Real-world LLM activations
+  (Qwen3-0.6B hidden_size=896) hit this. Fix per
+  `reference-v69-hvx-expert-practices`: generator-side
+  pad-to-128 with logical-size epilogue trim.
+- **`q_bits > 14` divergence:** Halide emits
+  `vmpy.h:sat` which saturates at INT_MAX; scalar reference
+  wraps modulo. Hardware is right; reference is wrong.
+  Fix: scalar reference uses strict 32-bit saturation
+  on every MAC step.
+
+### 2026-05-30 (late) — Phase 3-HX-MODE-D path forward: Sprint H (G.1 fixes) → Sprint I (single-layer smoke) → Sprint J (full model loader)
+
+After Sprint G, Gemini proposed jumping straight to Phase 4
+Full Model Ingestion (per-layer DmaBuffer chunking; KV cache
+allocation; AppState integration). **The Shannon-Prime team
+audit rejected the big-bang shape for two reasons:**
+
+1. The G.1 constraints (128-multiple shapes; q_bits ≤ 14)
+   will bite EVERY layer of a real model. Loading a model
+   then discovering every FFN matmul produces garbage on
+   hidden_size=896 is the "ship and pray" anti-pattern.
+   Fix G.1 FIRST.
+2. Single-layer smoke is the cheap proof. Before allocating
+   30+ DmaBuffers and a multi-GB KV cache, load ONE FFN
+   layer through the bridge and verify bit-identity vs
+   math-core scalar reference. ~150 LOC of model parsing
+   that the full loader needs anyway.
+
+**Staged sprint plan:**
+
+- **Sprint H — G.1 constraint fixes (PRECONDITION).** Two
+  surgical patches:
+  - H.1: Generator-side pad-to-128 with logical-size
+    epilogue trim. Updates Halide generator + Rust loader
+    tensor-shape padding. ~100 LOC across two repos.
+  - H.2: 32-bit saturation in scalar reference matching
+    Halide's `vmpy.h:sat` semantics. ~30 LOC patch in
+    `shannon-prime-system`. Add T_SAT_OVERFLOW gate test
+    that exercises the overflow regime.
+  - Closure: T_HALIDE_PAD_64_TO_128, T_HALIDE_PAD_896_TO_1024,
+    T_HALIDE_QBITS_14_PASS, T_HALIDE_QBITS_16_PASS
+    (post-H.2 saturation fix), and bit-identity vs math-core
+    scalar across the full padded × q_bits matrix.
+
+- **Sprint I — Single-layer real-model smoke.** Load ONE
+  Qwen3-0.6B FFN layer's W_gate / W_up / W_down weights
+  from the existing `.sp-model` file at
+  `D:\Files\Models\lmstudio-community\Qwen3-0.6B-GGUF\`
+  into three DmaBuffers via Sprint B primitives. Run dual-
+  VTCM matmul through the bridge. Verify bit-identity vs
+  `sp_frob_matmul_q8_ref` from shannon-prime-system. ~150
+  LOC; reuses entire bridge stack. Closure proves the
+  loader + bridge + Halide kernel composes at minimum
+  scale.
+
+- **Sprint J — Full Phase 4 model loader.** Gemini's Phase 4
+  Sprint A pitch, but now with Sprint H constraints fixed
+  + Sprint I loader pattern proven. Per-layer DmaBuffer
+  allocation, KV cache buffer (VHT2 / Q4 format), AppState
+  integration, graceful degradation on heap exhaustion,
+  drop-on-mid-load cleanup. Real model parses end-to-end;
+  AppState holds the full layer list.
+
+This staging matches the discipline that held through
+`lat-smoke-2node` → F5+F6 → §16.3 rework: each sprint is
+focused, can fail cleanly, composes with the next. Sprint H
+is small + cheap; Sprint I is the de-risking probe;
+Sprint J is the scaling.
+
+After Sprint J: spec-decode integration (Phase D2 re-wire)
+gets the lattice an end-to-end mobile-LLM with mesh peers +
+PoUW receipts + Hexagon math, which is the actual ignition
+target.
+
 ### 2026-05-29 (late) — Phase F5 + F6 paired sprint CLOSED (`lat-phase-f5-f6`)
 
 Both follow-on sub-phases from the smoke closure landed in
