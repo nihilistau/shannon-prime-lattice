@@ -4966,19 +4966,70 @@ install + the use cases that need it.
   to compute-bound. HVX pipes saturated; SMMU/DDR
   bottlenecks zeroed.**
 
-**Two G.1 constraints documented as Sprint H precondition:**
+**Two G.1 constraints documented as Sprint H precondition
+(framing partially RETRACTED 2026-05-30 late after Sprint H
+agent surfaced empirical inconsistencies; see retraction
+note below):**
 
-- **Tail-loop predication in VTCM:** matmul kernels diverge
-  from scalar reference when shape dims aren't multiples
-  of 128 (Halide tile width). Real-world LLM activations
-  (Qwen3-0.6B hidden_size=896) hit this. Fix per
-  `reference-v69-hvx-expert-practices`: generator-side
-  pad-to-128 with logical-size epilogue trim.
-- **`q_bits > 14` divergence:** Halide emits
-  `vmpy.h:sat` which saturates at INT_MAX; scalar reference
-  wraps modulo. Hardware is right; reference is wrong.
-  Fix: scalar reference uses strict 32-bit saturation
-  on every MAC step.
+- **Dim constraint:** matmul kernels diverge from scalar
+  reference when shape dims don't equal the Halide tile
+  width exactly. Sprint G failing cases: H=256, D_in=256,
+  D_out=256 — all multiples of 128, but not 128 itself.
+  Passing cases: all dims = 128 exactly. The earlier
+  "multiples of 128" framing (and Gemini's tail-loop-
+  predication diagnosis) does NOT match Sprint G's data.
+  **The constraint is "dims must equal tile width," which
+  is a stricter problem than tail-loop predication.**
+  Root cause unknown; Sprint H now diagnostic-first
+  (bisect H ∈ {128, 160, 192, 224, 256} at fixed q_bits=14
+  to locate the divergence boundary empirically).
+
+- **`q_bits > 14` divergence:** persists despite the scalar
+  reference using `saturating_add` (already in tree at
+  engine `test_hvx.rs:487-503` since Sprint G). The
+  wrap-vs-sat hypothesis is empirically FALSIFIED — both
+  sides saturate identically and they still diverge.
+  Root cause unknown; Sprint H bisects q_bits ∈
+  {12, 13, 14, 15, 16} to locate the boundary precisely.
+
+**Retraction note (2026-05-30 late):** the original Sprint H
+spec (commit 9b784c9) proposed two surgical patches —
+pad-to-128 in the Halide generator (H.1) and saturating
+scalar reference (H.2). Both were technically wrong:
+- H.1 addresses "multiples of 128" but the actual
+  constraint is "equals 128" — Sprint G's failures were
+  all at multiples-of-128 dims.
+- H.2 re-implements a fix already in tree
+  (engine `test_hvx.rs` already uses `saturating_add` per
+  Sprint G's debugging session).
+- Both pointed at shannon-prime-system as the scalar-
+  reference repo; actual reference is inline in engine
+  `tools/sp_dsp_smoke/src/test_hvx.rs:471-503`.
+
+The Sprint H agent caught this and pushed back per
+`feedback-no-silent-gate-revisions`. Sprint H pivoted to
+**diagnostic-first instrumentation** (Option A):
+1. New IDL method returning `hidden[0..16]` alongside
+   the output — isolates "matmul 1 divergence" from
+   "matmul 2 divergence".
+2. `T_HALIDE_FFN_BISECT_QBITS` sweeps q_bits ∈
+   {12, 13, 14, 15, 16} at fixed shape; record the
+   value at which divergence appears.
+3. `T_HALIDE_FFN_BISECT_DIM` sweeps H ∈ {128, 160, 192,
+   224, 256} at fixed q_bits=14; tests the predication
+   theory (160 is non-multiple; 256 is multiple-not-128).
+
+After bisection produces empirical root-cause evidence,
+Sprint H.PATCH proposes a targeted fix grounded in data
+rather than theory. ~150-200 LOC engine-only; no
+shannon-prime-system changes; no new memory entries.
+
+This retraction is itself a case study in
+`feedback-lead-with-reference-then-theory` — I (Claude)
+trusted Gemini's tail-loop-predication theory without
+verifying against Sprint G's actual failure cases or
+checking what was already in tree. The Sprint H agent's
+five-point pushback is the correct discipline.
 
 ### 2026-05-30 (late) — Phase 3-HX-MODE-D path forward: Sprint H (G.1 fixes) → Sprint I (single-layer smoke) → Sprint J (full model loader)
 
