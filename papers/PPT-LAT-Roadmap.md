@@ -2680,7 +2680,36 @@ compose with each other and with §11 Mode D (which provides the
 DSP-side Halide AOT pipeline) and §13.1-13.4 (which provides the
 external CRT mesh transport).
 
-#### 13.6.K Sprint K — Internal CRT split (DSP-q1 + NPU-q2 + ARM Garner)
+#### 13.6.K Sprint K — Internal CRT split (DSP dual-HVX + ARM Garner)
+
+**Sprint K split into v0.alpha + v0.beta per 2026-05-30 agent
+audit.** The original spec underweighted the kernel rewrite cost
+(CRT matmul requires Barrett reduction per-multiply, NOT just
+const-generic prime substitution) AND assumed cDSP dual-HVX
+parallelism without verifying FastRPC + scheduler + Halide
+resource contention compose. The split is the right discipline:
+
+- **K v0.alpha (~150 LOC, ~2 hours)** — dispatch parallelism
+  premise check using EXISTING Sprint J FFN diag method on
+  two ARM threads + Mutex<FastRpcSession>. No kernel changes.
+  Per-thread HAP_perf_get_pcycles brackets measure overlap
+  fraction = max(t_a, t_b) / (t_a + t_b). Gate decision:
+  - overlap ≥ 0.5 → K v0.beta dispatch authorized
+  - overlap < 0.5 → pivot to K.2 (NPU integration via Mode
+    B/D bridge); Barrett kernel rewrite not committed
+
+- **K v0.beta (~500-600 LOC, conditional)** — Halide
+  generator emits Barrett-reduction matmul mod q_1 and mod
+  q_2 (two .so files). Dispatcher uses K v0.alpha's proven
+  pattern. Garner recombine on ARM. Math identity gate
+  is CONDITIONAL on the no-saturation regime (verified by
+  asserting Sprint J accumulator stays within ±INT32_MAX
+  for the test data — instrumented in the scalar reference
+  during K's verification run).
+
+The split honors `feedback-lead-with-reference-then-theory`
++ `feedback-no-silent-gate-revisions`: test the load-bearing
+premise cheaply BEFORE committing to the kernel-rewrite cost.
 
 **Trick exercised:** #1 (CRT-sharded compute across silicon islands)
 and #9 (Spinor 63-byte ABI).
