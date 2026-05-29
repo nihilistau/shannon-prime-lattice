@@ -5767,6 +5767,194 @@ empirical confirmation. K.2 (NPU cross-island via Mode B/D
 bridge) and §13.6.L/M/N then unlock as the next
 architectural sprints.
 
+---
+
+## Phase 4-MeMo — Memory-as-a-Model on the heterogeneous CRT mesh (FILED 2026-05-30)
+
+**Origin:** arXiv:2605.15156 "MeMo: Memory as a Model" describes
+a dual-model architecture — a frozen Executive model decomposes
+queries, a dedicated Memory model holds factual knowledge, an
+orchestrator routes a multi-turn Grounding → Entity ID →
+Synthesis loop. The paper updates the Memory model via TIES
+merging in parameter space.
+
+Gemini surfaced the paper as a candidate for the SP heterogeneous
+SoC substrate. The structural mapping IS the right shape: two
+silicon islands + ARM orchestrator + zero-copy DmaBuffer routing
++ PoUW receipts gives us a substrate other stacks don't have.
+But the as-written sprint plan had seven specific errors that
+would burn agent cycles:
+
+1. "Pin Memory model to VTCM" — VTCM is 8 MB on V69; only
+   hot tiles can be staged. Reframe per Sprint G recipe.
+2. "Trick #4 channel-pair → no LPDDR5x bus contention" — TS
+   oracle is calibrated for CPU-issued DMA path; DSP-issued
+   DMA routes through a separate compute SMMU fabric.
+   Channel separation needs separate per-channel calibration
+   on the DSP path. NOT a free assumption.
+3. "TIES merge = literal integer addition in Z_q" — TIES has
+   three steps: Trim, ElectSign, Disjoint Merge. Only step 3
+   is integer addition. Steps 1 and 2 require *magnitude* and
+   *sign* which are not natively defined in Z_q — they require
+   Frobenius lift to the balanced [−q/2, q/2) representative.
+   Without the lift, "lossless" is empty marketing.
+4. "Memory model on NPU" — K.2 NPU bridge not shipped. Either
+   defer or run dual-cDSP-context first per K v0.alpha pattern.
+5. "Spinor 64-byte ABI as token-passing format" — category
+   error. Spinor is the *integrity envelope* (Trick #9), not
+   the data carrier. Tokens are not 63 bytes. Actual zero-copy
+   mechanism is shared SMMU DmaBuffer pools; Spinor wraps the
+   *receipt* that audits each turn.
+6. "Memory model is smaller than Executive" — not in the paper
+   as a hard claim. Memory is *trained differently* (SFT on
+   factual corpora), not necessarily smaller. Treat size as a
+   parameter, not a precommitment.
+7. "KSTE prefetch with >20% TTFT reduction gate" — arbitrary
+   number with no hardware-grounded basis. Also: KSTE Sieve is
+   PoUW dominance receipts, not natively a prefetch predictor.
+   Right reuse is KSTE-as-routing (sparse layer/head activation
+   gated by histogram of grounding query), not KSTE-as-prefetch.
+
+After correction, the load-bearing SP wins Gemini's framing
+missed:
+
+- **PoUW-receipt-backed merge ledger** — every TIES merge mints
+  a cryptographic proof. Ledger is appendable + replayable.
+  Memory model state at time T is *reconstructable* from receipt
+  sequence — no "trust me, my phone learned that." Mesh peers
+  broadcast receipts; others Garner-replay. **Verifiable
+  distributed continual learning across the CRT mesh.** This is
+  uniquely SP-shaped because the integer substrate makes replay
+  exact.
+
+- **CRT-sharded MeMo** — Executive runs the q_1 shard, Memory
+  runs the q_2 shard, Garner recombines at output. Trick #1
+  applied at *model-level* not *kernel-level*. Both get the
+  dual-prime silicon-error catch via Frobenius identity (Trick
+  #6). A single conceptual model splits across two silicon
+  islands without ever materializing the full-precision result
+  on any single island.
+
+- **Spec-decode applicability** — Executive's grounding-query
+  loop is naturally spec-decode-shaped. Memory drafts; Executive
+  verifies with byte-exact accept/reject (Trick #3). Composes
+  with Phase 4-SPEC. Filed as a Phase 4-SPEC × MeMo crossover
+  sprint, not an M-block sprint.
+
+- **Decode-determinism invariant (L3.FG-confirmed) gates M.3's
+  exact-revert check** — without the cross-silicon byte-
+  identical decode invariant, the "merge, infer, revert, infer,
+  assert identical" gate is unfalsifiable. With it, the gate is
+  meaningful: any divergence is from the merge, not from
+  nondeterminism.
+
+### Sprint block (M.0 – M.6)
+
+**M.0 — Memory model artifact (prerequisite).** Either fine-tune
+Qwen3-0.6B on a target factual corpus via SFT (~hours on single
+GPU), or stub with a known-different checkpoint for protocol
+validation. Without M.0, M.1+ are hypothetical. Dispatches in
+parallel with K v0.beta-2.5b (no dependency).
+
+**M.1 — Memory budget audit + dual-load (cDSP-internal).** First
+gate is budget audit: enumerate Android OS + zygote + system_server
++ sp_daemon + Rust heap + cDSP arena, compute available LPDDR5x
+for model residence on S22U's 12 GB. Then dual-load Executive +
+Memory into separate DmaBuffer pools, both targeting dual cDSP
+vector contexts per K v0.alpha. NPU dispatch deferred until K.2
+ships. Gates: T_MEMO_BUDGET_AUDIT (quantified per-component
+budget); T_MEMO_DUAL_LOAD (both models resident without
+AEE_ENOMEMORY); T_MEMO_DUAL_INVOKE (concurrent Arc<FastRpcSession>
+dispatch per `reference-fastrpc-concurrent-dispatch`).
+Not gated by K.beta.2.5b — scalar Barrett (2.5a) is sufficient
+for protocol bring-up.
+
+**M.2 — Zero-copy dialogue loop via shared SMMU DmaBuffer pools.**
+Grounding → Entity ID → Synthesis state machine in sp_daemon on
+Cortex-X2. Executive's output DmaBuffer becomes Memory's input
+DmaBuffer via SMMU pagetable reuse (no marshalling). Per-turn
+Spinor receipt envelope captures (turn N, model, input hash,
+output hash) — Spinor here is the *audit format*, not the
+*payload format*. Payload lives in DmaBuffer. Gate
+T_MEMO_ZEROCOPY_LOOP: 3-turn internal dialogue executes with zero
+host-side allocation (instrumented via heap walker).
+
+**M.3 — Frobenius-lifted TIES merge.** Three substeps:
+(a) Lift Memory model weights to Frobenius representation
+(scaled-integer real-valued domain);
+(b) Run Trim (zero out low-magnitude task-vector entries) and
+ElectSign (resolve sign conflicts across constituent task
+vectors) in Frobenius domain;
+(c) Re-encode to Z_q and execute Disjoint Merge as exact mod-q
+addition across selected entries.
+Mint a PoUW receipt for the merge. Gate T_MEMO_LOSSLESS_MERGE:
+merge → inference → revert → inference, assert byte-identical
+output (load-bearing on decode-determinism invariant from
+`reference-lattice-decode-determinism`). Requires K.beta.2.5b
+(Frobenius lift + re-encode rest on Barrett at vector width).
+
+**M.4 — PoUW-receipt merge ledger + mesh replay.** Receipts
+accumulate in append-only ledger. Two devices independently merge
+different task vectors. Receipts broadcast over CRT mesh (existing
+Phase 4-PoUW framework). Each peer Garner-replays incoming
+receipts. Gate T_MEMO_MESH_REPLAY: device A's Memory model state
+after replaying device B's receipt sequence is byte-identical to
+device B's Memory model state after the same sequence. This is
+the load-bearing distributed-learning gate. Uniquely SP because
+Z_q makes replay exact (no FP drift accumulates).
+
+**M.5 — KSTE-routed sparse Memory activation.** Tier-0 histogram
+of grounding query gates which Memory model layers/heads to invoke
+(sparse compute, not full forward). Measure-and-report shape: no
+precommitted percentage threshold. Instrument hit rate of
+predicted-active heads vs full-forward baseline. Report observed
+TTFT delta as data, NOT as gate. Gate T_MEMO_KSTE_ROUTING: routing
+is invariant-preserving (sparse forward output matches full
+forward output modulo numerical tolerance from skipped heads).
+
+**M.6 — CRT-sharded MeMo (cross-island composition).** Executive
+runs q_1 shard, Memory runs q_2 shard, Garner recombines at
+output. Cross-shard Frobenius identity check (Trick #6) catches
+single-island silicon errors. Gate T_MEMO_CRT_GARNER: end-to-end
+output byte-identical to single-shard 60-bit reference baseline.
+Initial dispatch as dual-cDSP-context (both shards on cDSP via
+SSR:XA={4,5}); NPU-island variant deferred until K.2 ships. This
+is the head-to-head test of whether model-level CRT actually
+composes.
+
+### What's NOT in Phase 4-MeMo (filed separately)
+
+- **MeMo × SPEC crossover** — Memory-as-draft + Executive-as-
+  verify spec-decode loop. Belongs in Phase 4-SPEC scope.
+- **NPU silicon island variant of M.6** — needs K.2 (NPU bridge
+  via Mode B/D) to ship first.
+- **Multi-tenant Memory models** — single phone hosts N Memory
+  models for N domains. Storage-tier sprint, not learning-tier.
+- **Cross-device Memory model SHARDING** (vs replay) — beyond
+  M.4. Device A holds q_1 shard, device B holds q_2 shard, mesh
+  Garner-combines at inference. Distinct architectural piece.
+
+### Prereq chain
+
+```
+K.beta.2.5b ────┐
+                ├─→ M.3 ─→ M.4 ─→ M.6
+M.0 ───┐        │             ↑
+       ├─→ M.1 ─┤             │
+M.0 ───┘        ├─→ M.2 ──────┤
+                └─→ M.5 ──────┘
+```
+
+M.0 and K.beta.2.5b dispatch in parallel (separate worktrees per
+`feedback-parallel-agents-separate-worktrees`).
+
+After M.6 closes, the Shannon-Prime stack has demonstrated:
+verifiable distributed continual learning on commodity mobile
+silicon, with cryptographic audit + lossless integer math +
+heterogeneous-SoC dual-island compute, all under the manifesto's
+ten tricks composing as advertised. That is the architectural
+endpoint Phase 4 has been building toward.
+
 ### 2026-05-30 (late) — Phase 3-HX-MODE-D path forward: Sprint H (G.1 fixes) → Sprint I (single-layer smoke) → Sprint J (full model loader)
 
 After Sprint G, Gemini proposed jumping straight to Phase 4
