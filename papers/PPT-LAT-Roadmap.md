@@ -5371,6 +5371,118 @@ integration is well-scoped scope creep. After Sprint J:
 unlock — the manifesto's first load-bearing trick gets
 its empirical confirmation.
 
+### 2026-05-30 (much later) — Sprint J Path A1 CLOSED: full Qwen3-0.6B in cDSP shared memory
+
+Sprint J shipped via Path A1 (sp_dsp_smoke-resident
+loader, not sp_daemon) after agent pushback surfaced a
+pre-existing cross-compile blocker: sp_daemon Android
+build is blocked by NDK toolchain plumbing for multiple
+cc-rs-using deps (ring for rustls/quinn, esaxx-rs for
+tokenizers, bindgen for sp_l1.h). Originally noted in
+Sprint C closure (Phase 2-L3 SSE) and never resolved.
+sp_dsp_smoke cross-compiles cleanly — the loader work
+landed there without entanglement.
+
+**Gate table (5 of 6 substantive PASS; 6th deferred):**
+
+| Gate | Verdict | Notes |
+|---|---|---|
+| T_BUDGET_FITS | PASS | 2800 MB ceiling ≥ 1433.7 MB load |
+| T_FULL_LOAD_SUCCESS | PASS | 28 layers + globals; 1433.7 MB DMA in 985 ms (~1.46 GB/s; 30× under 30s budget) |
+| T_KV_CACHE_ALLOC | PASS | 56 DmaBuffers; 448 MB; 52 ms |
+| T_LAYER_N_MATMUL | PASS | Layer 14 W_gate via VTCM at q_bits=14; pcyc=9.3M |
+| T_PARTIAL_LOAD_CLEANUP | PASS | Nonexistent path + reload-drop cycle clean |
+| T_APPSTATE_INTEGRATION | **DEFERRED → Sprint J.5** | cross-compile blocker; auditable deferral, not silent skip |
+
+**Empirical findings informing Sprint K:**
+
+1. **Untied embedding correction.** `output.weight` exists
+   as a separate tensor in Qwen3-0.6B (not tied to
+   `embedding.weight`). The Sprint J plan estimated tied
+   embedding via `+40-offset` arch_struct read which
+   misinterpreted `tied_embedding=1`. Adds ~149 MB vs the
+   tied estimate. Still well under heap ceiling (52%
+   utilization). Caught by full-model loading; Sprint I's
+   single-tile smoke wouldn't have surfaced this.
+
+2. **Total DMA footprint: 1.43 GB** vs plan estimate
+   825–975 MB. Sources of the delta: Q8→i16 dequant
+   doubles each weight per the lattice's working-precision
+   convention; untied output_proj adds ~149 MB. The 2800 MB
+   heap ceiling has comfortable headroom even with the
+   correction.
+
+3. **985 ms load wall** for 1.43 GB at ~1.46 GB/s — near
+   UFS 3.1 sequential read ceiling. Weight loading is not
+   the daemon-startup bottleneck. Sprint J.2 (per-layer
+   packed DmaBuffer optimization) NOT warranted — there's
+   nothing to optimize when you're already at storage-
+   bandwidth ceiling.
+
+4. **Layer 14 hidden[0..4] = [0, 0, 0, 651]** differs from
+   Sprint I's layer-0 [0, 520, 2149, 0]. Per-layer offset
+   arithmetic verified at non-zero layer; the layer-0
+   special case isn't hiding a hardcoded-offset bug.
+
+**Sprint J.5 filed as explicit follow-on (cross-compile
+unblock + AppState wiring):**
+
+- Scope: Unblock sp_daemon aarch64-android cross-compile.
+  NDK toolchain plumbing for cc-rs deps (ring, esaxx-rs,
+  bindgen); AR_aarch64_linux_android + CC_aarch64_linux_
+  android with .cmd extension quirks; possibly
+  BINDGEN_EXTRA_CLANG_ARGS for sysroot. After unblock:
+  wire dsp_model + kv_cache from sp_dsp_smoke into
+  AppState; verify T_APPSTATE_INTEGRATION on S22U.
+- Prerequisites: Sprint C closure note (lat-phase-2-l3-
+  axum-closed) records the original cross-compile blocker
+  observation.
+- Estimated effort: 2-4 hours NDK plumbing + 30 min
+  AppState wiring + 30 min on-device verify.
+- Anti-pattern: Do NOT bundle J.5 into another sprint.
+  The NDK toolchain work is its own audit surface;
+  bundling makes failure attribution impossible.
+- Tag set: lat-phase-4-sprint-j5-{ndk-unblock,
+  appstate-wire, on-device, closed}.
+
+**Sprint K does NOT block on J.5.** Sprint K (manifesto
+Trick #1, internal CRT split DSP-q1 + NPU-q2 + ARM
+Garner) consumes the FastRpcSession-resident DmaBuffers
+Sprint J ships from sp_dsp_smoke; daemon residence is
+irrelevant for the manifesto's architectural unlock. The
+two paths run in parallel: Sprint K for the math
+architecture (high strategic value, advances §13.6.K
+spec), J.5 for production deployment (orthogonal
+infrastructure work).
+
+**Sub-tags issued (engine + lattice):**
+- lat-phase-4-sprint-j-budget-fits
+- lat-phase-4-sprint-j-full-load
+- lat-phase-4-sprint-j-kv-cache
+- lat-phase-4-sprint-j-layer-n-bitwise
+- lat-phase-4-sprint-j-partial-cleanup
+- lat-phase-4-sprint-j-appstate-deferred-to-j5 (the
+  auditable deferral tag)
+- lat-phase-4-sprint-j-closed (umbrella)
+
+Architectural discipline observed: 7-commit isolation;
+no production skel changes; no shannon-prime-system
+changes; agent pushback caught the cross-compile blocker
+before scope-violating refactor; the deferred gate has
+an explicit tag (not silently dropped per
+`feedback-no-silent-gate-revisions`); the 5-of-6 closure
+is honest reporting per `feedback-bundled-changeset-root-
+cause-ambiguity` and `feedback-no-silent-gate-revisions`
+disciplines.
+
+**Sprint K dispatch-ready.** §13.6.K spec stands; the
+loader Sprint J delivered provides the FastRpcSession-
+resident model the CRT split consumes. Sprint K's first
+deliverable is the Halide generator template emitting
+two kernel variants (`sp_matmul_q8_q1.so` mod q_1 =
+1073738753; `sp_matmul_q8_q2.so` mod q_2 = 1073732609)
+from one source.
+
 ### 2026-05-30 (late) — Phase 3-HX-MODE-D path forward: Sprint H (G.1 fixes) → Sprint I (single-layer smoke) → Sprint J (full model loader)
 
 After Sprint G, Gemini proposed jumping straight to Phase 4
