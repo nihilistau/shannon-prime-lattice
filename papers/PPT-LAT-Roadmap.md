@@ -5299,6 +5299,78 @@ loader) no longer block on H.PATCH because production
 quantization scales fit within q ≤ 15. The §13.6.K
 prerequisite block reflects this.
 
+### 2026-05-30 (later) — Sprint I CLOSED: real Qwen3-0.6B FFN tile through bridge
+
+First time real model weights flew through the Hexagon
+bridge end-to-end. Loaded `blk.0.ffn_gate.weight` 128×128
+Q8 tile (dequantized to i16 per-row with `fp_scale=64`)
+from `engine/build-cpu/tests/qwen3_rt.sp-model`, drove
+Sprint H diag method 9 at q_bits=14, bitwise-matched
+the saturating scalar reference across 3 distinct
+activation patterns on S22U R5CT22445JA.
+
+**Gate table:**
+
+| Gate | Verdict | Notes |
+|---|---|---|
+| T_MODEL_HEADER_PARSE | PASS | arch_id=2 [QWEN3], 509 tensors |
+| T_DMA_TILE_LOAD | PASS | 128×128 Q8→i16; w_tile[0..4] = [-146, 0, -395, -453] |
+| T_LAYER_MATMUL_BITWISE | PASS | 3/3 patterns via VTCM |
+| T_LAYER_NO_HEAP_LEAK | PASS | 100 iter / 1.034 s / 10.3 ms-per-iter |
+
+**Pcycle counts across activation patterns:**
+- sentinel: 9,296,397
+- pseudorandom: 9,277,391
+- all-ones: 9,278,006
+
+Spread = ~0.2% across radically different input data
+shapes. Confirms the kernel is purely compute-bound —
+input pattern doesn't perturb runtime. Sprint G's
+"linear pcycle scaling = compute-bound state" claim now
+has a single-shape confirmation against real Q8 weights,
+not just synthetic test data.
+
+**Empirical correction (recorded per
+`feedback-no-silent-gate-revisions`):** the prior phase
+log entry (2026-05-30 latest, lattice `433f465`)
+estimated Qwen3-0.6B `hidden_size = 896`. The actual
+`.sp-model` shows `hidden_size = 1024` (W_gate.dim[0])
+and `intermediate_size = 3072` (W_gate.dim[1]). The
+phase-log entries above stand as written for the
+prior expectation; this entry cites the corrected
+values for Sprint J's sizing. Both `1024 = 8 × 128` and
+`3072 = 24 × 128` are clean multiples of the Halide
+tile width — even without Sprint H's "no dim
+constraint" finding, these shapes would have worked.
+
+**Architectural discipline observed:**
+- 5-commit isolation (plan + parser + driver + on-device
+  + closure). No bundled changes per
+  `feedback-bundled-changeset-root-cause-ambiguity`.
+- No production compute skel changes (Sprint G's
+  T_HALIDE_FFN_VTCM_* gates preserved).
+- No shannon-prime-system changes (Sprint H's discovery
+  that scalar reference lives inline in engine
+  `test_hvx.rs:471-503` honored).
+- Bridge state aligned with source HEAD before starting:
+  agent rebuilt + re-pushed Sprint H closure-state skel
+  to clear unshipped H.PATCH leftover on device. Clean
+  state-machine transition.
+- No new memory entries.
+
+**Sub-tags issued (per closure plan):**
+- `lat-phase-3-hx-mode-d-i-parser-correct`
+- `lat-phase-3-hx-mode-d-i-bridge-bitwise`
+- `lat-phase-3-hx-mode-d-i-leak-free`
+- `lat-phase-3-hx-mode-d-i-closed` (umbrella)
+
+**Sprint J unblocked.** The single-layer loader pattern
+is proven; scaling to N layers + KV cache + AppState
+integration is well-scoped scope creep. After Sprint J:
+§13.6.K (internal CRT Trick #1) is the next architectural
+unlock — the manifesto's first load-bearing trick gets
+its empirical confirmation.
+
 ### 2026-05-30 (late) — Phase 3-HX-MODE-D path forward: Sprint H (G.1 fixes) → Sprint I (single-layer smoke) → Sprint J (full model loader)
 
 After Sprint G, Gemini proposed jumping straight to Phase 4
