@@ -2657,6 +2657,205 @@ Phase log entry names the per-sub-phase numbers, the empirical packet
 loss tolerance, the K cap on real WAN versus simulated WAN, and the
 caustic-skip rate measured on the Qwen3-0.6B / Gemma3-1B baselines.
 
+### 13.6 Heterogeneous SoC compute as recursive CRT (added 2026-05-30)
+
+**Manifesto.** The lattice's discrete CRT substrate IS the
+heterogeneous-SoC compute model. Continuous-fp LLM stacks need
+high-speed interconnects between accelerator islands because
+their math is sequentially coupled. The lattice's CRT dual-prime
+sharding makes Z_q1 and Z_q2 mathematically independent — DSP
+runs q1, NPU runs q2, ARM does O(1) Garner. No cross-island
+sync mid-compute. Recursive: the internal SoC CRT mesh composes
+with the external Phase 6 NET CRT mesh through a unified
+scheduling protocol from L1 cache to QUIC packet.
+
+Locked in memory entry `reference-heterogeneous-soc-crt-tricks`
+(2026-05-30) to prevent future drift back to statistical-fp
+heterogeneous paradigms. Future sprints exercising heterogeneous
+dispatch must reference the ten tricks by number rather than
+reinventing.
+
+The four sub-phases below operationalize the manifesto. They
+compose with each other and with §11 Mode D (which provides the
+DSP-side Halide AOT pipeline) and §13.1-13.4 (which provides the
+external CRT mesh transport).
+
+#### 13.6.K Sprint K — Internal CRT split (DSP-q1 + NPU-q2 + ARM Garner)
+
+**Trick exercised:** #1 (CRT-sharded compute across silicon islands)
+and #9 (Spinor 63-byte ABI).
+
+**Deliverable.** Halide AOT generator template that emits two
+kernel variants from one source, parameterized on the prime:
+`sp_matmul_q8_q1.so` (computes residue mod q_1 = 1073738753) and
+`sp_matmul_q8_q2.so` (mod q_2 = 1073732609). Mode D bridge
+dispatches DSP and NPU concurrently; ARM thread does the Garner
+recombine on completion. Phase 6 BLOCK-SYNC primitive provides
+the K-layer transactional window.
+
+**Gate (M_K_INTERNAL_CRT):**
+- Bit-identity vs single-island baseline at every shape exercised
+  in Sprint G (no logits drift; Theorem T8 preserved across the
+  internal CRT split).
+- Wall-time speedup ≥ 1.5× single-island on Qwen3-0.6B FFN
+  prefill at ctx=128. Floor is "any measurable speedup" per
+  `feedback-lattice-baseline-is-prior-lattice`; stretch is 1.8×
+  (perfect parallelism minus Garner cost).
+- pcycle scaling preserved: linear with batch size on both
+  islands independently.
+- Channel-pair allocation per Trick 4 used IF Sprint M closed;
+  otherwise default DDR alloc with empirical bandwidth-contention
+  measurement documented.
+
+**Prerequisites.** Sprint H closed (2026-05-30: empirical
+boundary recorded — q_bits ≤ 15 is the ONLY G.1 constraint;
+the prior "dim must equal 128" framing was a Sprint G data
+confound and is fully retracted — non-multiples 160/192/224
+and multiple-not-128 256 all PASS at q=14). Sprint H.PATCH
+required ONLY for models that use q_bits = 16; q_bits ≤ 15
+models (covers Q8/Q4 lattice production range cleanly) need
+no patch. Sprint I + J closed (real model load through DSP
+bridge). NPU dispatch path productized — current Mode B QNN HTP
+closure at `lat-phase-2-hx-mode-b-closed` provides the substrate
+but does not exercise spec-decode / parallel-with-Mode-D.
+
+**Caveat.** NPU INT4 vs DSP Q8 produces different precision
+tiers; the CRT residue arithmetic must operate at a common
+working precision. Resolution: both compute mod q_1 and mod q_2
+at INT32 accumulator width, with Q8/Q4 input ranges. NPU paths
+that go through QNN's quantization layer need explicit precision
+control to preserve bit-identity.
+
+**Closure tag:** `lat-phase-3-hx-mode-d-internal-crt-closed`.
+
+#### 13.6.L Sprint L — ISP-as-KSTE Tier-0 signature engine
+
+**Trick exercised:** #2 (ISP histograms + Trick 7 burst pattern).
+
+**Deliverable.** Spectra ISP histogram block configured to
+tabulate Tier-0 byte-frequency counts over the KV write stream
+during inference. Output buffer DMA'd to ARM Cortex-A510 for
+dominance comparison + ed25519 receipt mint via §14 Phase 5
+sieve. Receipts mint *during* inference at zero clock cost to
+DSP / NPU.
+
+**Gate (M_L_ISP_SIEVE):**
+- ≥ 1 PoUW receipt minted per 5 seconds of sustained inference
+  (matches sieve rate measured in §14 closure but achieved via
+  ISP-side tabulation instead of DSP-side).
+- Inference TTFT degradation ≤ 1% vs Sprint K baseline (the
+  test of whether ISP work is actually free).
+- Receipt content byte-equivalent to receipts minted via the
+  Sprint G DSP-side path (verifies that ISP histogram output
+  matches the Tier-0 signature semantic).
+
+**Prerequisites.** Sprint K closed (DSP/NPU pipeline working
+so ISP can side-channel without disrupting it). Signed PD
+admission via `hl_signnow` + `testsig` install on S22U (Path A;
+ISP control registers likely unmappable from Unsigned PD).
+
+**Caveat.** This sprint may discover ISP control registers are
+admin-only even in Signed PD. Fallback: cDSP-side Trick 2
+analog using `vhist` on otherwise-idle V69 thread pair (4
+hardware threads / 2 vector contexts — see
+`reference-v69-hvx-expert-practices` — 2 threads can run
+scalar-only sieve work while 2 run HVX inference).
+
+**Closure tag:** `lat-phase-3-hx-mode-d-isp-sieve-closed`.
+
+#### 13.6.M Sprint M — TS oracle on LPDDR5x SoC channels
+
+**Trick exercised:** #4 (Channel-pair allocation across silicon
+islands).
+
+**Deliverable.** §16.1-equivalent GF(2) channel-select hash
+oracle adapted for LPDDR5x on S22U. Probes ARM-side virtual
+addresses (under the offline-map-bypass pattern from
+`reference-offline-map-bypass`) to recover the SoC's channel
+hash matrix M. Result cached at
+`~/.cache/shannon-prime/channel_map_s22u.bin`. Daemon loads
+cached map at runtime; `sp_alloc_channel_pair` produces
+allocations where q1 residue is on the channel adjacent to
+DSP's load queue and q2 on the channel adjacent to NPU's bus.
+
+**Gate (M_M_SOC_CHANNEL):**
+- Cached .bin produces channel-paired allocations where
+  `sp_channel_of(virtual_addr)` returns distinct values for
+  paired pointers, verified by tail-latency oracle measurement
+  on real LPDDR5x.
+- Sprint K wall-time improves ≥ 10% with channel-paired
+  allocation vs default allocator (measures the actual
+  bandwidth-contention reduction).
+- Cache-line transfer count between islands unchanged (Trick 9
+  Spinor ABI preserved — the channel pairing changes WHICH
+  channel each block goes through, not HOW MANY transactions).
+
+**Prerequisites.** Magisk root or one-shot bootloader-unlocked
+boot OR userdebug build on the S22U for offline oracle calibration
+(equivalent to the `bcdedit hypervisorlaunchtype off` boot on
+Windows for x86 oracle). Stock boot for daemon runtime — Trick 4's
+2MB huge-page identity-mapping invariant carries forward.
+
+**Caveat.** Android's hugepage allocation path differs from
+Linux desktop (default transparent huge pages don't always
+fire). Daemon may need explicit `madvise(MADV_HUGEPAGE)` or
+hugetlbfs mount.
+
+**Closure tag:** `lat-phase-3-hx-mode-d-soc-channel-closed`.
+
+#### 13.6.N Sprint N — Recursive CRT mesh (internal + external)
+
+**Trick exercised:** #8 (Recursive CRT mesh) and #10 (Receipt-
+backed verifiable distributed compute).
+
+**Deliverable.** Two-node demonstration where one node is the
+S22U (running Sprint K internal CRT split — DSP-q1 + NPU-q2)
+and the other is Knack's Beast Canyon (CUDA backend, computing
+both q1 and q2 of an outer CRT split, OR just q2 of an outer
+split with the S22U as an outer-q1 worker that internally
+recursively-splits).
+
+**Gate (M_N_RECURSIVE_CRT):**
+- Joint inference completes; final logits bit-identical to
+  single-node baseline (same prompt, same model, same seed,
+  any backend).
+- Receipt chain verifiable end-to-end: S22U mints receipts for
+  its slice; Beast Canyon mints for its slice; coordinator
+  Garner produces a "receipt of receipts" stitching the chain.
+- WAN latency budget: ≤ 200 ms additional vs single-node
+  inference at ctx=128 (Phase 6 BLOCK-SYNC + CRT-RS transport
+  amortize the network cost).
+
+**Prerequisites.** Phase 6 BLOCK-SYNC + TRANSPORT-CRT-RS closed
+(internal §13.1-13.2 sub-phases). Sprint K closed (internal CRT
+split on S22U). §14.3.AUTH closed (ed25519 dominance identity
+replaces SkipServerVerification TLS placeholder so peers
+mutually authenticate).
+
+**Caveat.** Mesh DoS / receipt rate-limiting design is open
+work; for this sprint the two-node demo uses trusted peers
+(both Knack's hardware), so DoS is not a gate. Production mesh
+needs a separate sub-phase for adversarial scenarios.
+
+**Closure tag:** `lat-phase-3-hx-mode-d-recursive-crt-closed`.
+This sprint also fires `lat-phase-13-6-closed` umbrella
+(Heterogeneous SoC compute as recursive CRT).
+
+#### 13.6 closure
+
+Closure tag `lat-phase-13-6-closed` after K + L + M + N all
+close. Phase log entry documents the SP-tricks-by-number that
+each sprint exercised, the empirical perf deltas vs single-
+island baseline, and any newly discovered constraints worth
+backporting into the manifesto memory entry.
+
+After §13.6 closure, the lattice has the full recursive CRT
+mesh substrate from L1 cache to QUIC packet. Phase G
+(distributed inference per `feedback-no-silent-gate-revisions`
+— gated previously on §16.5 TS.INTEGRATE-KSTE) becomes
+tractable because §13.6.N proves the math/network/silicon
+substrate cohere end-to-end.
+
 
 ## 14. Phase 2-L3 — Headless HTTP/SSE Daemon
 
@@ -5030,6 +5229,75 @@ trusted Gemini's tail-loop-predication theory without
 verifying against Sprint G's actual failure cases or
 checking what was already in tree. The Sprint H agent's
 five-point pushback is the correct discipline.
+
+### 2026-05-30 (latest) — Sprint H CLOSED: G.1 reduces to ONE constraint (q_bits ≤ 15)
+
+Sprint H diagnostic-first instrumentation executed with
+5 commits per the per-bisection discipline. Engine tags
+shipped: `lat-phase-3-hx-mode-d-h-diag-instrument`,
+`-bisect-qbits`, `-bisect-dim`, `-closed`.
+
+**Headline finding.** Sprint G's two-constraint G.1 framing
+**reduces to ONE constraint — q_bits ≤ 15.** The "dim must
+equal 128" constraint was a Sprint G data confound: every
+failing H=256 run also used q ∈ {16, 18, 20}; no Sprint G
+run held q=14 with H=256. Once q is fixed at 14, all tested
+H values PASS — including non-multiples 160/192/224 and
+multiple-not-128 256. The retraction above (which corrected
+"multiples of 128" to "equals 128") was also wrong — the
+correct framing is "no dim constraint exists; q_bits ≤ 15
+is the only real boundary." This second-order correction
+landed at the Sprint H closure commit.
+
+**Empirical record (verbatim from S22U):**
+
+```
+Diag instrument @ B=8 D_in=128 H=256 D_out=128 q=16 b=16:
+  hidden MATCHES, y diverges → matmul-2 isolated as
+                                divergence site
+
+Bisect q_bits @ H=128:
+  q=12 PASS  | q=13 PASS  | q=14 PASS  | q=15 PASS
+  q=16 FAIL mm-2 (got=-816)
+
+Bisect H @ q=14:
+  128 PASS | 160 PASS | 192 PASS | 224 PASS | 256 PASS
+```
+
+Three engine commits (Sprint H order):
+- `1c3b0c5` — diag instrument (matmul-2 isolated)
+- `facbdfc` — bisect qbits (sharp q=16 boundary)
+- `b5a642b` — bisect dim (no dim sensitivity at q=14)
+
+Sprint G's existing T_HALIDE_FFN_VTCM_* gates all still
+PASS at engine HEAD — Sprint H added a parallel diag
+generator and didn't touch the production kernel. No silent
+gate revisions to Sprint G's closure (which now stands as
+accurate for the q ≤ 15 operating range that was actually
+in scope all along).
+
+**Sprint H.PATCH filed in Sprint H closure body, NOT
+implemented in Sprint H.** Empirical brief: bug site =
+matmul-2 q=16 codegen; suspect surfaces are Halide's
+i32 >> uint8_t coercion at q=16 and/or the vasr/vsat
+opcode selection at shift=16. Three concrete diagnostic
+next steps cited:
+1. Read .s (assembly) for stage-2 epilogue at q=14 vs q=16
+   to see what codegen differs.
+2. Try `>> cast<int32_t>(q_bits)` in the Halide generator.
+3. Try `Input<int32_t>` for the q_bits parameter type.
+
+Sprint H.PATCH is gated on having a model that needs
+q_bits = 16. Lattice production Q8/Q4 ranges fit within
+q ≤ 15 cleanly, so Sprint I/J/K can proceed without
+H.PATCH. File H.PATCH as Phase 4+ work when/if a model
+arch requires q=16.
+
+**Implication for §13.6 sprint specs:** Sprint K
+(internal CRT DSP-q1 + NPU-q2) and Sprint I/J (model
+loader) no longer block on H.PATCH because production
+quantization scales fit within q ≤ 15. The §13.6.K
+prerequisite block reflects this.
 
 ### 2026-05-30 (late) — Phase 3-HX-MODE-D path forward: Sprint H (G.1 fixes) → Sprint I (single-layer smoke) → Sprint J (full model loader)
 
