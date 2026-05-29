@@ -5955,6 +5955,88 @@ heterogeneous-SoC dual-island compute, all under the manifesto's
 ten tricks composing as advertised. That is the architectural
 endpoint Phase 4 has been building toward.
 
+### 2026-05-30 (later) — Sprint K v0.beta-2.5b CLOSED with explicit operator dispositions
+
+Engine `main @ 0822747`, tag `lat-phase-13-6-k-beta-barrett-hvx-vector`.
+Branch `sprint/kbeta-2-5b` merged fast-forward to main; agent
+worktree-discipline held cleanly (commits authored only from
+`engine-kbeta-2-5b` worktree per `feedback-parallel-agents-
+separate-worktrees`; main worktree untouched throughout).
+
+**Math gates: PASS.** HVX-vectorized Barrett primitive is silicon-
+correct on V69. 2048 vector samples × 32 lanes × 2 primes =
+131,072 lane-level points, zero divergences from scalar oracle,
+max_lane_diff=0. Cross-mode invariant (skel mode=0 == skel mode=1)
+also clean. SASS audit: 19 inner-loop intrinsics, 0 divergences
+from expected opcodes. Every `vmpye + vmpyoacc` widening pair
+emits as paired-register `Vdd`/`Vxx` instructions co-issued in
+VLIW packets where data dependencies allow.
+
+**Architectural finding: V69 32×32→64 widening is 2 ops not ~6.**
+The AMENDMENT mapping table (from Phase 2-CU.PTX → HVX translation)
+estimated each i32×i32→i64 widening at ~6 HVX ops via u15-half
+decomposition with `Q6_Ww_vmpy_VhVh`. SASS audit caught the
+overestimate: V69 ISA exposes 32-bit widening directly via
+`Q6_W_vmpye_VwVuh + Q6_W_vmpyoacc_WVwVh` per HVX PRM §151 — 2 ops
+per widening. Three Barrett widening steps at 2 ops each, not 18
+ops total — 3× compute density on the modular-arithmetic critical
+path. Captured as `reference-hexagon-v69-32x32-widening-idiom`
+memory; applies to all future Barrett / Montgomery / NTT / hash
+kernels on V69+.
+
+**Substrate gates: explicit operator dispositions (NOT silent
+revisions).** Agent surfaced both UPSTREAM-REQUIRED per
+`feedback-no-silent-gate-revisions` with diagnostic detail + A/B
+paths. Operator decisions:
+
+| Gate | Observed | Operator decision |
+|---|---|---|
+| DUAL_DISPATCH_SPEEDUP | 1.006× vs 1.5× threshold | **Path A: defer real measurement to mod_q_matmul kernel scope.** Threshold was inherited from K v0.alpha's compute-bound matmul-128×128 / B=8 regime (~17.7 ms / invoke). Barrett-primitive-65536 is data-movement-bound (~1.5 ms / invoke). Marshalling dominates wall-clock at this shape; cDSP scheduler has no compute window to overlap. NOT a substrate failure — gate-threshold-regime mismatch. Captured as `feedback-shape-dependent-parallelism-gates`. Real parallelism measurement happens at mod_q_matmul scope (K-beta Stages 3-7), where compute density matches K v0.alpha regime. |
+| LEAK_FREE | 2104 KB total Δ vs 1024 KB threshold | **Path B: re-spec the gate** as second-half slope ≤ 256 KB. Observed first-half Δ=2100 KB / second-half Δ=4 KB is a textbook concave-down asymptote (allocator + thread-local + FastRPC pool warmup), NOT linear monotonic per-iter leakage. Original gate metric (total delta) conflates warmup with leakage; second-half slope is the right metric. Explicit metric upgrade documented here; original FAIL preserved in closure note. Captured as `feedback-leak-gate-allocator-warmup`. |
+
+Both dispositions explicit, both rationales documented, both
+memory entries written. This is the correct shape per the
+no-silent-revisions rule: the gate FAIL is preserved in the
+closure note; the operator-side acknowledgment is on the record;
+the architectural reason is named; the corrective forward path
+is named.
+
+**What this completes for Manifesto Trick #1:**
+
+- K v0.alpha (2026-05-30 earlier): dispatch-parallelism silicon-
+  confirmed on compute-bound matmul — 1.935× wall-clock speedup,
+  0.9699 overlap fraction.
+- K v0.beta-2.5b (2026-05-30 this entry): math-identity silicon-
+  confirmed on HVX vector pipe — 131k lane-level samples bit-exact
+  vs scalar oracle, 0 SASS divergences.
+
+Trick #1 substrate now empirically confirmed on BOTH the dispatch
+layer (K v0.alpha) AND the vector-pipe math layer (K v0.beta-2.5b).
+Full umbrella closure (`lat-phase-13-6-k-beta-closed`) requires
+mod_q_matmul + Garner recombination on top of this primitive —
+that's the next K-beta sprint (Stages 3-7 of original plan), and
+where DUAL_DISPATCH_SPEEDUP gets measured at the right shape.
+
+**What's NOT done in this sprint (explicit):**
+
+- mod_q_matmul kernel (K-beta Stages 3-7)
+- CRT Garner recombination on ARM
+- DUAL_DISPATCH_SPEEDUP at compute-bound shape (deferred to mod_q
+  matmul scope per Path A above)
+- Halide generator integration (Halide HVX Int(64) limit at engine
+  39e286c still applies; K-beta mod_q_matmul will either use
+  Halide with these intrinsics as `extern_c` or hand-roll in C)
+
+**Operator action items completed in this landing:**
+- 3 memory entries written + indexed in MEMORY.md.
+- engine `main` fast-forward merged from `sprint/kbeta-2-5b` to
+  `0822747`; tag `lat-phase-13-6-k-beta-barrett-hvx-vector` pushed.
+- Sprint branch retained; worktree `../engine-kbeta-2-5b` will be
+  removed in next operator pass once verification complete.
+- Stage 2.5c filed: mod_q_matmul kernel wrapping the Barrett
+  primitive + Garner recombination + DUAL_DISPATCH_SPEEDUP at
+  compute-bound regime.
+
 ### 2026-05-30 (late) — Phase 3-HX-MODE-D path forward: Sprint H (G.1 fixes) → Sprint I (single-layer smoke) → Sprint J (full model loader)
 
 After Sprint G, Gemini proposed jumping straight to Phase 4
