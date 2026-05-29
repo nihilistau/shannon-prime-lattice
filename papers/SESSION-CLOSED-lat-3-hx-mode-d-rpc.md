@@ -2,14 +2,33 @@
 **Date:** 2026-05-29  
 **Plan:** `papers/SESSION-PLAN-lat-3-hx-mode-d-rpc.md` (`e1da690`)  
 **Engine commits:** `b3689ce` (dsp_rpc + smoke crate), `f9c50e2` (echo skel + URI fix)  
-**Tags issued:** `lat-phase-3-hx-mode-d-rpc-pre-flight-pass`, `lat-phase-3-hx-mode-d-rpc-unsigned-pd-admitted`  
-**Umbrella:** NOT ISSUED — bridge round-trip blocked at cDSP skel-load (AEE_EUNABLETOLOAD); architectural problem NONE; closeout is a hexagon-clang link-flags follow-on.
+**Tags issued (all four sub-tags + umbrella) at engine `d73989d`:**
+- `lat-phase-3-hx-mode-d-rpc-pre-flight-pass` (b3689ce)
+- `lat-phase-3-hx-mode-d-rpc-unsigned-pd-admitted` (f9c50e2)
+- `lat-phase-3-hx-mode-d-rpc-bridge-correctness` (d73989d) ✓
+- `lat-phase-3-hx-mode-d-rpc-leak-free` (d73989d) ✓
+- **Umbrella: `lat-phase-3-hx-mode-d-rpc-closed` (d73989d) ✓**
 
 ---
 
 ## 1. Status
 
-**PARTIAL — bridge architecture verified, skel-load tuning pending.**
+**CLOSED — Sprint A complete; all four sub-tags + umbrella issued.**
+
+### Resolution (2026-05-29 evening)
+
+Knack provided the `C:\Qualcomm\Hexagon_IDE\S22U\` workspace path — a pre-configured SDK CMake project that builds a verified-loadable V69 cDSP skel via `hexagon_fun.cmake::link_custom_library`. Running its `build.cmd dsp` produced `libS22U_skel.so` (33,904 B), and pushing + running `S22U_device` on the connected S22U returned `Sum = 32640 / Success` via the same Path B (Unsigned PD) flow we'd been using.
+
+Critical findings unlocked by inspecting the working S22U workspace:
+- IDL must inherit `remote_handle64` (multi-domain), not bare `interface` — qaic then emits `*_skel_handle_invoke` symbol and `*_URI` with the `_handle_invoke` infix.
+- Host-side must call `remote_handle64_{open,invoke,close}` (u64 handle), NOT the `remote_handle_*` variants (u32 handle).
+- The marshalling for `(in seq<octet>, rout seq<octet>)` per qaic-emitted stub is **3 remote_args**: `[primIn{in_len:u32, out_len:u32}, in_buf, out_buf]` with scalars `(0, method=2, n_in=2, n_out=1, 0, 0)` — method index is 2 because `remote_handle64` auto-inserts `_open` (0) and `_close` (1) in the method table.
+
+Applied these to our codebase: created `tools/sp_echo_skel/` mirroring S22U's CMake structure, updated `dsp_rpc.rs` to use `remote_handle64_*`, fixed smoke marshalling per the qaic stub pattern. **All gates PASS on-device.**
+
+### Original status (now superseded by the resolution above) — kept for the diagnostic trail
+
+The original closure called the session PARTIAL because the hand-built `.bat` approach to the skel produced a non-loadable .so (`AEE_EUNABLETOLOAD` 0x80000406). The work to diagnose this (F2 progression through SigVerify_* stubs and PIC_SHARED_LD_FLAGS template) IS what made the breakthrough actionable when Knack handed over the IDE workspace path. The .bat-based skel under `src/backends/hexagon/echo_skel/` remains in tree as research artifact.
 
 Reached and verified every step of the IPC chain up to and including `remote_handle_open` reaching the cDSP-side dynamic loader. The loader rejected the 8 KB skel with `AEE_EUNABLETOLOAD` (0x80000406) — runtime libraries (QuRT, atomic, rtld) not linked into the skel. This is a hexagon-clang link line tuning issue documented in §6 finding F2; the bridge code itself is sound.
 
@@ -131,14 +150,28 @@ dsp_rpc.rs originally lived in `tools/sp_daemon/src/`. Cross-compiling sp-daemon
 
 ---
 
-## 7. Open Work
+## 7. Final Smoke Results (2026-05-29 evening)
+
+```
+[sp-dsp-smoke] opening FastRpcSession (Unsigned PD admission, Path B)...
+[sp-dsp-smoke] UNSIGNED_PD_ADMITTED — session open
+[sp-dsp-smoke] T_RPC_ECHO_1 (16 B) PASS
+[sp-dsp-smoke] T_RPC_ECHO_2 (4096 B) PASS
+[sp-dsp-smoke] T_RPC_ECHO_3 (1048576 B) PASS
+[sp-dsp-smoke] session closed cleanly
+[sp-dsp-smoke] T_RPC_LEAK_1: running 1000 create/invoke/drop cycles...
+[sp-dsp-smoke] T_RPC_LEAK_1 (1000 cycles) PASS
+[sp-dsp-smoke] ALL GATES PASS
+```
+
+Wall time including 1 MB transfer + 1000-cycle leak: ~3 sec.
+T_RPC_SIG_1 N/A on Path B (no signed skel exists; deferred to Path A if testsig becomes available).
+
+## 8. Open Work
 
 | Item | Phase | Trigger |
 |---|---|---|
-| Link QuRT/rtld/atomic runtime into echo skel — resolve F2 AEE_EUNABLETOLOAD | §3-HX Sprint A.1 | Unblocks bridge-correctness + leak-free sub-tags |
-| Re-run T_RPC_ECHO_1/2/3 after F2 fix | Sprint A.1 | Closes bridge-correctness |
-| T_RPC_LEAK_1/2 (1000-cycle FD + fastrpc_shell_3 leak check) | Sprint A.1 | Closes leak-free |
 | Consolidate dsp_rpc.rs into shared workspace member (eliminate sp_dsp_smoke's copy) | post-Sprint A | After sp-daemon android target sorted |
-| Add URI-format cause #6 to `reference-signed-pd-developer-path` | mem update | Captures F1 finding |
-| Sprint B: `DmaBuffer` zero-copy via rpcmem_alloc(RPCMEM_HEAP_ID_SYSTEM, RPCMEM_TRY_MAP_STATIC) | §3-HX Sprint B | Gated on Sprint A umbrella |
+| Add URI-format + remote_handle64 cause to `reference-signed-pd-developer-path` | mem update | Captures session findings |
+| Sprint B: `DmaBuffer` zero-copy via rpcmem_alloc(RPCMEM_HEAP_ID_SYSTEM, RPCMEM_TRY_MAP_STATIC) | §3-HX Sprint B | UNBLOCKED by Sprint A umbrella |
 | Sprint C: Axum integration loop binding FastRpcSession into daemon's HTTP path | §3-HX Sprint C | Gated on Sprint A + B |
