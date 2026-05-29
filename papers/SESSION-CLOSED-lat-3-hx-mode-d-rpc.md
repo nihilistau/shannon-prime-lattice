@@ -94,11 +94,30 @@ Recorded in memory: [[reference-signed-pd-developer-path]] §0x80000600 root-cau
 
 ### F2 — Skel runtime link incomplete (BLOCKER for bridge-correctness)
 
-`build-echo-skel.bat` links with `hexagon-clang -lhexagon` only. Produced .so is 8064 bytes — too small for a complete loadable skel. SDK examples (e.g. `calculator/CMakeLists.txt:73,144` via `hexagon_fun.cmake`) link in `dsprpc`, `rtld`, `atomic`, `test_util` runtime libs. Without those, the cDSP-side dynamic loader rejects with `AEE_EUNABLETOLOAD` (0x80000406).
+`build-echo-skel.bat` initially linked with `hexagon-clang -lhexagon` only. Produced .so was 8064 bytes — too small for a complete loadable skel. SDK examples (e.g. `calculator/CMakeLists.txt:73,144` via `hexagon_fun.cmake`) link in `dsprpc`, `rtld`, `atomic`, `test_util` runtime libs. Without those, the cDSP-side dynamic loader rejects with `AEE_EUNABLETOLOAD` (0x80000406).
 
-**Fix scope**: locate and link the canonical V69 cDSP runtime libs. Either use `hexagon_fun.cmake`'s `link_custom_library(... rtld atomic)` pattern (requires CMake-based build) or extract the equivalent `-l<libname> -L<libpath>` flags for the .bat script. Likely paths under `SDK\libs\` or `SDK\tools\HEXAGON_Tools\8.7.06\Tools\target\hexagon\lib\v69\`.
+**Substantial progress this session** (commit `cbbdcb6`):
 
-**Not an architectural problem**: the bridge code (dsp_rpc.rs) reaches the loader correctly; the loader's complaint is about the skel's missing runtime references, not about the RPC framing. Sprint A's IPC layer is sound.
+| Step | Effect |
+|---|---|
+| Rewrote `build-echo-skel.bat` with `hexagon_toolchain.cmake:150-166` PIC_SHARED_LD_FLAGS template (`-Wl,-Bsymbolic`, `-Wl,-L .../v69/G0/pic`, `-Wl,--wrap=malloc/calloc/free/realloc/memalign`) | Got the canonical V69 linker template |
+| Added `-Wl,--whole-archive rtld_init.a -Wl,--no-whole-archive` | Forced FastRPC init code in (skel 8 KB → 178 KB) |
+| Logcat surfaced exact missing symbol: `dlerror undefined symbol #14 SigVerify_Streamhash_Finalize` | First-pass undefined-symbol failure pinned |
+| Added stubs to `echo_imp.c`: `SigVerify_Streamhash_{Init,Stream,Finalize}`, `SigVerify_{start,stop,verifyseg}`, `_pl_sigverify` | SigVerify chain resolved (skel 183 KB) |
+| Re-run on device | dlerror message changed from "undefined symbol SigVerify_Streamhash_Finalize" → "unknown error" — cDSP loader now reaches a deeper ELF-parsing stage |
+
+**Remaining gap** (Sprint A.2 path):
+
+cDSP loader still returns `0x80000406` with generic "dlerror unknown error" — no symbol name surfaced. Hypotheses:
+- ELF section/relocation type the cDSP loader doesn't handle (V69 PIC_SHARED template may have a sub-flag missing for retail Samsung firmware)
+- Dynamic symbol table format mismatch
+- Samsung-specific Unsigned PD restriction not exposed via public AEEStdErr codes
+
+**Recommended Sprint A.2 path**: build the SDK's `examples/calculator/CMakeLists.txt` AS-IS to get a known-loadable skel for V69 cDSP on this exact device. Then swap `calculator_imp.c` → `echo_imp.c` and the CMake will produce a loadable echo skel. Total effort: ~1 hour, mostly running `cmake -P` workflows and verifying CMake's `hexagon_fun.cmake` helper chain works with the installed SDK.
+
+**TODO/Phase 14.3.AUTH**: SigVerify_* stubs are a security vuln if we ever migrate to Signed PD (Path A: testsig present). MUST be removed and real libsigverify linked at that time.
+
+**Not an architectural problem**: the bridge code (dsp_rpc.rs) reaches the loader correctly; the gap is hexagon-clang link line tuning vs SDK's CMake-based template. Sprint A's IPC layer is sound.
 
 ### F3 — Standalone smoke crate (sp-dsp-smoke) avoids sp-daemon's bindgen chain
 
