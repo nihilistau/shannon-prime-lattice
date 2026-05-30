@@ -6489,6 +6489,50 @@ M.0 touched lattice repo only (engine read-only access via
 `feedback-parallel-agents-separate-worktrees` works as designed.
 **This pattern can now be the default for future parallel sprints.**
 
+### 2026-05-30 (NTT.0 SHIPPED) — Phase 4-NTT foundation sprint CLOSED, T_NTT0 600/600 PASS after operator Path A recovery
+
+Engine `main @ f834bff`, tag `lat-phase-4-ntt-0-scalar-hexagon`. NTT.0 is the foundation sprint of Phase 4-NTT (the PPT ARM scaling primitive arc). Closure under recovery: the prior agent caught the operator-side N-ladder spec error at Stage 0, surfaced UPSTREAM, and stopped. After roadmap correction (commit `e927f6f` landed Path A), a continuation agent executed Stages 1-4 on the corrected ladder and hit clean 600/600 PASS on Knack's S22U.
+
+**Gate result (live on V69 cDSP, Path B Unsigned PD):**
+
+| Gate | Threshold | Observed |
+|---|---|---|
+| T_NTT0_SCALAR_BIT_EXACT | 0 divergences across 6 combinations × 100 seeds = 600 runs | **0 / 600**, max_diff_per_prime = {q_1: 0, q_2: 0}, max_diff_per_N = {128: 0, 256: 0, 512: 0}, wall=0.40 s sweep total |
+
+**What shipped:**
+- Scalar Hexagon NTT — `tools/sp_compute_skel/src_dsp/sp_compute_ntt_imp.c` (+203 LOC). Negacyclic Cooley-Tukey radix-2 DIT byte-exact port of math-core's `forward_one`. Reuses K.beta.2.5b/c scalar Barrett primitive in the butterfly inner loop.
+- IDL method 12: `ntt_oracle` (prime, N, data) — same calling-convention shape as `barrett_oracle` from K.beta.2.5b.
+- ARM-side smoke `sp_ntt_0_smoke.rs` + new `sp_dsp_smoke/build.rs` linking math-core's `sp_ntt_crt` as the oracle.
+- Full run artifacts at `tools/sp_daemon/scripts/ntt_0_full_{report.json,run.txt}`.
+
+**Commits on `sprint/ntt-0`:**
+- `8143fe5` plan-commit (prior agent)
+- `6238980` Stage 0 closure UPSTREAM-REQUIRED (prior agent — N ladder catch)
+- `0c7ddaa` plan-amend (continuation — math-core FFI direct vs Rust port redundancy)
+- `0e841a7` Stage 2 — scalar Hexagon NTT + IDL ntt_oracle
+- `4f27ff9` Stage 3 — T_NTT0 PASS on S22U
+- `f834bff` Stage 4 — closure supersedes UPSTREAM-REQUIRED
+
+History preserved cleanly — the prior agent's UPSTREAM-REQUIRED state is recorded in the branch log alongside the continuation's PASS closure. This is the recovery pattern from chat-integration (socket-failure recovery) applied to a different failure mode (operator-side spec error surfaced via UPSTREAM).
+
+**Architectural commitments compliance (Phase 4-NTT block):**
+
+- [x] Negacyclic NTT (Z_q[x]/(x^N+1) with 2N-th root of unity)
+- [x] Frozen primes q_1 = 1073738753, q_2 = 1073732609
+- [x] Barrett reduction in butterfly inner loop (reused from K.beta.2.5b/c)
+- [x] Cooley-Tukey radix-2 DIT
+- [x] N ladder {128, 256, 512} tested at all three values
+- [x] Twiddle handling documented (per-call computation for NTT.0; NTT.2 will optimize)
+
+**What unblocks:**
+- **NTT.1 (HVX butterfly core)** — has its on-Hexagon scalar oracle for cross-validation at all 3 N values × 2 primes.
+- **NTT.2 (twiddle VTCM staging)** — can dispatch in parallel with NTT.1; both build on NTT.0's scalar floor without dependency on each other.
+
+**Discipline scoreboard for NTT.0 (across both agents):**
+- 6th successful sprint under operator-side worktree pattern (engine-ntt-0 worktree).
+- 2nd successful recovery pattern (1st was Chat-integration socket-failure; 2nd is NTT.0 UPSTREAM-REQUIRED → operator disposition → continuation).
+- The "agent catches operator-side error via Stage 0 reference reading" pattern is now confirmed THREE times: mesh-canonical-order (SpinorReceipt layout fabrication); NTT.0 first agent (N-ladder spec error); the corrected `feedback-lead-with-reference-then-theory` rule explicitly applies to operator-side discipline.
+
 ### 2026-05-30 (fifth parallel wave) — mesh-canonical-order CLOSED (3/3 PASS) + ledger-autowire CLOSED (3/3 PASS) + reference-spinor-receipt-layout memory CORRECTED
 
 Engine `main @ 833abbe`. Tags `lat-phase-4-memo-mesh-canonical-order` + `lat-phase-4-memo-ledger-autowire`. Fifth successful parallel-dispatch wave under operator-side worktree pattern.
