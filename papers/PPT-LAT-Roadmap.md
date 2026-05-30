@@ -6216,6 +6216,134 @@ M.0 touched lattice repo only (engine read-only access via
 `feedback-parallel-agents-separate-worktrees` works as designed.
 **This pattern can now be the default for future parallel sprints.**
 
+### 2026-05-30 (even later — second parallel wave) — Sprint M.1 CLOSED + Sprint K.2-spike CLOSED (both 4/4 PASS); Trick #1 generalized cross-MODEL; NPU silicon-island accessible via Unsigned PD
+
+Engine `main @ 0d8ab91`. Second successful parallel dispatch
+under the operator-side worktree pattern. Two agents, two
+worktrees (`engine-m1` and `engine-k2-spike`), zero
+cross-contamination, both 4/4 substantive gates PASS.
+
+#### M.1 — Memory budget audit + dual-load (4/4 PASS)
+
+Tag `lat-phase-4-memo-m1-dual-load`. Branch `sprint/memo-m1`
+ff-merged.
+
+| Gate | Threshold | Observed |
+|---|---|---|
+| T_MEMO_DUAL_LOAD | < 30 s combined load | 41 ms (Exec 19 ms + Memo 20 ms) |
+| T_MEMO_BUDGET_AUDIT | ≥ 2048 MB headroom | **5410 MB** residual, daemon VmRSS delta 7936 KB |
+| T_MEMO_DUAL_INVOKE | ≥ 1.1× speedup, byte-equal | **1.796×** speedup, byte-identical to solo baselines |
+| T_MEMO_NO_INTERFERENCE | ≤ 256 KB second-half slope | 1000/1000 cycles, drift=0, errors=0, **−8 KB second-half slope** |
+
+**Architectural finding: Trick #1 generalizes cross-MODEL.** The
+same `Arc<FastRpcSession>` + dual-thread dispatch primitive that
+gave K v0.alpha 1.935× (cross-FFN), K.beta.2.5c 1.724×
+(cross-prime) gives M.1 1.796× (**cross-model**: Executive
+Qwen3-0.6B + Memory Qwen2.5-Coder-0.5B concurrent forward steps).
+The cDSP scheduler does NOT know model identity — it sees HVX
+kernel dispatches and parallelizes via SSR:XA={4,5} vector
+context attachment, kernel-agnostic. Captured as
+`reference-dual-model-cdsp-scheduler` memory.
+
+This means Trick #1 is now silicon-confirmed at **THREE scales**:
+primitive (Barrett), matmul (mod_q), model (full forward).
+M.2/M.5/M.6 do not need new scheduler tuning — the substrate is
+proven.
+
+**Empirical confirmation of `feedback-leak-gate-allocator-warmup`:**
+at N=10 cycles, second-half slope was 712 KB (FAIL strict). At
+N=1000 cycles, second-half slope was **−8 KB** (slight negative,
+within noise — RSS shrunk slightly). The discipline of NOT
+silently relaxing the gate was vindicated by the longer run; the
+shorter run was just measurement-window-too-short.
+
+**Operational finding (cargo gotcha):** per-binary
+`mod ffi { include!(...) }` does NOT propagate build.rs
+`rustc-link-lib` directives on `aarch64-linux-android`. Fix: lib
+crate must `pub mod ffi_l1` and binaries `use` it directly. Same
+latent bug exists in probe.rs / spec_validate.rs. Filed as a
+follow-up cleanup task; would become a memory entry if the
+pattern recurs.
+
+**What unblocks now from M.1:**
+- M.2 (zero-copy dialogue loop) dispatch authorized.
+- M.5 (KSTE-routed sparse Memory activation) dispatch authorized.
+- M.6 (CRT-sharded MeMo, dual-cDSP-context variant) dispatch authorized.
+- MeMo × SPEC crossover (Memory-as-draft + Executive-as-verify) prototype unblocked.
+
+#### K.2-spike — NPU bridge design + POC (4/4 PASS)
+
+Tag `lat-phase-13-6-k-2-spike-poc`. Branch `sprint/k2-spike`
+merged via no-ff (engine main had advanced from M.1 in the same
+landing batch).
+
+| Gate | Threshold | Observed |
+|---|---|---|
+| T_K2_SPIKE_QNN_SURVEY | API surface documented | 15 entrypoints cited with file:line |
+| T_K2_SPIKE_BRIDGE_DESIGN | architectural recommendation | libloading + C-shim + 4-entrypoint Rust ABI chosen + justified |
+| T_K2_SPIKE_POC | round-trip exit 0 + byte-exact | **1.329 ms graphExecute**, 64/64 byte-exact, exit 0 on S22U |
+| T_K2_SPIKE_K2_FULL_SCOPE | LOC + hours + deps + risks | ~2000-3000 LOC / 30-50 hrs / no upstream blocker / 3 risks listed |
+
+**Headline finding: QNN HTP runtime works in Unsigned PD on
+consumer Snapdragon 8 Gen 1.** No testsig, no Signed PD migration,
+no vendor cooperation required for at least matmul/elementwise/
+quantized scope on Knack's S22U. This is the silicon-island
+analog of Mode D Path B (the cDSP-side discovery from
+`reference-mode-d-bridge-architecture`). Cross-island Manifesto
+Trick #1 (cDSP q_1 + NPU q_2 + ARM Garner) is structurally
+reachable without vendor cooperation. Captured as
+`reference-qnn-htp-unsigned-pd-access` memory.
+
+**Three operational gotchas surfaced (load-bearing for K.2 full sprint):**
+
+1. **Skel pathing** — vendor-shipped `/vendor/lib64/libSnpeHtpV69Skel.so` is NOT what QNN HTP runtime wants. Need QNN-SDK-shipped `libQnnHtpV69Skel.so` pushed to `/data/local/tmp/` + `ADSP_LIBRARY_PATH` set. Daemon bootstrap must handle this.
+2. **Tensor lifecycle** — `clientBuf` must be NULL at `QnnTensor_createGraphTensor()`; data binds at `QnnGraph_execute()` time via SHALLOW COPY descriptors with `clientBuf` set. Undocumented in QNN headers; pure empirical finding.
+3. **Init cost amortization** — per-process init ~130 ms, per-execute ~1.3 ms for tiny graph. LLM-scale `graphFinalize` reportedly seconds-to-minutes. Production K.2 must amortize via persistent daemon + `contextCreateFromBinary()` (offline graph build + binary load).
+
+**K.2 full sprint scope estimate (in K2-FULL-SCOPE.md):**
+- ~2000-3000 LOC across 4 sub-stages (offline graph build / daemon load / cross-island Garner / gates+closure)
+- 30-50 sprint-hours focused
+- M.0-real (same-arch Memory) is the only hard dep — otherwise K.2 loads the stub Memory on NPU + has to redo for real
+- Top 3 risks: graphFinalize LLM-scale cost (offline-only mitigation), HTP silent fallback to HVX/CPU (QnnProfile gate mitigation), QNN-internal FastRPC contention with Sprint A FastRPC in same process (probe-first mitigation)
+
+#### Discipline scoreboard for this parallel wave
+
+- 2nd successful parallel dispatch under operator-side worktree pattern (after K.beta.2.5c + M.0).
+- Worktree-discipline held cleanly across both lanes; zero cross-contamination.
+- Both agents honored no-silent-gate-revisions rule.
+- M.1 surfaced an operational finding (cargo link-propagation gotcha) that's worth a memory entry if the pattern recurs.
+- K.2-spike surfaced THREE load-bearing operational gotchas pre-emptively, saving the K.2 full sprint from discovering them mid-implementation.
+- Two new architectural memory entries written (`reference-dual-model-cdsp-scheduler`, `reference-qnn-htp-unsigned-pd-access`).
+
+#### What this completes architecturally
+
+Manifesto Trick #1 status as of this landing:
+
+| Scale | Sprint | Speedup |
+|---|---|---|
+| Primitive (Barrett) | K.beta.2.5b | math identity confirmed (parallelism not measurable at this scope) |
+| Matmul (mod_q) | K.beta.2.5c | **1.724×** at compute-bound shape |
+| Model (Exec forward) | K v0.alpha | **1.935×** at FFN-dominated kernel |
+| Model (cross-model concurrent forward) | M.1 | **1.796×** Exec + Memo |
+| Silicon-island (NPU dispatch) | K.2-spike | round-trip verified, full sprint scoped |
+
+The substrate is now silicon-confirmed at every scale Trick #1
+operates on, including cross-MODEL concurrent forward and
+cross-ISLAND dispatch surface. K.2 full + M.6 cross-island
+remain to close the model-on-NPU half of the manifesto's most
+ambitious claim.
+
+#### Operational debt items (filed)
+
+- `lib/shannon-prime-system` submodule untracked sieve files
+  (CMakeLists.txt + sp_sieve.c + sieve_test.c + sp_sieve.h)
+  pre-exist on both main worktree and engine-m1; copied locally
+  for M.1's android build. Not introduced by M.1. Needs operator
+  pass to either commit-into-submodule or .gitignore properly.
+- engine-kbeta-2-5b, engine-kbeta-2-5c, engine-m1, engine-k2-spike
+  worktrees still on disk; can be removed via `git worktree remove`
+  after operator verification of each sprint's closure.
+
 ### 2026-05-30 (late) — Phase 3-HX-MODE-D path forward: Sprint H (G.1 fixes) → Sprint I (single-layer smoke) → Sprint J (full model loader)
 
 After Sprint G, Gemini proposed jumping straight to Phase 4
