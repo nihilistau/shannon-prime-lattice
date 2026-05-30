@@ -5955,6 +5955,242 @@ heterogeneous-SoC dual-island compute, all under the manifesto's
 ten tricks composing as advertised. That is the architectural
 endpoint Phase 4 has been building toward.
 
+---
+
+## Phase 4-NTT — HVX-vectorized NTT (the PPT ARM scaling primitive on mobile, FILED 2026-05-30)
+
+**The mission this phase serves.** Shannon-Prime PPT ARM is a
+discrete algebraic substrate for transformer inference with
+**O(N log N) NTT-accelerated polynomial-ring attention** running
+on heterogeneous SoC silicon, scaling to long context. The math
+shipped in Phase 4-9 (math-core CRT NTT, AVX-512, CUDA PTX) +
+the dispatch substrate shipped in K v0.alpha / K.beta.2.5b / K.beta.2.5c
+on Hexagon V69 → **all converge here**. The Hexagon HVX NTT is the
+mobile-silicon scaling primitive that completes the PPT ARM
+mission. Until it ships, every dialogue runs O(N²) attention and
+chokes the moment ctx > 1024.
+
+**The 630× number.** At ctx=8192, standard O(N²) attention is
+~67M ops vs NTT O(N log N) at ~106k ops — a **630× theoretical
+speedup**. Wall-clock won't deliver the full 630× (constants matter),
+but the asymptotic decoupling from N² is the unlock: long-context
+on mobile becomes viable.
+
+**Why MeMo IS the payload (per Knack + Gemini, 2026-05-30).**
+The Phase 4-MeMo work that closed M.0-M.5 + chat-integration is NOT
+adjacent research; it's the cognitive framework that drives the NTT.
+Without NTT, MeMo's Executive chokes on any grounding query > 1024
+tokens. Without MeMo, NTT is fast math with no production driver.
+Sprint NTT.5 wires NTT attention directly into MeMo's `run_dialogue()`
+loop — that's the moment MeMo + scaling unify into the actual product.
+
+### Architectural commitments baked into this phase (do NOT defer)
+
+These are load-bearing decisions the spec depends on. Future
+agents implementing NTT.0-NTT.6 MUST honor them or surface
+UPSTREAM:
+
+1. **Negacyclic NTT, not cyclic.** Polynomial-ring attention uses
+   `Z_q[x]/(x^N + 1)`. The NTT must use a **primitive 2N-th** root
+   of unity (not N-th). Standard FFT decompositions assume cyclic
+   `x^N - 1`; using them breaks polynomial-ring identity. Math-core's
+   existing `sp_ntt` is negacyclic; Hexagon NTT must match for
+   cross-backend bit-identity.
+
+2. **FROZEN primes.** `q_1 = 1073738753`, `q_2 = 1073732609` (30-bit
+   Proth primes). Garner constants per K.beta.2.5c: `Q1_INV_MOD_Q2
+   = 894602413`, `M = 1152908312643096577`. NTT primes match
+   math-core + K.beta.2.5c exactly. Do NOT pick different primes
+   for Hexagon convenience.
+
+3. **Halide HVX Int(64) path is CLOSED** per
+   `reference-halide-hvx-int64-limitation`. Phase 4-NTT uses
+   hand-rolled HVX intrinsics, same path as K.beta.2.5b/c. Reuse
+   the 2-op `Q6_W_vmpye_VwVuh + Q6_W_vmpyoacc_WVwVh` widening idiom
+   from `reference-hexagon-v69-32x32-widening-idiom` for every
+   32×32→64 multiply in the butterfly inner loop.
+
+4. **Negacyclic twiddle factors precomputed at assembly.**
+   `ψ = primitive 2N-th root of unity mod q`. Twiddle table
+   `[ψ^0, ψ^1, ..., ψ^(N-1)]` per prime, fits in 4N bytes per
+   prime. At N=4096: 16 KB per prime, trivially in 8 MB VTCM.
+   At N=131072: 512 KB per prime, still fits with headroom for
+   data + scratch.
+
+5. **N parameterized; default N=4096, target ladder N ∈ {256,
+   1024, 4096, 16384}.** N=256 matches Phase 4 math-core demo
+   (Gemma3-1B head dim). N=4096 matches typical mobile chat ctx
+   target. N=16384 stress-tests VTCM budget. Beyond N=16384 the
+   twiddle table competes with data; that's a future K-extended
+   sprint.
+
+6. **Scalar Hexagon reference before vectorizing.** Sprint NTT.0
+   ships a scalar Hexagon C NTT that's bit-exact vs math-core's
+   portable C reference. NTT.1 vector path then has an
+   on-Hexagon oracle to compare against. Same cascade pattern as
+   K.beta.2.5a (scalar) → 2.5b (vector). No SASS audit can save
+   you from a mathematical divergence; the scalar oracle catches it.
+
+7. **Shape-regime-aware parallelism gates** per
+   `feedback-shape-dependent-parallelism-gates`. NTT at small N is
+   memory-bandwidth-bound (data-bound regime); at large N it's
+   compute-bound. Dual-dispatch speedup threshold: ≥1.5× at N ≥ 1024,
+   measure-and-report at N < 1024 without precommitted threshold.
+
+8. **MeMo integration is THE deliverable.** Sprint NTT.5 wires the
+   NTT into Memory model's attention forward path inside MeMo's
+   `run_dialogue()` loop. Until NTT.5 closes, NTT is theoretical;
+   when NTT.5 closes, MeMo on S22U can ground 4096-token documents
+   in real-time. NTT.6 demonstrates this at long-context shape.
+
+### Sprint block (NTT.0 → NTT.6)
+
+**NTT.0 — Scalar Hexagon NTT (reference port).**
+- *Scope:* Port math-core's portable C reference NTT to a Hexagon-
+  buildable form. Negacyclic NTT over Z_q with frozen primes;
+  Cooley-Tukey radix-2 DIT; scalar (no HVX). Verify bit-exact on
+  Hexagon scalar pipe vs math-core reference at N ∈ {256, 1024, 4096}.
+- *Gate `T_NTT0_SCALAR_BIT_EXACT`:* 0 divergences across 100 random
+  inputs × 3 N values × 2 primes, vs math-core C reference.
+- *Worktree:* `engine-ntt-0`.
+
+**NTT.1 — HVX butterfly core (the vector multiplication).**
+- *Scope:* Implement the Cooley-Tukey radix-2 DIT butterfly using
+  hand-rolled V69 HVX C-intrinsics. Wrap `sp_barrett_reduce32_hvx_lane`
+  (from K.beta.2.5b) for the modular reductions. Negacyclic structure
+  means twiddle stride is 2N-th roots, not N-th. 32 butterflies in
+  parallel per HVX vector op. Use `Q6_W_vmpye_VwVuh + Q6_W_vmpyoacc_WVwVh`
+  for the (a + ψw·b mod q) inner loop.
+- *Gate `T_NTT1_BUTTERFLY_IDENTITY`:* 32-lane vector butterfly output
+  bit-exact vs NTT.0 scalar reference at all N values × 2 primes.
+- *Gate `T_NTT1_SASS_AUDIT`:* every emitted intrinsic produces the
+  planned V69 HVX opcode (same audit format as `HVX_BARRETT_SASS_GATES.md`).
+- *Worktree:* `engine-ntt-1`.
+
+**NTT.2 — Twiddle factor VTCM staging.**
+- *Scope:* Precompute negacyclic twiddle tables at daemon startup
+  (or static const if assembly-time is feasible). DMA stream the
+  twiddles for layer k into VTCM just-in-time before butterfly
+  layer k executes. Mind the cache-line alignment (128 bytes on
+  V69). Use Sprint G's recipe: all-buffers-in-VTCM + alignment +
+  prefetch per `reference-v69-hvx-expert-practices`.
+- *Gate `T_NTT2_TWIDDLE_THROUGHPUT`:* full forward NTT at N=4096
+  per prime runs ≤1.2× the cost of the butterfly-only floor (i.e.,
+  DMA + twiddle reads don't dominate; we stay in compute-bound
+  regime per `feedback-shape-dependent-parallelism-gates`).
+- *Gate `T_NTT2_VTCM_BUDGET`:* peak VTCM use ≤ 6 MB at N=16384
+  (leaves 2 MB for scratch + DMA buffers).
+- *Worktree:* `engine-ntt-2`.
+
+**NTT.3 — Dual-prime CRT NTT dispatch.**
+- *Scope:* Execute forward NTT_q1 on cDSP thread A and NTT_q2 on
+  cDSP thread B via `Arc<FastRpcSession>` (per
+  `reference-fastrpc-concurrent-dispatch`). Same kernel, different
+  prime + twiddle table. Reuse K v0.alpha + K.beta.2.5c dispatch
+  pattern.
+- *Gate `T_NTT3_DUAL_DISPATCH_SPEEDUP`:* ≥1.5× wall-clock speedup
+  at N=4096 (compute-bound regime). Measure-and-report at N=256
+  and N=1024 (potentially data-bound). Cite per-prime per-shape
+  speedup in closure.
+- *Gate `T_NTT3_PER_PRIME_BIT_EXACT`:* each thread's output
+  bit-exact vs NTT.1 single-thread reference.
+- *Worktree:* `engine-ntt-3`.
+
+**NTT.4 — INTT + ARM Garner round-trip.**
+- *Scope:* Implement Inverse NTT (same butterfly structure, twiddle
+  inverses, final N⁻¹ scale per prime). Wire forward NTT →
+  pointwise multiply in NTT domain → INTT → ARM-side Garner CRT
+  recombination (using K.beta.2.5c's `sp_garner_combine_q1_q2`).
+  This is the polynomial multiplication round-trip in heterogeneous
+  CRT.
+- *Gate `T_NTT4_POLY_MUL_EXACT`:* end-to-end NTT-based polynomial
+  multiplication output **byte-exact** vs math-core's portable
+  O(N²) modular matrix multiplication reference, at N=4096 × 4
+  random input seeds × 2 primes (Garner-recombined to 60-bit
+  output). This is the load-bearing correctness gate.
+- *Worktree:* `engine-ntt-4`.
+
+**NTT.5 — Wire NTT attention into MeMo `run_dialogue()` (THE PAYLOAD).**
+- *Scope:* Replace the O(N²) modular matmul in MeMo's Memory model
+  attention forward path with NTT-based polynomial-ring attention.
+  Cooley-Tukey forward NTT each K once per token write (persistent
+  NTT-domain K cache per math-core Phase 7 pattern), forward NTT
+  each Q on-demand, pointwise multiply in NTT domain, INTT back.
+  The Executive model attention can stay O(N²) for v1 if scope
+  bounded; document the choice.
+- *Gate `T_NTT5_RUN_DIALOGUE_BIT_EXACT_AT_CTX_128`:* `run_dialogue()`
+  on Knack's S22U with NTT attention enabled produces byte-identical
+  final answer to current O(N²) implementation at ctx=128 (the
+  current M.2 baseline). The decode-determinism invariant
+  (`reference-lattice-decode-determinism`) must hold across the
+  attention backend change.
+- *Gate `T_NTT5_RECEIPTS_UNCHANGED`:* SpinorReceipt layout + hashes
+  + sentinel preserved; M.4 ledger compatibility intact.
+- *Worktree:* `engine-ntt-5`. **This is where MeMo becomes
+  load-bearing for the PPT ARM scaling mission.**
+
+**NTT.6 — Long-context benchmark (THE 4K PROOF).**
+- *Scope:* Drive `run_dialogue()` on Knack's S22U with NTT attention
+  + Memory model, at grounding query lengths {256, 1024, 2048, 4096,
+  8192} tokens (the last only if memory budget per M.1 audit
+  allows). Measure per-turn wall-clock + per-token wall-clock vs
+  the O(N²) baseline. Plot scaling curve.
+- *Gate `T_NTT6_SCALING_DECOUPLES_FROM_N2`:* per-token wall-clock
+  scales sub-quadratically across the ctx ladder. At ctx=4096, NTT
+  wall-clock < 50% of O(N²) wall-clock. (At ctx=2048, the constants
+  may dominate; report observed.)
+- *Gate `T_NTT6_QUALITY_PRESERVED`:* greedy-argmax token outputs at
+  ctx=4096 plausible (not garbage); some sanity benchmark for
+  long-context retrieval if a quick one is available.
+- *Worktree:* `engine-ntt-6`. **This sprint demonstrates the
+  PPT ARM scaling story on actual mobile silicon.**
+
+### Out of scope (filed as future sprints, do NOT bundle)
+
+- NTT on NPU (K.2 full ships first; cross-island NTT is K.2 × NTT crossover).
+- INT4 storage for NTT-domain weights (Phase 14 Q4 fix is a prerequisite).
+- Adaptive radix (radix-4, radix-8) for memory-bound regime — radix-2 v1.
+- Multi-token parallel NTT for Phase 4-MTP — separate composition sprint.
+- AVX-512 NTT host-side regen (it already exists in math-core; this phase doesn't touch host).
+
+### Composition with existing Manifesto Tricks
+
+| Trick | Composition in Phase 4-NTT |
+|---|---|
+| #1 CRT-sharded compute | NTT.3 dispatches NTT_q1 + NTT_q2 across dual HVX vector contexts |
+| #6 Frobenius-lift bit-identity | NTT.4 Garner recombination must yield byte-exact 60-bit output — silicon-error detection |
+| #9 Spinor 64-byte ABI | NTT.5 receipts unchanged; layout invariant per `reference-spinor-receipt-layout` |
+| #10 Receipt ledger | NTT.5 dialogue receipts get longer-context wall_us values; ledger semantics intact |
+
+### Prereq chain
+
+```
+K.beta.2.5b ──┐
+              ├──→ NTT.1 ─→ NTT.2 ─→ NTT.3 ─→ NTT.4 ──→ NTT.5 ──→ NTT.6
+math-core NTT ┘                                          ↑
+                                                         │
+M.2 dialogue ─────────────────────────────────────────────┘ (NTT.5 wires NTT into run_dialogue)
+
+NTT.0 (scalar reference port) ─→ NTT.1 (vectorize)
+```
+
+NTT.0 dispatches solo first (no parallelism — it's the reference oracle). NTT.1 and NTT.2 can dispatch in parallel after NTT.0 closes (one agent on butterfly intrinsics, one on twiddle staging). NTT.3 needs NTT.1 + NTT.2 both closed. NTT.4 needs NTT.3. NTT.5 needs NTT.4 + M.2 (M.2 already closed). NTT.6 needs NTT.5.
+
+### What's left after Phase 4-NTT closes
+
+Phase 4-NTT closing means:
+- MeMo on S22U runs at long context (ctx=4096+) in real-time.
+- The PPT ARM scaling mission is silicon-confirmed end-to-end on mobile.
+- M.4 ledger accumulates receipts from real production workload (not just smoke).
+- K.2 full × NTT crossover unblocks cross-island NTT.
+- Phase 4-MTP / Phase 4-SPEC can build draft+verify on top of long-context attention.
+
+What remains in Phase 4 after NTT.6:
+- M.0-real (SFT Memory artifact) → unblocks M.3 (Frobenius-lifted TIES) + K.2 full
+- K.2 full (NPU forward kernel) → cross-island deployment
+- M.6 (CRT-sharded MeMo across cDSP + NPU) → cross-island MeMo
+- Phase 14 Q4 fix (per-row shift / mixed precision) → halves model size
+
 ### 2026-05-30 (later) — Sprint K v0.beta-2.5b CLOSED with explicit operator dispositions
 
 Engine `main @ 0822747`, tag `lat-phase-13-6-k-beta-barrett-hvx-vector`.
