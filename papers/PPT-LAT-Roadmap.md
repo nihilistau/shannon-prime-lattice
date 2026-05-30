@@ -6037,6 +6037,95 @@ where DUAL_DISPATCH_SPEEDUP gets measured at the right shape.
   primitive + Garner recombination + DUAL_DISPATCH_SPEEDUP at
   compute-bound regime.
 
+### 2026-05-30 (later still) — Phase 4-MeMo M.0 CLOSED (stub): Memory model artifact landed at stable cache path
+
+Lattice `sprint/memo-m0` HEAD, base `3dc2aa4`. Branch
+authored exclusively in worktree `../lattice-memo-m0` per
+`feedback-parallel-agents-separate-worktrees`; main lattice
+worktree untouched; engine repos consulted READ-ONLY.
+
+**Path A (stub) — selected over Path B (real SFT).** Roadmap
+M.0 spec (lines 5853-5857) authorizes either. Path A unblocks
+M.1+ in the time available; Path B (real SFT on a factual
+corpus) is filed as M.0-real follow-on.
+
+**Stub source:** byte-identical copy of the existing Phase 4-SPEC-
+validated `qwen25-coder-0.5b-target.sp-model` (engine
+`build-cpu/qwen25-coder-0.5b-target.sp-model`) to the stable
+cache path `D:\F\shannon-prime-repos\models\qwen25-coder-0.5b-memory.sp-model`
+(473.22 MB, sha256 `812df63f…cc1126a`). Tokenizer adjacent.
+Source HuggingFace id: `lmstudio-community/Qwen2.5-Coder-0.5B-Instruct-GGUF`,
+transcoded once by `sp_transcode --verify` during Phase 4-SPEC
+closure (2026-05-26) — copy preserves all prior validation.
+
+**Why not a same-arch Qwen3-0.6B-Instruct stub:** that variant
+isn't on disk and would have required HuggingFace fetch +
+transcode. The Qwen2.5-Coder artifact was already on disk in
+the Phase 4-SPEC build dir, with different architecture (24L×896H
+vs Executive's 28L×1024H), different training corpus (code SFT
+vs base pretrain), and a separate forward kernel
+(`sp_model_to_qwen25`) already proven in test_sp_model_roundtrip.
+T_MEMO_M0_DISTINCT_FROM_EXECUTIVE PASSes by structural construction.
+
+**Gates: 4/4 PASS.**
+
+| Gate | Observed | Verdict |
+|---|---|---|
+| `T_MEMO_M0_MODEL_EXISTS` | 473.22 MB at stable cache; sha256 byte-identical to source artifact | **PASS** |
+| `T_MEMO_M0_LOADS` | `probe.exe` `sp_model_load` returns SP_OK; arch query yields `vocab=151936 n_layers=24 hidden=896`; `load_wall_ms=3110`, `peak_rss_mb=487.9` | **PASS** |
+| `T_MEMO_M0_FORWARDS` | `sp_prefill_chunk([1,2,3])` + `sp_decode_step(pos=4)` return SP_OK; position advances to 4; all logits finite; wall=3110ms < 5s threshold | **PASS** |
+| `T_MEMO_M0_DISTINCT_FROM_EXECUTIVE` | Memory logits vs Executive logits on identical input `[1,2,3]`: 6/6 measured positions diverge (prefill[0..3] + decode[0..3]); architectures structurally different | **PASS (6/6)** |
+
+Reproducible via `scripts/m0_smoke.ps1` (committed); harness
+drives the engine's READ-ONLY `probe.exe` against both Memory
+and Executive artifacts and computes the runtime gates.
+
+**Stub caveat (load-bearing for M.3 dispatch decision):** the
+arch mismatch (Qwen2.5 Memory vs Qwen3 Executive) means TIES
+merge (M.3) cannot operate on this stub — TIES is weight-space
+tensor-by-tensor merge; Qwen2.5 and Qwen3 tensors have different
+shapes. M.0-stub unblocks M.1 (budget audit), M.2 (zero-copy
+dialogue), M.5 (KSTE routing) — all protocol/budget concerns.
+M.3 explicitly requires M.0-real (same-arch Memory) before it
+can dispatch. M.6 (CRT-sharded MeMo cross-island) also benefits
+from same-arch but can technically run on different-arch shards;
+operator decision deferred.
+
+**What unblocks now:**
+- M.1 (Memory budget audit + dual-load cDSP-internal).
+- M.2 (zero-copy dialogue loop on Cortex-X2).
+- M.5 (KSTE-routed sparse Memory activation).
+- MeMo × SPEC crossover (Phase 4-SPEC × MeMo) — Memory-as-draft
+  + Executive-as-verify; dual-load AppState already wired in
+  Phase 4-SPEC `cafb349`.
+- M.0-real (Path B) dispatch authorized as parallel follow-on.
+
+**NOT unblocked:** M.3 (Frobenius-lifted TIES merge) — blocked
+on M.0-real, NOT on M.0-stub.
+
+**Files changed (lattice repo, this sprint):**
+- `papers/SESSION-PLAN-lat-4-memo-m0.md` (+178)
+- `scripts/m0_smoke.ps1` (+135)
+- `papers/PHASE-4-MEMO-M0-CHOICE.md` (+full closure note)
+- `papers/PPT-LAT-Roadmap.md` (+this entry)
+
+**Out-of-tree artifact (NOT git):**
+`D:\F\shannon-prime-repos\models\qwen25-coder-0.5b-memory.{sp-model,sp-tokenizer}`
+(byte-identical copy of engine build-cpu artifact).
+
+**Engine repo:** NO writes. `sp_transcode` + `probe.exe` consulted
+READ-ONLY; `qwen25-coder-0.5b-target.sp-model` copied (read-side
+only); no engine commits or builds in this sprint.
+
+**Commits on `sprint/memo-m0`:**
+- `686c157` — `[plan]` Stage 0 reference reading + Path A decision.
+- `7abdef6` — `[stage2]` smoke harness `scripts/m0_smoke.ps1`.
+- (closure) — `[closure]` CHOICE doc + this phase-log entry.
+
+**Sub-tag (proposed):** `lat-phase-4-memo-m0-stub`. The `-stub`
+qualifier names that this is the protocol bring-up artifact, NOT
+the SFT-trained Memory model M.3 will need.
+
 ### 2026-05-30 (late) — Phase 3-HX-MODE-D path forward: Sprint H (G.1 fixes) → Sprint I (single-layer smoke) → Sprint J (full model loader)
 
 After Sprint G, Gemini proposed jumping straight to Phase 4
