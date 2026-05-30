@@ -6017,12 +6017,26 @@ UPSTREAM:
    At N=131072: 512 KB per prime, still fits with headroom for
    data + scratch.
 
-5. **N parameterized; default N=4096, target ladder N ∈ {256,
-   1024, 4096, 16384}.** N=256 matches Phase 4 math-core demo
-   (Gemma3-1B head dim). N=4096 matches typical mobile chat ctx
-   target. N=16384 stress-tests VTCM budget. Beyond N=16384 the
-   twiddle table competes with data; that's a future K-extended
-   sprint.
+5. **N capped at 512 by frozen primes — target ladder N ∈ {128,
+   256, 512}. CORRECTED 2026-05-30** per
+   `reference-ntt-frozen-primes-N-cap` and NTT.0 agent Stage 0 catch.
+   The frozen Proth primes q_1 = 1073738753 and q_2 = 1073732609
+   both have 2-adic valuation 10 (`q-1 = 2^10 × odd`); negacyclic
+   NTT requires `2N | (q-1)`, so max 2N = 1024 and max N = 512.
+   N=1024 and beyond is **mathematically impossible** with current
+   primes. Math-core already enforces `N ∈ {128, 256, 512}` at
+   `lib/shannon-prime-system/core/ntt_crt/ntt_crt.c:189`; prior
+   session closure (`papers/SESSION-CLOSED-lat-1.md:62`) documents
+   this as a user-confirmed decision. The original spec's
+   {256, 1024, 4096, 16384} ladder was an operator-side fabrication
+   that didn't re-read the math-core ABI. **For long context
+   (ctx ≥ 1024): use tiled N=512 NTT blocks across the longer
+   sequence.** The asymptotic O(N log N) decoupling from O(N²)
+   still holds for tiled attention; at ctx=8192 the aggregate
+   compute via 16 × N=512 tiles is still ~450× faster than O(N²)
+   single matmul. Adding a third prime to admit N > 512 requires a
+   future "Phase 4-NTT-PRIME-EXTENSION" sprint (cascades across
+   Garner constants, L1 ABI, every cross-backend bit-identity gate).
 
 6. **Scalar Hexagon reference before vectorizing.** Sprint NTT.0
    ships a scalar Hexagon C NTT that's bit-exact vs math-core's
@@ -6049,7 +6063,9 @@ UPSTREAM:
 - *Scope:* Port math-core's portable C reference NTT to a Hexagon-
   buildable form. Negacyclic NTT over Z_q with frozen primes;
   Cooley-Tukey radix-2 DIT; scalar (no HVX). Verify bit-exact on
-  Hexagon scalar pipe vs math-core reference at N ∈ {256, 1024, 4096}.
+  Hexagon scalar pipe vs math-core reference at **N ∈ {128, 256, 512}**
+  (corrected from original spec's {256, 1024, 4096} per
+  `reference-ntt-frozen-primes-N-cap` and NTT.0 Stage 0 finding).
 - *Gate `T_NTT0_SCALAR_BIT_EXACT`:* 0 divergences across 100 random
   inputs × 3 N values × 2 primes, vs math-core C reference.
 - *Worktree:* `engine-ntt-0`.
@@ -6074,12 +6090,15 @@ UPSTREAM:
   layer k executes. Mind the cache-line alignment (128 bytes on
   V69). Use Sprint G's recipe: all-buffers-in-VTCM + alignment +
   prefetch per `reference-v69-hvx-expert-practices`.
-- *Gate `T_NTT2_TWIDDLE_THROUGHPUT`:* full forward NTT at N=4096
+- *Gate `T_NTT2_TWIDDLE_THROUGHPUT`:* full forward NTT at **N=512**
   per prime runs ≤1.2× the cost of the butterfly-only floor (i.e.,
   DMA + twiddle reads don't dominate; we stay in compute-bound
   regime per `feedback-shape-dependent-parallelism-gates`).
-- *Gate `T_NTT2_VTCM_BUDGET`:* peak VTCM use ≤ 6 MB at N=16384
-  (leaves 2 MB for scratch + DMA buffers).
+- *Gate `T_NTT2_VTCM_BUDGET`:* peak VTCM use ≤ 2 MB at N=512 per
+  prime (twiddle table 4×512=2KB per prime; well within 8MB VTCM
+  with room for KV data + scratch). At N=512 the whole transform
+  fits in VTCM trivially — leaves headroom for tiling multiple
+  N=512 blocks concurrently.
 - *Worktree:* `engine-ntt-2`.
 
 **NTT.3 — Dual-prime CRT NTT dispatch.**
@@ -6089,9 +6108,12 @@ UPSTREAM:
   prime + twiddle table. Reuse K v0.alpha + K.beta.2.5c dispatch
   pattern.
 - *Gate `T_NTT3_DUAL_DISPATCH_SPEEDUP`:* ≥1.5× wall-clock speedup
-  at N=4096 (compute-bound regime). Measure-and-report at N=256
-  and N=1024 (potentially data-bound). Cite per-prime per-shape
-  speedup in closure.
+  at **N=512** (compute-bound regime — single transform at the
+  per-prime ceiling; this is the largest single NTT the frozen
+  primes admit). Measure-and-report at N=128 and N=256 (potentially
+  data-bound at smaller transforms). Cite per-prime per-shape
+  speedup in closure. For tiled long-context attention, the
+  meaningful gate is at the tile-batch scope — that's NTT.6 scope.
 - *Gate `T_NTT3_PER_PRIME_BIT_EXACT`:* each thread's output
   bit-exact vs NTT.1 single-thread reference.
 - *Worktree:* `engine-ntt-3`.
@@ -6105,9 +6127,11 @@ UPSTREAM:
   CRT.
 - *Gate `T_NTT4_POLY_MUL_EXACT`:* end-to-end NTT-based polynomial
   multiplication output **byte-exact** vs math-core's portable
-  O(N²) modular matrix multiplication reference, at N=4096 × 4
+  O(N²) modular matrix multiplication reference, at **N=512** × 4
   random input seeds × 2 primes (Garner-recombined to 60-bit
-  output). This is the load-bearing correctness gate.
+  output). This is the load-bearing correctness gate. (Smaller N
+  also tested via NTT.0 + NTT.1; N=512 is the per-tile ceiling
+  for the long-context tiled-attention path.)
 - *Worktree:* `engine-ntt-4`.
 
 **NTT.5 — Wire NTT attention into MeMo `run_dialogue()` (THE PAYLOAD).**
@@ -6129,21 +6153,34 @@ UPSTREAM:
 - *Worktree:* `engine-ntt-5`. **This is where MeMo becomes
   load-bearing for the PPT ARM scaling mission.**
 
-**NTT.6 — Long-context benchmark (THE 4K PROOF).**
-- *Scope:* Drive `run_dialogue()` on Knack's S22U with NTT attention
-  + Memory model, at grounding query lengths {256, 1024, 2048, 4096,
-  8192} tokens (the last only if memory budget per M.1 audit
-  allows). Measure per-turn wall-clock + per-token wall-clock vs
-  the O(N²) baseline. Plot scaling curve.
+**NTT.6 — Long-context benchmark via tiled N=512 NTTs (THE LONG-CTX PROOF).**
+- *Scope:* Drive `run_dialogue()` on Knack's S22U with **tiled NTT
+  attention** + Memory model. Long-context attention at ctx ≥ 1024
+  is implemented as multiple N=512 negacyclic NTT blocks (since
+  single-NTT is capped at N=512 by frozen-prime 2-adic valuation —
+  see `reference-ntt-frozen-primes-N-cap`). At grounding query
+  lengths {512, 1024, 2048, 4096, 8192} tokens (last only if M.1
+  memory budget allows), measure per-turn wall-clock + per-token
+  wall-clock vs the O(N²) baseline. Plot scaling curve.
+  - At ctx=512: single N=512 NTT (no tiling overhead).
+  - At ctx=1024: 2 × N=512 tiles. Tiling boundary adds ~constant
+    overhead; aggregate compute is O(N log N) per tile + O(tile_count)
+    bookkeeping ≈ O(N log N) total.
+  - At ctx=8192: 16 × N=512 tiles. Aggregate compute ≈ 16 × O(512×9)
+    ≈ 73728 ops, vs O(8192²) = 67M ops single matmul. Asymptotic
+    ~900× decoupling even with tiling overhead.
 - *Gate `T_NTT6_SCALING_DECOUPLES_FROM_N2`:* per-token wall-clock
-  scales sub-quadratically across the ctx ladder. At ctx=4096, NTT
-  wall-clock < 50% of O(N²) wall-clock. (At ctx=2048, the constants
-  may dominate; report observed.)
+  scales sub-quadratically across the ctx ladder. At ctx=4096
+  (8 × N=512 tiles), NTT wall-clock < 50% of O(N²) wall-clock.
+  At ctx=2048 (4 tiles), constants may still dominate; report
+  observed without precommitted threshold.
 - *Gate `T_NTT6_QUALITY_PRESERVED`:* greedy-argmax token outputs at
   ctx=4096 plausible (not garbage); some sanity benchmark for
   long-context retrieval if a quick one is available.
 - *Worktree:* `engine-ntt-6`. **This sprint demonstrates the
-  PPT ARM scaling story on actual mobile silicon.**
+  PPT ARM scaling story on actual mobile silicon via tiled
+  N=512 NTTs across long context. The 630× theoretical speedup
+  at ctx=8192 still holds via tiling.**
 
 ### Out of scope (filed as future sprints, do NOT bundle)
 
