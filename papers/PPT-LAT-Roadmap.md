@@ -6489,6 +6489,129 @@ cDSP without crashes or interference. Implicit confirmation of
 | **#9 (Spinor 64-byte inter-island integrity)** | **Confirmed at M.2 scope** | **M.2 hexdump 3 × 64 bytes** |
 | #10 (Receipt-backed verifiable compute) | Partial — receipts shipped; ledger pending | M.2 SpinorReceipts minted; M.4 = ledger |
 
+### 2026-05-30 (fourth parallel wave) — Sprint M.4 CLOSED (4/4 PASS, cross-platform byte-identity) + Chat-integration CLOSED (3/3 PASS, recovery agent) — MeMo end-to-end shippable
+
+Engine `main @ 52e2145`. Fourth successful parallel-dispatch
+wave under operator-side worktree pattern. Two agents
+(`engine-m4` + `engine-chat`); M.4 clean ff-merge; Chat-integration
+required prior-agent recovery (socket-died after Stage 3 commit but
+before push + closure) plus surgical merge resolution of expected
+Cargo.toml + lib.rs `[[bin]]`/`pub mod` overlap. Tags
+`lat-phase-4-memo-m4-ledger` + `lat-phase-4-memo-chat-integration`
+pushed.
+
+#### M.4 — PoUW receipt ledger (4/4 PASS)
+
+Branch `sprint/memo-m4` ff-merged. Five commits: plan + 3 stages + closure.
+
+| Gate | Threshold | Observed |
+|---|---|---|
+| T_M4_LEDGER_APPEND | 1000/1000 | 1000/1000, file=64000B exact, p50=2µs, p99=3µs, total=2ms |
+| T_M4_LEDGER_READ | 0 sentinel/byte failures | 0 sentinel failures, 0 byte divergences |
+| T_M4_REPLAY_DETERMINISTIC | dest_a SHA256 == dest_b SHA256 | both = main = `43f303e1…1f7a8b` |
+| T_M4_CROSS_DEVICE_REPLAY | all final SHAs match reference | device_a + device_b + reference all match |
+
+**Bonus finding — cross-platform byte-identity.** Same deterministic
+1000-receipt sequence produces **byte-identical SHA-256 on Windows
+MSVC host AND aarch64-Android (S22U)**. Confirms `#[repr(C, packed)]`
+SpinorReceipt ABI portability AND extends
+`reference-lattice-decode-determinism` to orchestration-side data
+paths. Filed as memory-entry candidate
+`reference-cross-platform-byte-identity` — same-bytes-same-SHA across
+architectures means the ledger is shareable across the heterogeneous
+mesh without any per-arch endianness or alignment translation. This
+is a load-bearing guarantee for mesh-replay correctness.
+
+**Architectural honesty — cross-device ordering NOT canonical in v1.**
+The agent explicitly measured + confirmed: without a canonical
+ordering rule, device A and device B end up with byte-DIFFERENT
+ledgers even with identical receipt SETS (because merge order is
+local-first-then-broadcast). v1 ships with predictable per-device
+ordering (each device's local-then-replay matches a deterministic
+expected sequence). **A canonical-ordering future sprint can use the
+SpinorReceipt `_reserved[2]` bytes for a u16 Garner-recombined
+sequence rank** — surfaced as an explicit not-done item per
+`feedback-no-silent-gate-revisions`, NOT silently glossed.
+
+**Mesh broadcast shipped as stub.** `Ledger::broadcast_to_peers(since_offset)`
+returns the receipt list; real QUIC fan-out via existing
+`network/quic_shard.rs:271 run_garner_loop` is a follow-on (it's
+purpose-built for ResidueBlock; generic broadcast hook = cross-lane
+work). The simulation in T_M4_CROSS_DEVICE_REPLAY proves the
+byte-level protocol is correct; replacing the stub with real QUIC
+does not change the ledger ABI.
+
+**Manifesto Trick #10 status:** flipped from "Partial — receipts
+shipped; ledger pending" to **"Confirmed at M.4 scope — ledger +
+replay shipped; mesh-broadcast hook scaffolded; canonical ordering
+filed as next-iteration concern."**
+
+#### Chat-integration — wire run_dialogue() into /v1/dialogue endpoint (3/3 PASS, recovery)
+
+Branch `sprint/chat-integration` no-ff merged (engine main had
+advanced 2 merges since chat-integration's base). 6 commits: plan +
+4 stages (Stage 3 split into two recovery commits) + closure.
+Predictable Cargo.toml `[[bin]]` + lib.rs `pub mod` conflict resolved
+surgically.
+
+**Chosen Option B (parallel `/v1/dialogue` endpoint).** Existing `/chat`
+SSE handler unchanged; new `/v1/dialogue` endpoint accepts
+`{"prompt": String}`, returns `{"response": String, "receipts": [Base64String; 3]}`.
+
+| Gate | Method | Observed |
+|---|---|---|
+| T_CHAT_DIALOGUE_RUNS | Live POST on S22U | HTTP 200, response 31.23 s, valid content |
+| T_CHAT_RECEIPTS_IN_RESPONSE | base64-decode + sentinel check | 3 receipts, all 64 B, all sentinel 0xA5@63; turn_index 1/2/3, model_id 0x0E/0x4D/0x0E |
+| T_CHAT_NO_REGRESSION | Build-time + `/v1/chat` SSE spot-check | Existing `/v1/chat` still streams SSE |
+
+**Recovery context:** The original chat-integration agent socket-died
+after Stage 3 was committed but before the Stage 3 final smoke commit
++ Stage 4 closure + push. A recovery agent inventoried the 4 prior
+commits + uncommitted state, committed the smoke harness, ran it
+against the live `/v1/dialogue` endpoint on Knack's S22U, captured
+gate measurements, wrote the closure with explicit recovery
+disclosure, and pushed. **All 3 gates measured against the live
+endpoint on real hardware — NO silent gate substitution or
+host-only stub.**
+
+#### Discipline scoreboard for this parallel wave
+
+- **4th successful parallel dispatch** under operator-side worktree pattern.
+- M.4: clean run; 4/4 PASS; honest disclosure of cross-device-ordering caveat (not silently glossed).
+- Chat-integration: **first successful socket-failure recovery** under the operator-side dispatch pattern. The recovery agent honored the prior agent's Option B choice, finished the work, and disclosed the recovery in the closure body. The agent-recovery pattern works — branch state was preserved in the worktree across the failure.
+- Predictable Cargo.toml + lib.rs `[[bin]]`/`pub mod` overlap at merge time; resolution was surgical because both agents used the prefix discipline (`# §4-MeMo Sprint M.4 — ...` vs `# Chat-integration — ...`). Future parallel sprints touching the same files should continue the prefix discipline.
+
+#### What's now live in production
+
+- **MeMo dialogue endpoint** — `POST /v1/dialogue` accepts a prompt, runs the 3-turn Grounding → Entity ID → Synthesis state machine, returns the synthesis + 3 base64-encoded SpinorReceipts.
+- **PoUW receipt ledger** — append-only ledger; replay-deterministic; cross-device-replay-simulation gate passing; mesh-broadcast hook scaffolded.
+- **End-to-end MeMo architecture shippable** — chat UI can now POST to `/v1/dialogue` and visualize per-turn receipts. The ledger consumes those receipts on the daemon side automatically when wired in.
+
+#### What unblocks now
+
+- **Frontend MeMo chat UI** — the existing chat frontend mockups have a `/v1/dialogue` target to call.
+- **M.4 receipt-ledger auto-population** — small wiring sprint to make `/v1/dialogue` automatically append its receipts to the local ledger.
+- **Canonical mesh ordering** — small spec sprint to define the `_reserved[2]` u16 Garner sequence rank for byte-identical cross-device replay.
+- **M.0-real SFT** — still the hard dep for M.3 (Frobenius-lifted TIES merge) and K.2 full (NPU forward kernel).
+- **K.2 full** — soft dep on M.0-real; otherwise scoped and ready (~2000-3000 LOC / 30-50 hrs per K.2-spike).
+
+#### Manifesto Trick status snapshot (post-wave-4)
+
+| Trick | Status |
+|---|---|
+| #1 CRT-sharded compute | Confirmed at 5 scales |
+| #5 KSTE routing | RoutingMask production-ready |
+| #6 Frobenius-lift bit-identity | Confirmed at Barrett math |
+| #9 Spinor inter-island integrity ABI | Silicon-confirmed at M.2 + cross-platform byte-identity confirmed at M.4 |
+| **#10 Receipt-backed verifiable compute** | **Ledger + replay shipped (M.4); end-to-end live via /v1/dialogue (Chat-integration)** |
+
+The remaining Manifesto tricks all touch cross-island silicon (NPU
+side) or model-merge math (TIES), both of which gate on K.2 full
+and M.0-real respectively. The MeMo end-to-end story is now
+shippable on the cDSP-only single-device variant. **Cross-island
+(NPU + DSP) + cross-device (mesh) + cross-merge (TIES) remain as
+the closing arc of Phase 4-MeMo.**
+
 ### 2026-05-30 (late) — Phase 3-HX-MODE-D path forward: Sprint H (G.1 fixes) → Sprint I (single-layer smoke) → Sprint J (full model loader)
 
 After Sprint G, Gemini proposed jumping straight to Phase 4
