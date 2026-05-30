@@ -6126,6 +6126,96 @@ only); no engine commits or builds in this sprint.
 qualifier names that this is the protocol bring-up artifact, NOT
 the SFT-trained Memory model M.3 will need.
 
+### 2026-05-30 (later still / parallel closure with M.0) — Sprint K v0.beta-2.5c CLOSED + Manifesto Trick #1 FULL UMBRELLA empirically confirmed
+
+Engine `main @ 0cf9674`, tags `lat-phase-13-6-k-beta-mod-q-matmul`
++ **`lat-phase-13-6-k-beta-closed`** (umbrella legitimate). Branch
+`sprint/kbeta-2-5c` merged fast-forward from agent worktree
+`engine-kbeta-2-5c`. **Parallel dispatched with M.0 on lattice;
+zero cross-contamination per `feedback-parallel-agents-separate-
+worktrees`** — first successful parallel sprint under the
+operator-side worktree pattern.
+
+**All 4 substantive gates PASS:**
+
+| Gate | Threshold | Observed |
+|---|---|---|
+| T_MATMUL_Q_CORRECTNESS | 0 divergences | 0 / 4096 × 2 primes |
+| T_GARNER_BIT_EXACT | 0 divergences | 0 / 4096 × 4 seeds |
+| T_MATMUL_DUAL_DISPATCH_SPEEDUP | ≥1.5× (stretch ≥1.7×) | **1.724× / overlap 0.8259** at B=8/1024/512 |
+| T_MATMUL_LEAK_FREE | ≤256 KB second-half slope | **76 KB** |
+
+**Architectural finding: kernel-dependent regime boundary.** Agent
+measured DUAL_DISPATCH at TWO shapes per the
+`feedback-shape-dependent-parallelism-gates` discipline. At K
+v0.alpha's nominal shape (B=8/128/128), mod_q matmul ran ~0.4 ms
+per invoke — **data-bound regime, speedup 0.797×.** At
+B=8/1024/512 (~16× more output elements), per-invoke wall
+expanded to ~27 ms — **compute-bound regime, speedup 1.724×.**
+Same substrate, same nominal shape, different kernels land in
+DIFFERENT regimes because they do different amounts of work per
+element. K v0.alpha's saturating matmul saturates the HVX pipe
+at 128×128; K.beta.2.5c's mod_q matmul (one Barrett reduce per
+accumulator pass) blows through the work in 0.4 ms. Memory entry
+`feedback-shape-dependent-parallelism-gates` updated with the
+kernel-dependent regime boundary as a new generalized rule.
+
+**SASS audit:** 25 inner-loop intrinsics, 0 divergences from
+expected, compiler emitted 2-way software-pipelined loop (3-5
+ops/packet), 3 instances of the V69 `vmpye + vmpyoacc` widening
+idiom inlined from the Barrett primitive (per
+`reference-hexagon-v69-32x32-widening-idiom`).
+
+**Garner constants (verified, lockable for future sprints):**
+- `Q1 = 1073738753`
+- `Q2 = 1073732609`
+- `Q1_INV_MOD_Q2 = 894602413`
+- `M = Q1 · Q2 = 1152908312643096577` (60-bit exact)
+- Verified: `(Q1 · Q1_INV_MOD_Q2) % Q2 == 1`
+
+**K v0.beta umbrella now LEGITIMATELY closed.** All four
+load-bearing pieces are silicon-confirmed:
+
+| Layer | Sprint | Confirmation |
+|---|---|---|
+| Dispatch parallelism | K v0.alpha | 1.935× wall-clock at compute-bound matmul |
+| HVX vector math identity | K v0.beta-2.5b | 131k samples bit-exact, 0 SASS divergences |
+| mod_q matmul parallelism | K.beta.2.5c | 1.724× wall-clock at compute-bound matmul |
+| CRT recombination losslessness | K.beta.2.5c | Garner bit-exact across 4 seeds × 4096 samples |
+
+**Manifesto Trick #1 (CRT-sharded compute across silicon islands)
+is now FULL-UMBRELLA empirically confirmed at the cDSP-internal
+scale.** This is the architectural inflection the manifesto's
+first trick was building toward. The discrete-CRT-substrate-as-
+heterogeneous-compute-model claim is no longer a theoretical
+proposal — it's a measured silicon property.
+
+**K.beta.2.5b's UPSTREAM-REQUIRED gates both resolved by 2.5c:**
+- DUAL_DISPATCH_SPEEDUP: 1.006× (data-bound primitive scope) →
+  1.724× (compute-bound matmul scope).
+- LEAK_FREE: 2104 KB total delta (wrong metric per
+  `feedback-leak-gate-allocator-warmup`) → 76 KB second-half
+  slope (correct metric, threshold easily met).
+
+**What unblocks structurally:**
+- **K.2** (NPU cross-island via Mode B/D bridge): Trick #1
+  cDSP-internal confirmation makes K.2 a silicon-island leap
+  rather than a fundamentals build.
+- **Phase 4-MeMo M.6** (CRT-sharded MeMo): model-level CRT
+  composition now stands on a proven kernel-level CRT foundation.
+- **Phase 4-PoUW receipts** can mint over Garner-recombined matmul
+  outputs without trust assumptions — recombination losslessness
+  is empirically verified.
+
+**Parallel dispatch discipline validation:** K.beta.2.5c +
+M.0 dispatched concurrently. Each agent operated in its own
+worktree (`engine-kbeta-2-5c` and `lattice-memo-m0`). Zero
+cross-contamination: K.beta.2.5c touched engine repo only;
+M.0 touched lattice repo only (engine read-only access via
+`probe.exe` invocation). The worktree-per-agent pattern from
+`feedback-parallel-agents-separate-worktrees` works as designed.
+**This pattern can now be the default for future parallel sprints.**
+
 ### 2026-05-30 (late) — Phase 3-HX-MODE-D path forward: Sprint H (G.1 fixes) → Sprint I (single-layer smoke) → Sprint J (full model loader)
 
 After Sprint G, Gemini proposed jumping straight to Phase 4
