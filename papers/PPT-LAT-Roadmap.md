@@ -6452,6 +6452,53 @@ M.0 touched lattice repo only (engine read-only access via
 `feedback-parallel-agents-separate-worktrees` works as designed.
 **This pattern can now be the default for future parallel sprints.**
 
+### 2026-05-30 (fifth parallel wave) — mesh-canonical-order CLOSED (3/3 PASS) + ledger-autowire CLOSED (3/3 PASS) + reference-spinor-receipt-layout memory CORRECTED
+
+Engine `main @ 833abbe`. Tags `lat-phase-4-memo-mesh-canonical-order` + `lat-phase-4-memo-ledger-autowire`. Fifth successful parallel-dispatch wave under operator-side worktree pattern.
+
+**Critical discipline event — agent caught operator-side memory error.** The mesh-canonical-order agent's Stage 0 reference reading caught that `reference-spinor-receipt-layout` memory entry (written during M.2 closure) incorrectly described the SpinorReceipt struct as having `_reserved: [u8; 9]` spanning offsets 54-62. **Actual struct (`tools/sp_daemon/src/dialogue.rs:40-63`):** offsets 56-59 are `n_input_tokens: u32`, byte 60 is `n_output_tokens: u8`, only offsets 61-62 are `_reserved: [u8; 2]`. Plus a `_pad: [u8; 2]` at offsets 2-3 for u32 alignment of wall_us. The agent surfaced this UPSTREAM per `feedback-no-silent-gate-revisions` + `feedback-lead-with-reference-then-theory`, switched from spec-prompt's Option B (rank + device_id on-wire, structurally impossible) to Option A (rank-only in `_reserved[0..2]`; tiebreak on input_hash 192-bit-entropy). Memory entry corrected 2026-05-30 with explicit correction-history section. **The discipline rule works as designed:** agent read the actual struct, caught operator-side fabrication, fixed downstream design rather than building on the wrong premise.
+
+#### mesh-canonical-order (3/3 PASS)
+
+| Gate | Observed |
+|---|---|
+| T_MESH_RANK_PROTOCOL | bytes[61..63] = 0x2A 0x00 (42 LE); set/get round-trip; sentinel 0xA5 preserved; bytes 0..61 unchanged |
+| T_MESH_CANONICAL_SORT_DETERMINISTIC | N=100, two-run SHA-256 = `2a5d9717…1bfb6b1c` (match) |
+| T_MESH_CROSS_DEVICE_BYTE_IDENTITY | raw devices diverge; all 3 canonical SHAs = `174c7353…14db24f9`; order interleaved 0..=9 |
+
+Full library regression sweep: 56/56 PASS. Sort key: `(rank, input_hash)`. Option A claimed `_reserved[0..2]` only; device_id resolution deferred to a future SpinorReceiptV2 sprint if a use-case surfaces.
+
+**Manifesto Trick #10 status update:** "Confirmed at M.4 scope — ledger + replay shipped; end-to-end live via /v1/dialogue" → **"Confirmed at mesh-canonical-order scope — cross-device byte-identity via canonical sort key."** Real QUIC fan-out remains a separate sprint (the canonical-sort recipient is now order-tolerant).
+
+#### ledger-autowire (3/3 PASS host MSVC)
+
+| Gate | Observed |
+|---|---|
+| T_AUTOWIRE_LEDGER_GROWS | pre=0, post=960, delta=960 (5 × 3 × 64 exact) |
+| T_AUTOWIRE_RECEIPT_BYTE_IDENTITY | 15 receipts, 0 byte divergences over 960 bytes |
+| T_AUTOWIRE_NO_REGRESSION | 5/5 HTTP 200, 5/5 with 3 receipts, 0 transport errors |
+
+CLI flag: `--pouw-ledger-path <PATH>` (env `SP_POUW_LEDGER_PATH`). When set, daemon opens ledger at startup, AppState holds `Option<Arc<Mutex<Ledger>>>`. `/v1/dialogue` handler appends 3 receipts best-effort; lock/append failures log warning but never fail HTTP 200.
+
+#### Discipline scoreboard for this wave
+
+- 5th successful parallel dispatch under operator-side worktree pattern.
+- 2nd predictable Cargo.toml `[[bin]]` conflict; surgical resolution via prefix discipline.
+- **Memory entry correction caught by agent reference-reading** — first time an agent caught an operator-side memory entry error and surfaced UPSTREAM. The agent took the structurally-valid path (Option A) rather than building on the wrong spec. This is the no-fabrication discipline at the agent-side; pairs with `feedback-lead-with-reference-then-theory` at operator-side.
+- Both agents honored no-silent-gate-revisions. mesh-canonical-order caught the layout error; ledger-autowire ran chat-integration regression spot-check as part of T_AUTOWIRE_NO_REGRESSION.
+
+#### What's complete after this wave
+
+- **MeMo end-to-end:** `/v1/dialogue` runs the 3-turn dialogue, returns synthesis + 3 base64 receipts, AUTO-APPENDS to local PoUW ledger when `--pouw-ledger-path` is set, ledger entries are CANONICALLY ORDERABLE across devices via the rank field for mesh-replay byte-identity.
+- **Manifesto Tricks #1 + #6 + #9 + #10 all confirmed in production code on Knack's S22U.**
+- The "operating system" layer of PPT ARM is shipped: dispatch substrate + receipts + ledger + canonical ordering + dialogue protocol + chat endpoint.
+
+#### What comes NEXT (operator decision required)
+
+Phase 4-NTT (FILED 2026-05-30, lattice `main @ fadf188`) is the next major architectural arc. **The MeMo "operating system" we just shipped becomes the runtime that NTT-scaled attention plugs into at Sprint NTT.5.** Without Phase 4-NTT, MeMo's Executive chokes the moment a grounding query exceeds ~1024 tokens. With it, MeMo on mobile silicon runs at ctx=4096+ in real-time.
+
+The natural next dispatch: **Sprint NTT.0 (scalar Hexagon reference port).** Solo dispatch — it's the on-Hexagon oracle for the vector path. ~3-5 hour focused sprint. After NTT.0 closes, NTT.1 (HVX butterfly) and NTT.2 (twiddle VTCM staging) can dispatch in parallel.
+
 ### 2026-05-30 (even later — second parallel wave) — Sprint M.1 CLOSED + Sprint K.2-spike CLOSED (both 4/4 PASS); Trick #1 generalized cross-MODEL; NPU silicon-island accessible via Unsigned PD
 
 Engine `main @ 0d8ab91`. Second successful parallel dispatch
