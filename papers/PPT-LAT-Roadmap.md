@@ -6489,6 +6489,78 @@ M.0 touched lattice repo only (engine read-only access via
 `feedback-parallel-agents-separate-worktrees` works as designed.
 **This pattern can now be the default for future parallel sprints.**
 
+### 2026-05-30 (seventh parallel wave) — NTT.3 CLOSED-WITH-UPSTREAM + NTT.4 CLOSED 3/3 PASS; polynomial-multiplication round-trip on Hexagon is BYTE-EXACT vs math-core
+
+Engine `main @ fec6fe3`, tags `lat-phase-4-ntt-3-dual-prime-dispatch` + `lat-phase-4-ntt-4-intt-garner`. Seventh successful parallel-dispatch wave. Operator-side Stage 0 discipline applied again (pre-read math-core's `inverse_one` + `garner_one` + K.beta.2.5c Garner before drafting). Predictable IDL method-17 collision (both lanes wanted next slot); merge-time renumber put NTT.4 at method 18.
+
+#### NTT.3 — Dual-prime CRT dispatch (2/4 PASS + 2 UPSTREAM)
+
+Branch `sprint/ntt-3` ff-merged. 5 commits.
+
+| Gate | Result |
+|---|---|
+| T_NTT3_VTCM_AWARE_BIT_EXACT | **PASS** — 600/600 byte-exact, 1800 comparison points (m17 vs m12 vs m13 vs math-core), 0 divergences |
+| T_NTT3_NO_REGRESSION | **PASS** — m12 600/600, m13 600/600, m14/15/16 all functional |
+| T_NTT3_DUAL_DISPATCH_SPEEDUP | **FAIL → UPSTREAM** — 0.772× at N=512 vs 1.5× target; data-bound regime |
+| T_NTT3_VTCM_NO_RECOMPUTE | **FAIL → UPSTREAM** — m17 17-20% SLOWER than m13 at N=512; VTCM aligned-copy memcpy cost dominates |
+
+**Architectural finding the agent caught — VTCM per-stage misalignment.** NTT.2's per-stage compacted twiddle arrays land at byte offsets 0, 4, 12, 28, 60, 124, 252, 508, 1020 — only stage 1 is 128-byte aligned. Aligned `vmem` from stages 2+ silently reads wrong data (NTT.3 Stage 1 caught 600/600 divergence with aligned vmem). Three remediation options: (1) `vmemu` unaligned (NTT.4 took this for INTT, correct + slower); (2) aligned-copy to scratch (NTT.3 took this, correct + slowest — eats VTCM-no-recompute win); (3) restructure NTT.2 layout to pad each stage to 128-byte alignment (~270 KB VTCM = 3.3% of 8 MB budget — right play for NTT.5 production hot path). Captured as `reference-vtcm-per-stage-misalignment` memory.
+
+**UPSTREAM dispositions:**
+- **T_NTT3_DUAL_DISPATCH_SPEEDUP**: same data-bound regime story as K.beta.2.5c (0.797× single-prime matmul at small shape) and K.beta.2.5b. NTT at N=512 single-prime ~400-450 µs is FastRPC-marshalling-bound, not compute-bound. **Operator Path A:** defer real parallelism measurement to NTT.5 wrapper scope (full attention forward pass), where compute density returns to K v0.alpha regime. Documented in roadmap per `feedback-shape-dependent-parallelism-gates` (the kernel-dependent regime boundary rule).
+- **T_NTT3_VTCM_NO_RECOMPUTE**: VTCM aligned-copy cost > find_psi save. **Operator Path A:** restructure NTT.2 layout in a follow-on sprint (NTT.2.1 or inline into NTT.5) so vmem reads are aligned at the HVX inner loop. The current NTT.3 path is correct, just not faster — useful as the production wiring vehicle once NTT.5 lands the layout fix.
+
+Both UPSTREAM dispositions explicit; neither silent revision. NTT.3's VTCM-aware math IS silicon-correct at 1800 comparison points; the FAILed gates are gate-definition issues against this kernel's regime, not algorithm correctness.
+
+#### NTT.4 — INTT + signed Garner round-trip (3/3 PASS)
+
+Branch `sprint/ntt-4` no-ff merged. 5 commits. Method 17 renumbered to 18 at merge time (NTT.3 took 17 first).
+
+| Gate | Result |
+|---|---|
+| T_NTT4_INTT_BIT_EXACT | **PASS** — 600/600 byte-exact vs math-core `inverse_one`, 0 divergences |
+| T_NTT4_GARNER_SIGNED_BIT_EXACT | **PASS** — 1005 pairs (1000 random + 5 boundary cases at 0, 1, M/2, M/2+1, M-1), 0 divergences |
+| **T_NTT4_POLY_MUL_EXACT** | **PASS** — **12/12 byte-exact end-to-end** vs math-core `ntt_inverse` (3 N × 4 seeds × 2 primes) |
+
+**This is the load-bearing milestone.** The full forward NTT → pointwise multiply → INTT → ARM signed Garner CRT recombination round-trip on Hexagon V69 is byte-exact vs math-core's portable C reference. **The polynomial multiplication primitive the PPT ARM scaling mission rides on is silicon-confirmed.**
+
+Architecture confirmed working:
+- NTT.4's INTT reuses NTT.1's `sp_ntt_butterfly_stage_hvx` kernel verbatim by passing `w_inv_stages` from NTT.2's VTCM (operator-side pre-read prediction held: HVX kernel is twiddle-agnostic).
+- `garner_combine_q1_q2_signed` added as sibling to K.beta.2.5c's unsigned version; produces signed centered `int64_t` in `(-M/2, M/2]` matching math-core `garner_one`.
+- NTT.4's path used `vmemu` (unaligned vmem) on the misaligned per-stage offsets — correct + slower but ships clean.
+
+Wall-clock (informational): 2652 µs per N=512 polynomial multiplication round-trip; 8 FastRPC calls dominate (forward × 2 primes + pointwise × 2 + INTT × 2 + Garner ARM-side). NTT.5 amortizes this across the full attention forward pass.
+
+#### Discipline scoreboard for this parallel wave
+
+- **7th successful parallel dispatch** under operator-side worktree pattern.
+- **Operator-side Stage 0 discipline held** (pre-read math-core inverse_one + garner_one + K.beta.2.5c Garner before drafting). Result: zero operator-side spec errors caught at agent Stage 0.
+- Predictable IDL method-17 collision. Both agents transparently flagged the anticipated method numbers in closures; merge-time renumber put NTT.4 at 18. Standard surgical resolution.
+- NTT.3 surfaced TWO UPSTREAM gates without silent revision. NTT.4 hit all 3 gates clean.
+- NTT.4 also surfaced a qaic naming-convention strict gotcha (IDL method `intt_hvx_oracle` → dispatcher calls `sp_compute_intt_hvx_oracle`; mismatch with impl produces undefined-symbol that slides through SHARED lib link with default visibility — silent at link, would crash at first invoke). Caught via `hexagon-nm libsp_compute_skel.so` before any device call. Worth tracking for future IDL additions.
+
+#### What unblocks now — NTT.5 (THE PAYLOAD)
+
+NTT.5 is the natural next solo dispatch. It wires the forward NTT (NTT.1/2/3) + INTT (NTT.4) + Garner (NTT.4 signed sibling) into MeMo's `run_dialogue()` Memory model attention forward path. **This is the moment the entire MeMo arc becomes load-bearing for the actual PPT ARM scaling mission rather than just architectural validation.**
+
+Pre-NTT.5 considerations the operator should pre-read:
+- MeMo's `run_dialogue()` Memory forward path in `tools/sp_daemon/src/dialogue.rs`
+- The L1 forward attention surface — how Memory model attention is currently structured (whether it's an opaque `sp_session` API or a decomposed K-cache + Q dispatch surface)
+- M.5's KSTE routing surface — whether NTT.5 should compose with sparse-routing (M.5 Variant B advisory) or stay full-forward
+- The Phase 4-NTT roadmap block's NTT.5 spec (already drafted with operator pre-read placeholder)
+
+#### Phase 4-NTT status snapshot
+
+| Sprint | Status |
+|---|---|
+| NTT.0 scalar Hexagon reference | ✓ 600/600 PASS |
+| NTT.1 HVX butterfly | ✓ 600/600 PASS, SASS clean |
+| NTT.2 twiddle VTCM staging | ✓ 36/36 tables, 1.71% VTCM budget |
+| NTT.3 dual-prime CRT dispatch | ✓ math PASS; 2 UPSTREAM regime gates (defer to NTT.5 wrapper) |
+| NTT.4 INTT + Garner round-trip | ✓ 3/3 PASS, polymul byte-exact 12/12 |
+| **NTT.5 MeMo integration (THE PAYLOAD)** | **Unblocked, ready** |
+| NTT.6 long-context benchmark via tiled N=512 | Awaits NTT.5 |
+
 ### 2026-05-30 (sixth parallel wave) — NTT.1 + NTT.2 BOTH CLOSED on silicon; HVX butterfly + VTCM-staged twiddles ready for NTT.3 dual-prime dispatch
 
 Engine `main @ c6df266`, tags `lat-phase-4-ntt-1-hvx-butterfly` + `lat-phase-4-ntt-2-twiddle-vtcm`. Sixth successful parallel-dispatch wave under operator-side worktree pattern. Pre-read discipline applied: operator read math-core's `ntt_crt.c` + the canonical `forward_one` + `ntt_core` structure + the twiddle table layout BEFORE drafting prompts, so the agents inherited the actual algorithm shape (not theory-derived guesses). Result: clean parallel landing with only a predictable IDL method-13 collision (both agents transparently disclosed it in their closures).
