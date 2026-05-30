@@ -6489,6 +6489,61 @@ M.0 touched lattice repo only (engine read-only access via
 `feedback-parallel-agents-separate-worktrees` works as designed.
 **This pattern can now be the default for future parallel sprints.**
 
+### 2026-05-30 (sixth parallel wave) — NTT.1 + NTT.2 BOTH CLOSED on silicon; HVX butterfly + VTCM-staged twiddles ready for NTT.3 dual-prime dispatch
+
+Engine `main @ c6df266`, tags `lat-phase-4-ntt-1-hvx-butterfly` + `lat-phase-4-ntt-2-twiddle-vtcm`. Sixth successful parallel-dispatch wave under operator-side worktree pattern. Pre-read discipline applied: operator read math-core's `ntt_crt.c` + the canonical `forward_one` + `ntt_core` structure + the twiddle table layout BEFORE drafting prompts, so the agents inherited the actual algorithm shape (not theory-derived guesses). Result: clean parallel landing with only a predictable IDL method-13 collision (both agents transparently disclosed it in their closures).
+
+#### NTT.1 — HVX butterfly core (4/4 PASS)
+
+| Gate | Observed |
+|---|---|
+| T_NTT1_HVX_BIT_EXACT | **600/600 byte-exact** vs math-core AND vs NTT.0 scalar (0 divergences) |
+| T_NTT1_NO_REGRESSION | NTT.0 ntt_oracle method 12 still 600/600 PASS |
+| T_NTT1_SASS_AUDIT | **32 inner-loop HVX intrinsics + 3 hoisted splats, 0 divergences** from planned V69 opcodes; compiler emitted 7-packet software-pipelined `loop0` body with `.cur` vmem loads + `.new` vmem stores + VLIW co-issue |
+| T_NTT1_WALL_CLOCK_WIN | HVX < scalar at all 3 N × both primes (ratio 0.860-0.946 — wins at largest N=512 q_1=0.946 q_2=0.876) |
+
+**Architectural finding:** the compiler-emitted 7-packet SWP loop body is the **silicon upper bound** on V69 for this kernel — cannot beat it without algorithmic changes (e.g., NTT.4 cross-group small-stage vectorization or NTT.3 dual-prime dispatch overlap). Wall-clock wins are modest (~5-15%) because FastRPC marshalling (~150 µs/invoke) dominates wall-clock budget; NTT.2 + NTT.3 will both improve this.
+
+**Decision:** small-stage (half < 32) path uses scalar fallback per recommended option (i). Cross-group HVX vectorization for small stages filed as NTT.4/NTT.5 follow-on.
+
+#### NTT.2 — Twiddle VTCM staging (3/3 PASS)
+
+| Gate | Observed |
+|---|---|
+| T_NTT2_TWIDDLE_INIT | **6/6 (prime, N) tables present**; VTCM addrs 0xff000000..0xff140000; init wall 625 µs first / 134 µs idempotent |
+| T_NTT2_TWIDDLE_BIT_EXACT | **36/36 tables compared, 35,792 bytes, 0 divergences** vs math-core `prime_setup` reference |
+| T_NTT2_VTCM_BUDGET | **35,840 B total ≤ 2 MB budget (1.71% envelope)** — massive headroom for NTT.4 intermediates + NTT.5 MeMo data |
+
+**Empirical observation memorialized in closure:** `HAP_request_VTCM` allocates at 256 KB-stride boundaries on V69. Useful for future multi-arena planning.
+
+**Architectural delta:** per-stage compacted twiddle arrays (stride-1 HVX access) precomputed alongside the canonical psi_pow/ipsi_pow/w_fwd/w_inv tables. NTT.3 + NTT.4 read VTCM-resident tables instead of recomputing per-call.
+
+**Bonus:** NTT.4-side tables (ipsi_pow + w_inv + w_inv_stages) ARE precomputed by NTT.2, so NTT.4 can dispatch without additional twiddle work — just consume the existing context.
+
+#### Discipline scoreboard for this parallel wave
+
+- **6th successful parallel dispatch** under operator-side worktree pattern.
+- **Operator-side Stage 0 discipline APPLIED this time** — operator read math-core's `ntt_crt.c` lines 1-352 BEFORE drafting NTT.1 + NTT.2 prompts. Result: no operator-side spec errors caught at agent Stage 0 (previous two waves caught operator errors: SpinorReceipt layout + NTT N-ladder).
+- Predictable IDL method-13 collision; both agents transparently flagged in closures; surgical merge renumbered NTT.2 methods to 14/15/16 at merge time. The prefix discipline (`§4-NTT Sprint NTT.X — ...`) made it trivial.
+- Both agents honored no-silent-gate-revisions. NTT.1's small-stage scalar fallback was a planned architectural decision documented in plan-commit. NTT.2's IDL anomaly (dump method added in-sequence) was openly disclosed.
+- NO silent gate revisions across either lane.
+
+#### What unblocks now
+
+- **Sprint NTT.3 (dual-prime CRT dispatch)** can dispatch — both NTT.1 (HVX butterfly) and NTT.2 (VTCM tables) ready. NTT.3 wires `Arc<FastRpcSession>` dual-thread invoke of `ntt_hvx_oracle` for q_1 + q_2 concurrently, reading VTCM tables instead of per-call recomputation.
+- **Sprint NTT.4 (INTT + Garner round-trip)** can dispatch in parallel with NTT.3 if desired — NTT.2 precomputed the inverse tables; NTT.4 implements the INTT kernel + reuses K.beta.2.5c's Garner combiner.
+- **Twiddle setup overhead eliminated** for production NTT use — daemon startup `ntt_twiddle_init(N)` once; all subsequent inferences read pre-staged tables.
+
+#### Manifesto Trick status snapshot (Phase 4-NTT scope)
+
+| Component | Status |
+|---|---|
+| Phase 4-NTT prereq (math primitives) | ✓ NTT.0 scalar Hexagon + NTT.1 HVX butterfly + NTT.2 VTCM tables — all silicon-confirmed |
+| NTT.3 dual-prime CRT dispatch | Unblocked, awaiting dispatch |
+| NTT.4 INTT + Garner | Unblocked, awaiting dispatch |
+| NTT.5 MeMo integration | Awaits NTT.3 + NTT.4 closure |
+| NTT.6 long-context benchmark via tiled N=512 | Awaits NTT.5 |
+
 ### 2026-05-30 (NTT.0 SHIPPED) — Phase 4-NTT foundation sprint CLOSED, T_NTT0 600/600 PASS after operator Path A recovery
 
 Engine `main @ f834bff`, tag `lat-phase-4-ntt-0-scalar-hexagon`. NTT.0 is the foundation sprint of Phase 4-NTT (the PPT ARM scaling primitive arc). Closure under recovery: the prior agent caught the operator-side N-ladder spec error at Stage 0, surfaced UPSTREAM, and stopped. After roadmap correction (commit `e927f6f` landed Path A), a continuation agent executed Stages 1-4 on the corrected ladder and hit clean 600/600 PASS on Knack's S22U.
