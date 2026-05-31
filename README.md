@@ -18,7 +18,7 @@ Discord: [Shannon-Prime-Lattice](https://discord.gg/rre9XZmvV)
 
 **Phase 0 — bootstrap.** Papers and prompt landed; clean rebuild of math core and engine starts at Phase 1. See `papers/PPT-LAT-Roadmap.md`.
 
-## Reading order
+## Reading order.
 
 1. `papers/PPT-LAT-Theory.md` — math foundations (the lattice, $\preceq_d$ as wqo, CRT, HRR, the unified role of $\preceq_d$ across the stack)
 2. `papers/PPT-LAT-Systems.md` — architecture (six layers, protocols, failure modes, two-token economy)
