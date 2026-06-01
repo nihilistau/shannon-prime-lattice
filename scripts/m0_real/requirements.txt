@@ -1,0 +1,18 @@
+# M.0-real Memory SFT — RunPod pinned deps
+# Tested against the RunPod "PyTorch 2.4 + CUDA 12.4" container (default).
+# If your container has different base versions, adjust torch line accordingly.
+
+torch>=2.2,<3.0
+transformers>=4.45,<5.0
+datasets>=2.20,<4.0
+accelerate>=0.34,<2.0
+peft>=0.13,<1.0
+bitsandbytes>=0.43,<1.0      # optional, only needed for --load_4bit
+sentencepiece>=0.2
+protobuf>=4.21
+einops>=0.8
+safetensors>=0.4
+
+# Optional logging targets
+# wandb>=0.18
+# tensorboard>=2.17
