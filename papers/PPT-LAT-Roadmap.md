@@ -7860,6 +7860,36 @@ baseline regression is green again (P2, OPEN).
 3-SSM/3-G4/3-MoE/3-FP8, which remain the §2.2 centre of mass and are still
 unbuilt while the frontier expanded).
 
+### 2026-06-02 — June frontier wave: retro-contract catalogue (P1)
+
+Eleven sprint branches were merged into engine `main` on 2026-06-01/02 with
+**no roadmap phase-log entry**. They are **not** undocumented — each has a
+`CLOSURE-*.md` — but those closures landed in the **engine** repo under
+`tools/sp_compute_skel/docs/` (and `tools/sp_daemon/docs/`,
+`tools/sp_npu_spike/docs/`), not in `shannon-prime-lattice/papers/` as §3.3
+requires. This entry catalogues them so the roadmap carries the provenance;
+the §3.3 convention deviation is noted, not re-relocated (the docs stay where
+the agents wrote them; future closures should go to `lattice/papers/`).
+Gate statuses below are **as attested by each sprint's own closure doc** —
+catalogued here, not re-verified this session.
+
+- **`sprint/hx-3b`** (merge `5826bd5`) — 3B-class Gemma3 on V69 HVX. **4/4 PASS**; prefill 1.04× over ARM fp32 @ ctx=16, bit-exact. `CLOSURE-HX-3b.md`.
+- **`sprint/hx-3b-alpha-v2`** (merge `877fe11`) — HVX inner-loop vrmpy optimisation. **3/4 PASS, 1 FAIL** (decode bit-equal preserved; vrmpy ops −77% in skel). `CLOSURE-HX-3b-alpha-v2.md`.
+- **`sprint/ntt-6`** (merge `eba0301`) — NTT measurement sprint. **Measurement-only; required-cell coverage partial** (ctx=512 + ctx=1024 Memory + Gemma3 fp32 done; rest partial). `CLOSURE-NTT-6.md`.
+- **`sprint/trick-1`** (merge `687463e`) — daemon dual-dispatch architectural demo. **4/4 substantive PASS** at demo scope; one named blocker. `tools/sp_daemon/docs/CLOSURE-TRICK-1.md`.
+- **`sprint/trick-1-forward-v3`** (merge `db4de65`) — forward-pass routing v3. **2/5 PASS, 1 honest FAIL, 2 surfaced UPSTREAM** per `feedback-no-silent-gate-revisions`. `CLOSURE-TRICK-1-FORWARD-V3.md`.
+- **`sprint/trick-1-forward-v4`** (merge `d9b9a78`) — forward routing v4, dual-ctx VTCM weights. **Gates PASS**; 31.4% per-matmul pcycle drop (DDR→VTCM), decode bit-exact. `CLOSURE-TRICK-1-FORWARD-V4.md`.
+- **`sprint/v5-ffn-vtcm`** (merge `73f3367`) — dual-VTCM FFN tile pool + DMA ping-pong. **Gates PASS**; 4.96 MB VTCM tile pool, DMA prefetch 99.2% hidden behind HVX compute, decode bit-exact vs V4. `CLOSURE-V5.md`.
+- **`sprint/wire-cpu`** (merge `ea0d0ac`) — daemon→CPU backend dispatch (`SP_DAEMON_BACKEND=cpu`). **5/5 PASS**. `CLOSURE-WIRE-CPU.md`.
+- **`sprint/wire-cuda`** (merge `a299ed0`) — daemon→CUDA PTX backend (`SP_DAEMON_BACKEND=cuda`). **5/5 PASS**; bit-exact 32-token argmax vs ref, 1.14× tok/s on Qwen3-0.6B. `CLOSURE-WIRE-CUDA.md`.
+- **`sprint/wire-hex-finish`** (merge `ed25511`) — daemon→Hexagon backend dispatch finish. **4/4 PASS**. `CLOSURE-WIRE-HEX-FINISH.md`.
+- **`sprint/wire-vulkan`** (merge `3bed888`) — daemon→Vulkan backend wiring. **Wiring PASS; runtime gates BLOCKED** on a `VkResult -2` device-memory OOM → **quarantined (P2)** behind `SP_VK_OOM_FIXED`. `CLOSURE-WIRE-VULKAN.md` + `SESSION-STATE-lat-2-wire-vulkan-oom.md`.
+
+Engine `main` after the wave + P2 quarantine = `0a600f3`; math-core pinned to
+the reunified `b69ab92` (P0). **Open from this wave:** hx-3b-alpha-v2's 1 FAIL,
+ntt-6 coverage completion, trick-1-forward-v3's FAIL + 2 UPSTREAM items, and the
+wire-vulkan OOM (P2). None block the spine; all are tracked at their closure docs.
+
 
 ---
 
