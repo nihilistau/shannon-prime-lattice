@@ -4,6 +4,33 @@
 **Entry:** Stage 1 GREEN — system `51e4c5c`, full math-core suite 19/19.
 **Exit:** system `9bc22f9`, full math-core suite **19/19 GREEN**, session checks **458/458**.
 
+**Lead review addendum (2026-06-02, post-agent):** verified — both repos synced
+to origin, registered suite re-run 19/19 green. Roadmap §3-G4 geometry spec
+CORRECTED to match the agent's finding (lattice `c23ab8f`): `n_head`/`n_head_kv`
+constant, `head_dim` per-layer, QD/KVD per-layer. Two items carried to the next
+session:
+
+1. **Latent OOB in the real-weight `gemma4_forward` path (top priority).** The
+   full real-weight forward is crash-free standalone + argmax bit-identical, but
+   corrupts the heap when run after ~20 prior in-suite allocations (so
+   `T_GEMMA4_GGUF_FORWARD` validates loader config+binding only, not the full
+   forward — disclosed, not hidden). Inspection of `gemma4_forward` shows every
+   write bounded by its allocation, so the over-write is subtle (likely a
+   per-layer-width edge or a loader-bound tensor length mismatch on real dims;
+   the tiny fixture has degenerate constant widths so the suite can't catch it).
+   **Runbook:** (a) strengthen `gemma4_fixture` to the REAL geometry — constant
+   `n_head`/`n_head_kv`, per-layer `head_dim` so per-layer QD/KVD actually differ
+   (e.g. nh=4/nkv=2 const, hd_swa=8/hd_global=16 → QD 32/64, KVD 16/32) — to make
+   the suite exercise the per-layer-width path; (b) rebuild `libsp_forward` (+deps)
+   with `-fsanitize=address -g`, link `tests/gemma4_gguf_forward_harness.c`, run on
+   E2B-Q8_0 to pinpoint the exact OOB line; (c) fix; (d) promote
+   `T_GEMMA4_GGUF_FORWARD` to run the full forward in-suite once clean.
+2. **Oracle exact top-1 (BLOCKED-UPSTREAM):** needs a `llama-completion`/
+   `llama-tokenize` build (the @5dcb711 `llama-cli` forces the gemma4 chat
+   template, preventing identical-token-ID feed). Build those targets, then diff
+   greedy argmax vs `gemma4_forward` on E2B-Q8_0. Plus TASK C (engine sp-transcode
+   gemma4 + `M_GEMMA4` PPL gate) remains.
+
 Commits (origin/main, system repo):
 - `7186210` — TASK A: `kv_step_gemma4` persistent-KV decode + `T_GEMMA4_DECODE_TRAJECTORY`.
 - `9bc22f9` — TASK B: gemma4 GGUF loader + **per-layer projection-width architecture fix** + `T_GEMMA4_GGUF_FORWARD` + standalone harness.
