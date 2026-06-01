@@ -7890,6 +7890,52 @@ the reunified `b69ab92` (P0). **Open from this wave:** hx-3b-alpha-v2's 1 FAIL,
 ntt-6 coverage completion, trick-1-forward-v3's FAIL + 2 UPSTREAM items, and the
 wire-vulkan OOM (P2). None block the spine; all are tracked at their closure docs.
 
+### 2026-06-02 — Phase 3-G4 Stage 0: Gemma4 GGUF ground-truth (spec for the bridge)
+
+Read the actual artifact before drafting (per `feedback-read-spec-before-drafting-handoff`).
+Inspected `gemma-4-E4B-it-Q6_K.gguf` (arch `gemma4`, 42 layers, d=2560, ffn=10240,
+head_count=8, head_count_kv=2). **This corrects two over-claims from secondary
+sources** and pins the spec the `sp_model_to_gemma4` bridge must implement:
+
+- **NO V-projection elimination in the GGUF.** `blk.*.attn_v.weight [2560,512]` is
+  present on **all 42 layers**; `value_length=512` / `value_length_swa=256` both
+  defined. The "global layers drop V and reuse K" claim (blogs) does **not** appear
+  in the consumed artifact — if the HF model aliases K→V on global, llama.cpp's
+  converter has materialized an explicit `attn_v`. The bridge uses explicit V on
+  every layer. (Confirm the head-pairing against the llama.cpp gemma4 graph in
+  Stage 1 — reference read, no code copy.)
+- **5:1 attention, last layer global.** `sliding_window_pattern =
+  [T,T,T,T,T,F]×7`; global (non-sliding) at layer indices {5,11,17,23,29,35,41}.
+  Layer 41 (last) is global. `sliding_window = 512`.
+- **Dual head geometry is a per-layer RESHAPE of identical-shape projections, not
+  different weights.** Every layer ships `attn_q [2560,2048]`, `attn_k [2560,512]`,
+  `attn_v [2560,512]`. SWA layers: head_dim 256 → Q 8×256, K/V 2×256; RoPE base
+  1e4, rope dim 256. Global layers: head_dim 512 → Q 4×512, K/V 1×512; RoPE base
+  1e6, rope dim 512. Bridge dispatches geometry + RoPE base + mask on the pattern
+  bit. (`key_length`/`value_length` = global values; `*_swa` = sliding values.)
+- **Per-layer input injection (AltUp-style):** globals `per_layer_token_embd
+  [10752,262144]`, `per_layer_model_proj [2560,10752]`, `per_layer_proj_norm
+  [256]`; per-layer `inp_gate [2560,256]`, `proj [256,2560]`, `layer_output_scale
+  [1]`. `embedding_length_per_layer_input = 256`; 10752 = 42 × 256.
+- **Norms:** `attn_norm`, `post_attention_norm`, `ffn_norm`, `post_ffw_norm`, plus
+  an extra `post_norm` (richer than Gemma3's sandwich); per-head QK-norm
+  `attn_q_norm`/`attn_k_norm [256]`. `rms_eps = 1e-6`.
+- **`final_logit_softcapping = 30.0`** (`tanh(logits/30)*30`). **Tied head**
+  (`token_embd` only, no `output.weight`).
+- **`shared_kv_layers = 18`** — KV-cache sharing optimization; tensors are still
+  per-layer. v0 bridge may compute per-layer KV and add sharing in v1.
+- **No MTP/draft tensors** in this GGUF — Gemma4's native MTP draft is not exported
+  here; Phase 4-MTP needs a different fixture for native heads.
+
+**Bridge contract (Stage 1+):** `sp_model_to_gemma4` mirrors the closed
+`sp_model_to_gemma3` zero-copy `alias_mask` bridge; `kv_step_gemma4` extends
+`kv_step_gemma3` with (a) per-layer head-geometry dispatch on `sliding_window_pattern`,
+(b) the AltUp per-layer-input injection path, (c) the extra `post_norm`, (d)
+final-logit softcap. Gate: `M_GEMMA4_*` forward bit-identity vs the llama.cpp
+gemma4 oracle (distributional, per §8.6.1) + `T_PARITY_CROSS_LOAD_GEMMA4`.
+Fixtures: E4B (above), E2B (`New folder/`), 31B available. Inspection script:
+scratchpad `g4_inspect.py`.
+
 
 ---
 
