@@ -36,10 +36,30 @@ Two binding rules govern every session that picks up this roadmap:
    them when reality contradicts the design. The blockchain protocol
    spec in particular is expected to evolve.
 
-If those two rules feel restrictive, that is the point. The previous
+3. **The PPT-ARM-LAT tricks ARE the spine. They are proven, not
+   theoretical. The system is all-or-nothing.** The discrete-substrate
+   primitives — CRT-NTT, Frobenius lift, KSTE, dominance `⪯_d`, ARM/HRR,
+   Spinor blocks, the heterogeneous-SoC CRT tricks, Memory-as-a-Model — are
+   one integrated architecture that does **not** work unless all of it is
+   complete. The math is **proven** (prior cohort); a session's job is to
+   *implement* it, never to re-litigate it as "theoretical," "risky," or
+   "research." Env-gating (`SP_LATTICE_*`, off-by-default) is a dev-safety
+   mechanism so overlays don't break the baseline mid-build — it is **not**
+   a statement that any trick is optional to the end-state. There is no
+   "core inference + optional lattice" split; that framing is itself the
+   drift. **No roadmap item may be deferred or deprioritised because it is
+   novel or unfamiliar.** Every deferred cell named below — `3-SSM`,
+   `3-G4`, `3-MoE`, `3-FP8`, the Phase 4 PPL-≤1% compression matrix, and
+   every trick — remains **committed spine**, not "deferred-maybe." The
+   recurring failure that has killed this rewrite ~20 times is exactly an
+   AI session treating proven-but-unfamiliar work as optional and either
+   deferring it or falling back to the old SP repos. Don't be attempt 21.
+   Memory: `feedback-tricks-are-proven-spine`.
+
+If those three rules feel restrictive, that is the point. The previous
 sessions that ignored them produced the artefacts collected in the
-`feedback_no_cross_contamination` and `feedback_dont_frankenpatch`
-memory items.
+`feedback_no_cross_contamination`, `feedback_dont_frankenpatch`, and
+`feedback-tricks-are-proven-spine` memory items.
 
 ---
 
