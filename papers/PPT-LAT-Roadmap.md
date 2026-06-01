@@ -7967,14 +7967,19 @@ does not have.
    SWA → `n_embd_head=256`, RoPE base 1e4, `n_rot=256`, window 512;
    global → `n_embd_head=512`, RoPE base 1e6, `n_rot=512`, full causal, **+ a
    per-layer `rope_freqs [128]` proportional-RoPE freq-factor table** (SWA has none).
-   Q/K/V projection widths are constant; head count/width is the per-layer reshape.
-   **Exact per-layer geometry (constraint-derived from `attn_q` out=2048,
-   `attn_k/v` out=512, rope dims 256/512, head_dim≥rope_dim — airtight):**
-   SWA = head_dim 256, n_head 8, n_head_kv 2; global = head_dim 512, n_head 4,
-   n_head_kv 1. group = n_head/n_head_kv = 4 both; QD = 2048, KVD = 512 both
-   (so K/V buffers are uniform-width across layers; only the head split differs).
-   (GGUF `head_count`=8/`head_count_kv`=2 scalars are the SWA-majority values;
-   llama.cpp's `n_head_arr`/`n_head_kv_arr` carry the per-layer split.)
+   **CORRECTED 2026-06-02 (Stage 2, real-GGUF inspection — supersedes the earlier
+   "constant projection widths" claim, which was WRONG):** `n_head` and
+   `n_head_kv` are **CONSTANT** across layers; **`head_dim` is per-layer** (SWA =
+   `key_length_swa`, global = `key_length`). Therefore the Q/K/V **projection
+   widths DIFFER per layer**: `QD = n_head·head_dim` and `KVD = n_head_kv·head_dim`
+   are per-layer (e.g. E2B-Q8_0, `n_head`=8 `n_head_kv`=1: SWA QD=2048/KVD=256,
+   global QD=4096/KVD=512 — confirmed from `blk.0.attn_q=[1536,2048]` vs
+   `blk.4.attn_q=[1536,4096]`). The earlier "constant 2048/512, per-layer head
+   *reshape*" reading was a Stage-0 inspection artifact (the inspector printed only
+   layer-0's shape). `gemma4_forward`/`kv_step_gemma4` size Q/AO buffers to the
+   max width and compute per-layer `qd`/`kvd` in the loop (system `9bc22f9`). Read
+   `head_count`/`head_count_kv` (constant) + `key_length`/`key_length_swa` from the
+   GGUF; do NOT assume constant projection widths. group = `n_head/n_head_kv`.
 3. **Q-norm + K-norm** are per-layer-`head_dim`-sized RMS (`attn_q_norm`,
    `attn_k_norm` = `{n_embd_head(il)}`), applied after reshape, before RoPE.
    **V-norm** = weightless `rms_norm` (delta from gemma3).
