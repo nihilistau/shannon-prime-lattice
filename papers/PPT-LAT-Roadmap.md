@@ -7937,13 +7937,71 @@ Phase 3-MoE lands; treat the V-elimination question as resolved *for dense E4B
 only*. (No Gemma4-MoE GGUF on disk yet; fetch when 3-MoE starts.)
 
 **Bridge contract (Stage 1+):** `sp_model_to_gemma4` mirrors the closed
-`sp_model_to_gemma3` zero-copy `alias_mask` bridge; `kv_step_gemma4` extends
-`kv_step_gemma3` with (a) per-layer head-geometry dispatch on `sliding_window_pattern`,
-(b) the AltUp per-layer-input injection path, (c) the extra `post_norm`, (d)
-final-logit softcap. Gate: `M_GEMMA4_*` forward bit-identity vs the llama.cpp
-gemma4 oracle (distributional, per §8.6.1) + `T_PARITY_CROSS_LOAD_GEMMA4`.
-Fixtures: E4B (above), E2B (`New folder/`), 31B available. Inspection script:
-scratchpad `g4_inspect.py`.
+`sp_model_to_gemma3` zero-copy `alias_mask` bridge; `gemma4_forward` mirrors
+`gemma3.c` with the deltas below. Gate: `M_GEMMA4_*` forward bit-identity vs the
+llama.cpp gemma4 oracle (distributional, §8.6.1) + `T_PARITY_CROSS_LOAD_GEMMA4`.
+Fixtures: E4B, E2B, 31B. Inspection: scratchpad `g4_inspect.py`.
+
+### 2026-06-02 — Phase 3-G4 Stage 1 spec (from llama.cpp `build_gemma4` graph @ 5dcb711)
+
+Oracle + arch reference built and installed permanently: `SP_LLAMA_ORACLE_DIR`
+= `D:\F\llama.cpp\build\bin` (`llama-perplexity.exe`, `llama-cli.exe`; gcc 15.2;
+gemma4 load verified — "capital of France" → "Paris"). `SP_GEMMA4_GGUF` set.
+Graph read from `D:\F\llama.cpp\src\models\gemma4.cpp` (reference, not copied).
+
+**V-elimination question, settled:** optional-V is a *real* Gemma4 arch feature
+(`wv` is `TENSOR_NOT_REQUIRED`; graph: `Vcur = wv ? wv·cur : Kcur`). The **dense
+E4B GGUF ships `wv` on all layers**, so it does NOT use K-as-V — but the bridge
+must support absent-`wv`→use-K. (Operator was right the feature exists; it lives
+in variants that omit `wv`, likely MoE.) Regardless, **V is RMS-normed** (no
+weight, `ggml_rms_norm` at `f_norm_rms_eps`) before attention — a delta gemma3.c
+does not have.
+
+**Dense `gemma4_forward` deltas vs `gemma3.c` (exhaustive):**
+
+1. **Attention scale = 1.0**, not `1/sqrt(head_dim)` (`f_attention_scale=1.0`;
+   "Gemma4 uses self.scaling = 1.0"). gemma3 used `1/sqrt(HD)`.
+2. **Per-layer head geometry** via `is_swa(il)` (= `sliding_window_pattern[il]`):
+   SWA → `n_embd_head=256`, RoPE base 1e4, `n_rot=256`, window 512;
+   global → `n_embd_head=512`, RoPE base 1e6, `n_rot=512`, full causal, **+ a
+   per-layer `rope_freqs [128]` proportional-RoPE freq-factor table** (SWA has none).
+   Q/K/V projection widths are constant; head count/width is the per-layer reshape.
+3. **Q-norm + K-norm** are per-layer-`head_dim`-sized RMS (`attn_q_norm`,
+   `attn_k_norm` = `{n_embd_head(il)}`), applied after reshape, before RoPE.
+   **V-norm** = weightless `rms_norm` (delta from gemma3).
+4. **Shared-KV:** `n_layer_kv_from_start = n_layer − shared_kv_layers` (E4B:
+   42−18 = **24**). Layers ≥ 24 have `has_kv=false` → the graph passes K=V=null
+   and **reuses an earlier layer's KV cache**, *ignoring* any `wk/wv` present in
+   the GGUF. **Open risk for bit-exactness:** must replicate the exact KV-reuse
+   map from `build_attn_inp_kv_iswa` (study before claiming the M_GEMMA4 gate).
+5. **Residual/norm order:** `attn_out = inpL + attn_post_norm(attn(attn_norm(inpL)))`;
+   then `ffn_out = attn_out + ffn_post_norm(FFN(ffn_norm(attn_out)))` (FFN =
+   GeGLU, `LLM_FFN_GELU` tanh-approx, parallel gate/up). Same sandwich shape as
+   gemma3 but with **`ffn_post_norm`** (Gemma4's `post_norm` tensor).
+6. **Per-layer-input injection (AltUp-lite), after the FFN residual:**
+   - Precompute once: `ple = per_layer_tok_embd[tok]·sqrt(256)` reshaped
+     `[256, n_layer, T]`; `proj = rmsnorm(per_layer_proj_norm,
+     (per_layer_model_proj·inpL)·(1/sqrt(n_embd)))`; `inp_per_layer =
+     (proj + ple)·(1/sqrt(2))`.
+   - Per layer: `g = gelu(per_layer_inp_gate·cur)` `[256]`; `g *= inp_per_layer[il]`;
+     `p = rmsnorm(per_layer_post_norm, per_layer_proj·g)` `[n_embd]`;
+     `cur = cur + p`.
+7. **Per-layer output scale:** if `out_scale` (`layer_output_scale [1]`) present,
+   `cur *= out_scale` (scalar) at layer end.
+8. **Final:** `rmsnorm(output_norm)` → tied LM head → **softcap**
+   `tanh(logits/30)·30` (`final_logit_softcapping=30`).
+
+**MoE variant (deferred to 3-MoE, not E4B):** `LLM_TYPE_26B_A4B` (n_layer 30) +
+31B use `ffn_gate_inp`/`ffn_*_exps` + dual `ffn_pre_norm_2`/`ffn_post_norm_1/2`
+with a parallel shared-MLP + expert-MoE sum, router on `rms_norm(attn_out)/sqrt(n_embd)·ffn_gate_inp_s`.
+Re-inspect a MoE Gemma4 GGUF for the absent-`wv` (K-as-V) path there.
+
+**Stage 1 deliverables:** `core/forward/gemma4.c` (+ config fields:
+per-layer head geom, `swa_pattern`, `n_embd_per_layer`, softcap, `n_kv_from_start`;
+layer fields: `per_layer_inp_gate/proj/post_norm`, `out_scale`, `rope_freqs`,
+`attn_post_norm`/`ffn_post_norm`, optional `wv`); `sp_model_to_gemma4` bridge;
+`gemma4_fixture.{c,h}`; tests `T_GEMMA4_ALIAS` + `T_GEMMA4_DECODE_TRAJECTORY` +
+`T_PARITY_CROSS_LOAD_GEMMA4`; engine `M_GEMMA4` distributional gate vs oracle.
 
 
 ---
