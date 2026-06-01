@@ -8053,6 +8053,42 @@ empirical confirmation at that gate: `rope_freqs` proportional-RoPE semantics,
 the AltUp scale constants, and the weightless V-norm. These are the next sprint.
 
 
+### 2026-06-02 — Phase 3-G4 Stage 2: decode + real GGUF loader + per-layer-width fix
+
+System `51e4c5c` → **`9bc22f9`**, full math-core suite **19/19 GREEN** (session
+checks 458/458). Two commits: `7186210` (TASK A) + `9bc22f9` (TASK B). Closure:
+`papers/SESSION-CLOSED-lat-3-g4-stage2.md`.
+
+- **TASK A (PASS):** `kv_step_gemma4` persistent-KV decode wired into the session
+  decode dispatch. `T_GEMMA4_DECODE_TRAJECTORY` = session greedy decode ==
+  `gemma4_forward` O(n²) re-prefill, **bit-exact over 40 steps** on the fixture.
+  This completes the L1 session ABI (prefill + decode) for gemma4.
+- **TASK B (PASS loader+forward / BLOCKED-UPSTREAM exact oracle top-1):** a gemma4
+  branch in `qwen3_load` loads the real **E2B-Q8_0** GGUF; `T_GEMMA4_GGUF_FORWARD`
+  validates config-derivation + tensor binding in-suite, and the standalone harness
+  `tests/gemma4_gguf_forward_harness.c` runs `gemma4_forward` over the real weights
+  to completion (rc=0, last argmax 16058, |z|≤30).
+
+**SPEC CORRECTION (supersedes Stage-1 §3-G4 geometry).** GGUF tensor-dim inspection
+of the real E2B checkpoint shows the Stage-1 claim *"Q/K/V projection widths are
+constant (QD=2048, KVD=512)"* and the geometry strings *"SWA 256/8/2, global 512/4/1"*
+are **wrong**. Real geometry: **`n_head`=8 and `n_head_kv`=1 are CONSTANT across layer
+types; only `head_dim` varies (global 512, SWA 256)**, so the projection widths DIFFER
+per layer — QD_swa=2048 / QD_global=4096; KVD_swa=256 / KVD_global=512 (confirmed:
+`blk.0.attn_q=[1536,2048]` vs `blk.4.attn_q=[1536,4096]`). `gemma4_forward` +
+`kv_step_gemma4` were reworked to per-layer projection widths. The shared-KV map
+(`shared SWA→kvfs-2`, `shared global→kvfs-1`) and period-from-pattern logic were
+confirmed **exactly correct** vs the real model's `llama_kv_cache` reuse log
+(period=5; owners `[0,15)`; shared SWA→13, shared global→14; kvfs = 35−20 = 15).
+
+**Oracle top-1 BLOCKED-UPSTREAM:** the available `llama-cli` @5dcb711 deprecated raw
+completion ("use `llama-completion`", not built) → always applies the gemma4 chat
+template → cannot feed the forward identical prompt token IDs for a bit-faithful
+top-1 diff. Captured the deterministic temp-0 oracle generation as evidence; closing
+needs a `llama-completion`/`llama-tokenize` build or a host-side gemma4 tokenizer +
+chat-template. **TASK C** (engine sp-transcode + M_GEMMA4 PPL gate) not started.
+
+
 ---
 
 ## 20. Research Track — φ-RoPE / Three-Gap frequency-sort restructuring
