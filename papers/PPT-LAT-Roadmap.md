@@ -8019,6 +8019,39 @@ layer fields: `per_layer_inp_gate/proj/post_norm`, `out_scale`, `rope_freqs`,
 `gemma4_fixture.{c,h}`; tests `T_GEMMA4_ALIAS` + `T_GEMMA4_DECODE_TRAJECTORY` +
 `T_PARITY_CROSS_LOAD_GEMMA4`; engine `M_GEMMA4` distributional gate vs oracle.
 
+### 2026-06-02 — Phase 3-G4 Stage 1 math-core implementation GREEN
+
+The Gemma4 forward + bridge + fixture + parity tests are implemented in math-core
+and the full suite is **19/19 green**. Six commits (system `127d5c6` → `51e4c5c`):
+ABI/struct scaffolding + `sp_rope_neox_freqs` (1a), `gemma4_forward` +
+`sp_weight_row` (1b-i), `sp_model_to_gemma4` bridge + `sp_session` create/prefill
+dispatch + `gemma4_fixture` + tests (1b-ii). Engine `main` re-pinned earlier to
+the reunified core; this is math-core-only and additive (other arches untouched).
+
+- `core/forward/gemma4.c` — the full dense Gemma4 f32 forward: per-layer
+  head-geometry dispatch (SWA 256/8/2 rope1e4 windowed; global 512/4/1
+  rope1e6+`rope_freqs` full-causal), attention scale 1.0, weightless V-RMSNorm,
+  shared-KV reuse, sandwich norms, GeGLU, AltUp per-layer-input injection,
+  per-layer `out_scale`, tied head + logit softcap.
+- `sp_model_to_gemma4` — zero-copy `alias_mask` bridge mirroring the gemma3
+  adapter + the AltUp globals + `g4_*` config from the `sp_arch_info` tail.
+- `gemma4_fixture` (NL=6, period=3, kvfs=3) exercises both layer geometries,
+  shared-KV reuse (layers ≥3 reuse owner 1/2), AltUp, and softcap.
+- **Gates green:** `T_GEMMA4_ALIAS` (bridge + zero-copy + g4 config) +
+  `T_GEMMA4_PREFILL_PARITY` (session prefill last-position == `gemma4_forward`
+  bit-exact, finite softcap-bounded logits).
+
+**Validation scope:** this proves the forward is self-consistent and the
+fixture→bridge→forward→session-prefill chain is correct end-to-end. It does NOT
+yet prove **bit-faithfulness vs real Gemma4** — that is the `M_GEMMA4` gate,
+which needs (a) `kv_step_gemma4` (persistent-KV decode, for the decode-trajectory
++ a real generation loop), (b) the engine transcode path (real E4B GGUF →
+`.sp-model` with the gemma4 tensor set + `g4_*` arch_struct), (c) running
+`gemma4_forward` against the llama.cpp gemma4 oracle (`SP_LLAMA_ORACLE_DIR`) on
+E4B and confirming distributional match (§8.6.1). The three details flagged for
+empirical confirmation at that gate: `rope_freqs` proportional-RoPE semantics,
+the AltUp scale constants, and the weightless V-norm. These are the next sprint.
+
 
 ---
 
