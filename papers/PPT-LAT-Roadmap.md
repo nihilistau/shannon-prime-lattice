@@ -7917,9 +7917,11 @@ sources** and pins the spec the `sp_model_to_gemma4` bridge must implement:
   [10752,262144]`, `per_layer_model_proj [2560,10752]`, `per_layer_proj_norm
   [256]`; per-layer `inp_gate [2560,256]`, `proj [256,2560]`, `layer_output_scale
   [1]`. `embedding_length_per_layer_input = 256`; 10752 = 42 × 256.
-- **Norms:** `attn_norm`, `post_attention_norm`, `ffn_norm`, `post_ffw_norm`, plus
-  an extra `post_norm` (richer than Gemma3's sandwich); per-head QK-norm
-  `attn_q_norm`/`attn_k_norm [256]`. `rms_eps = 1e-6`.
+- **Norms:** sandwich is the SAME four as Gemma3 — `attn_norm`,
+  `post_attention_norm`, `ffn_norm`, `post_ffw_norm`. The GGUF `post_norm` tensor
+  is NOT an extra sandwich norm — it is the **per-layer-input** RMS norm
+  (`PER_LAYER_POST_NORM`), used only inside the AltUp block. Per-head QK-norm
+  `attn_q_norm`/`attn_k_norm` (per-layer head_dim sized). `rms_eps = 1e-6`.
 - **`final_logit_softcapping = 30.0`** (`tanh(logits/30)*30`). **Tied head**
   (`token_embd` only, no `output.weight`).
 - **`shared_kv_layers = 18`** — KV-cache sharing optimization; tensors are still
@@ -7989,8 +7991,9 @@ does not have.
    store K/V for layers 0–23; layers 24–41 point at layer 22 (SWA) or 23 (global).
 5. **Residual/norm order:** `attn_out = inpL + attn_post_norm(attn(attn_norm(inpL)))`;
    then `ffn_out = attn_out + ffn_post_norm(FFN(ffn_norm(attn_out)))` (FFN =
-   GeGLU, `LLM_FFN_GELU` tanh-approx, parallel gate/up). Same sandwich shape as
-   gemma3 but with **`ffn_post_norm`** (Gemma4's `post_norm` tensor).
+   GeGLU, `LLM_FFN_GELU` tanh-approx, parallel gate/up). `ffn_post_norm` =
+   the `post_ffw_norm` tensor (identical role to gemma3). (The GGUF `post_norm`
+   tensor is the per-layer-input norm in step 6, NOT this.)
 6. **Per-layer-input injection (AltUp-lite), after the FFN residual:**
    - Precompute once: `ple = per_layer_tok_embd[tok]·sqrt(256)` reshaped
      `[256, n_layer, T]`; `proj = rmsnorm(per_layer_proj_norm,
