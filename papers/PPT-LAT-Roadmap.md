@@ -99,7 +99,8 @@ environment-variable gates until they are individually proven.
 | 3-FP8 | FP8 weight sub-phase | DeepSeek-V4 FP8 dequant + bridge | DeepSeek-V4 bit-identity vs reference | Aspirational; no fixture |
 | 4 | Inline cache compression validated | PPL drift and memory savings measured per backend × model | Drift ≤ 1% on calibrated families | 4 weeks |
 | 4-MTP | Multi-Token Prediction (built-in heads) | Target-model self-drafting + verifying via auxiliary prediction heads; transactional Spinor block rewind | M_MTP_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4; native MTP-head fixture (DeepSeek-V4 or Qwen3.6 MTP variant) | 3 weeks; **UNBLOCKED 2026-05-26** by lat-phase-3-attn-closed; can spawn on any MTP-head-bearing arch |
-| 4-SPEC | Speculative decoding (separate draft) | Smaller draft model + larger target verifier; transactional Spinor block rewind on rejection | M_SPEC_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4 using Qwen3.6-35B-A3B + Qwen3.6-35B-A3B-Draft pairing, or Qwen2.5-Coder-14B + Qwen2.5-Coder-0.5B | **MATH GATE CLOSED 2026-05-27** (`lat-phase-4-spec-math-closed`) — M_SPEC_1 + M_SPEC_2 PASS, T8.1 validated; M_SPEC_3 (throughput) + M_SPEC_4 (RSS) deferred pending 14B fixture |
+| 4-MeMo | **Memory-as-a-Model (CORE)** | Dual-island Executive + Memory model on the CRT mesh; PoUW-receipt-backed TIES merge ledger; verifiable distributed continual learning; Memory's draft→Executive byte-exact verify loop IS the MTP-shaped self-drafting (Trick #3) | M-block gates (M.1 dual-load budget, M.2 zero-copy dialogue loop, M.4 PoUW merge ledger, M.5 KSTE routing) + M.3 Frobenius-lifted exact-revert + M.6 CRT-sharded cross-island | **PROMOTED TO CORE 2026-06-02** (user directive). M.0/M.1/M.2/M.4/M.5 closed; M.3 (needs real M.0 SFT) + M.6 (needs K.2 NPU bridge) open. Memory-as-system, not a side experiment. |
+| 4-SPEC | Speculative decoding (separate draft) — **DEPRECATED** | ~~Smaller draft model + larger target verifier; transactional Spinor block rewind on rejection~~ | ~~M_SPEC_1..4~~ | **DEPRECATED 2026-06-02** (user directive): redundant under Phase 4-MTP. Built-in MTP self-drafting + the Phase 4-MeMo Memory-drafts/Executive-verifies loop both realise Theorem T8's clean-rejection algebra without a separate draft model + second checkpoint to host. Math gate (`lat-phase-4-spec-math-closed`, M_SPEC_1+2, T8.1) is preserved as a validated proof point; no further 4-SPEC throughput/RSS work. The draft-verify substrate lives on in 4-MTP + 4-MeMo. |
 | TS | TailSlayer channel-aware memory placement | GF(2) recovery of memory controller channel-select hash + hedge-read allocation on independent DDR channels for Spinor blocks / CRT residue pairs / Frobenius row pairs / KSTE upper tier | TS.MAP graceful CI fallback + TS.HEDGE ≥ 2× tail P99 drop + TS.INTEGRATE-CRT bit-identical PPL with measurable wall-time win | 2-3 weeks parallel; cross-cutting infrastructure; downstream phases consume the primitive |
 | 2-CU.PTX | Bare-metal NVIDIA assembly for discrete kernels | PTX inline asm replacing nvcc generic SASS on Spinor warp-load (differentiated cache modifiers), GF(p) Montgomery butterfly, INT8 tensor-core Q8 matmul (mma.sync), KSTE hash (lop3+prmt), persistent kernel for spec-decode | M_PTX_1 bit-exact math identity + M_PTX_2 >85% SOL DRAM bandwidth + M_PTX_3 zero cudaMalloc + M_PTX_4 session isolation | 3 weeks; blocked by lat-phase-3-attn-closed + Phase 4-SPEC math gate; bare-metal CUDA leg of the per-backend symmetry |
 | 2-CPU.AVX | Bare-metal x86 AVX-512 intrinsics for discrete kernels | AVX-512 VNNI (Q8 matmul) + IFMA (GF(p) butterfly, Zen 4 fallback) + ternarylogic (KSTE hash) + NT-loads (Spinor streaming) + WAITPKG (PERSIST polling, optional); 64-byte ZMM = 63-byte Spinor + sentinel | M_AVX_1 bit-exact math + M_AVX_2 ≥3.5× VNNI matmul + M_AVX_3 NT-load L1/L2 bypass via perf-stat + M_AVX_4 objdump confirms vpdpbusd / vpmadd52luq / vpternlogd emitted | 3 weeks; blocked by lat-phase-3-attn-closed; bare-metal x86 leg of the per-backend symmetry |
@@ -5769,7 +5770,18 @@ architectural sprints.
 
 ---
 
-## Phase 4-MeMo — Memory-as-a-Model on the heterogeneous CRT mesh (FILED 2026-05-30)
+## Phase 4-MeMo — Memory-as-a-Model on the heterogeneous CRT mesh (FILED 2026-05-30; PROMOTED TO CORE 2026-06-02)
+
+**Status (2026-06-02, operator directive):** Phase 4-MeMo is **core to the
+system**, not a speculative side-phase. Memory-as-a-Model is the SP answer to
+persistent, verifiable, continually-learned memory: the PoUW-receipt-backed
+TIES merge ledger makes Memory-model state reconstructable and mesh-replayable
+on the exact integer substrate. It is promoted into the §2 phase table as a
+first-class Phase 4 deliverable. Relatedly, **Phase 4-SPEC (separate-draft
+speculative decoding) is deprecated** — built-in MTP self-drafting and MeMo's
+own Memory-drafts/Executive-verifies loop both realise Theorem T8's
+clean-rejection algebra without a second hosted checkpoint, so a separate draft
+model is redundant. The 4-SPEC math gate is kept as a validated proof point.
 
 **Origin:** arXiv:2605.15156 "MeMo: Memory as a Model" describes
 a dual-model architecture — a frozen Executive model decomposes
@@ -5835,11 +5847,16 @@ missed:
   islands without ever materializing the full-precision result
   on any single island.
 
-- **Spec-decode applicability** — Executive's grounding-query
-  loop is naturally spec-decode-shaped. Memory drafts; Executive
-  verifies with byte-exact accept/reject (Trick #3). Composes
-  with Phase 4-SPEC. Filed as a Phase 4-SPEC × MeMo crossover
-  sprint, not an M-block sprint.
+- **Spec-decode applicability (this REPLACES Phase 4-SPEC)** —
+  Executive's grounding-query loop is naturally spec-decode-shaped.
+  Memory drafts; Executive verifies with byte-exact accept/reject
+  (Trick #3). This native Memory-drafts/Executive-verifies loop —
+  together with built-in MTP heads (Phase 4-MTP) — is exactly the
+  draft-verify substrate that a separate draft model (the old Phase
+  4-SPEC) was going to provide, so 4-SPEC is deprecated as redundant.
+  No second checkpoint to host; the verifier and drafter are the two
+  islands of the one MeMo system. Realised as M-block work, not a
+  separate 4-SPEC × MeMo crossover sprint.
 
 - **Decode-determinism invariant (L3.FG-confirmed) gates M.3's
   exact-revert check** — without the cross-silicon byte-
@@ -7764,6 +7781,64 @@ mandates cp.async double-buffering, smem operand staging,
 regs/thread on sm_75, with sub-tags
 `lat-phase-2-cu-ptx-mma-tile-{int8,int4}-closed` before
 the §17 umbrella `lat-phase-2-cu-ptx-closed` fires.
+
+### 2026-06-02 — Recovery session: canonical-core fork healed + roadmap re-anchored
+
+Onboarding session that found and began correcting accumulated drift.
+Primary-source audit (git reflogs + submodule state, not session docs).
+
+**P0 — canonical-core fork healed (DONE, pushed).** The published engine
+`main` (`3bed888`) had its `lib/shannon-prime-system` submodule **detached at
+`0b3b86b`** (tip of `origin/sprint/wire-hex-backend`), off `main`. That sprint
+branch and `origin/main` (`b00c869`) had **diverged at `aeecdba` (2026-05-26)
+with disjoint work**: main carried the TS GF(2) channel oracle + PoUW Friedman
+sieve + docs README; the sprint side carried NTT.5 Bluestein arbitrary-N escape
++ the WIRE-HEX L1 ABI session-backend-registration hooks (`sp_l1.h` +148,
+`sp_session.c` +142). So the published engine was building against a core that
+lacked the sieve/channel work, and `main` lacked the NTT.5/wire-hex work.
+Fix: merged `sprint/wire-hex-backend` into `main` (clean automatic merge, zero
+conflicts — disjoint file sets), reunifying both feature sets into ONE canonical
+core. Subsumes `sprint/ntt-5a/5b/5c` (ancestors of the wire-hex tip). Verified:
+math-core **19/19 gcc ctest green** (incl. T_PR Bluestein, T_SESSION wire-hex,
+T_FORWARD, T_NTT). Re-pinned the engine submodule `0b3b86b → b69ab92`; engine
+compiles + links clean (95/96) against the reunified core under MinGW gcc.
+System `main` = `b69ab92`; engine `main` = `6a4344c`; both pushed. `lat-ts-map`
+already fully merged; `copilot/*` branch stale (0 unique).
+
+**P0.1 — pinned CPU toolchain does not build the tree (OPEN, pre-existing).**
+§3.4 pins CPU = VS2019 BT. But the engine AVX512 backend (`src/backends/cpu/
+avx512/avx512_{spinor,ternlog,persist}.c`, landed §18 `02c7e0d` 2026-05-27)
+uses GCC `__attribute__((target(...)))` + `__atomic_*` / `__ATOMIC_*` builtins
+that `cl.exe` cannot parse, and math-core `core/sp_channel/sp_hedge.c` needs
+`<stdatomic.h>` which VS2019 BT lacks. Both build only under gcc/clang (or
+VS2022, which the CI `windows-msvc` job uses — masking the local-pin break).
+The pinned CPU toolchain therefore does not reflect reality. Decision needed:
+re-pin §3.4 CPU toolchain to MinGW-gcc/clang-cl, or port the GCC-isms to MSVC.
+Not introduced by P0; surfaced by the engine re-pin verification.
+
+**Roadmap re-anchor (operator directive 2026-06-02).** Phase 4-MeMo
+**promoted to CORE** (first-class §2 phase row): Memory-as-a-Model is the SP
+persistent/verifiable/continually-learned memory layer, load-bearing, not a
+side experiment. Phase 4-SPEC (separate-draft speculative decoding)
+**deprecated as redundant** — built-in MTP self-drafting (Phase 4-MTP) and
+MeMo's native Memory-drafts/Executive-verifies loop both realise Theorem T8
+clean-rejection without a second hosted checkpoint; the `lat-phase-4-spec-math-
+closed` gate is kept as a validated proof point, no further 4-SPEC work. §2
+table + Phase 4-MeMo body amended.
+
+**Decision: keep + legitimize the June frontier wave** (operator). The
+~10 sprint branches merged to engine `main` June 1–2 (hx-3b, hx-3b-alpha-v2,
+ntt-6, trick-1/-fwd-v3/-fwd-v4, v5-ffn-vtcm, wire-cpu/cuda/vulkan) are retained;
+they need retro-contract closure docs + phase-log entries (P1, OPEN) since they
+landed with none, and `wire-vulkan` shipped to `main` with E_VK_5/6 +
+M_GEMMA3/QWEN3_VULKAN BLOCKED on a VkResult-2 OOM — to be flag-gated so the
+baseline regression is green again (P2, OPEN).
+
+**Still open after this session:** P1 (retro-contract June wave), P2
+(quarantine wire-vulkan OOM), P0.1 (CPU toolchain pin), P3 (re-assert the spine
+— Phase 4 compression-validation matrix + deferred Phase 3 arch cells
+3-SSM/3-G4/3-MoE/3-FP8, which remain the §2.2 centre of mass and are still
+unbuilt while the frontier expanded).
 
 
 ---
