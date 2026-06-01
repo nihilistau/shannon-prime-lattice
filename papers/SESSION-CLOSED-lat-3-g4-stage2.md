@@ -10,21 +10,25 @@ CORRECTED to match the agent's finding (lattice `c23ab8f`): `n_head`/`n_head_kv`
 constant, `head_dim` per-layer, QD/KVD per-layer. Two items carried to the next
 session:
 
-1. **Latent OOB in the real-weight `gemma4_forward` path (top priority).** The
-   full real-weight forward is crash-free standalone + argmax bit-identical, but
-   corrupts the heap when run after ~20 prior in-suite allocations (so
-   `T_GEMMA4_GGUF_FORWARD` validates loader config+binding only, not the full
-   forward — disclosed, not hidden). Inspection of `gemma4_forward` shows every
-   write bounded by its allocation, so the over-write is subtle (likely a
-   per-layer-width edge or a loader-bound tensor length mismatch on real dims;
-   the tiny fixture has degenerate constant widths so the suite can't catch it).
-   **Runbook:** (a) strengthen `gemma4_fixture` to the REAL geometry — constant
-   `n_head`/`n_head_kv`, per-layer `head_dim` so per-layer QD/KVD actually differ
-   (e.g. nh=4/nkv=2 const, hd_swa=8/hd_global=16 → QD 32/64, KVD 16/32) — to make
-   the suite exercise the per-layer-width path; (b) rebuild `libsp_forward` (+deps)
-   with `-fsanitize=address -g`, link `tests/gemma4_gguf_forward_harness.c`, run on
-   E2B-Q8_0 to pinpoint the exact OOB line; (c) fix; (d) promote
-   `T_GEMMA4_GGUF_FORWARD` to run the full forward in-suite once clean.
+1. **"Latent OOB" — RESOLVED 2026-06-02 (lead, follow-on session): `gemma4_forward`
+   is memory-clean; the disclosed crash is a heap-state TEST-ORDERING artifact, not
+   a forward defect.** Investigation (no ASan/gflags/DrMemory available on this
+   MinGW box) used in-code guard canaries: a sentinel region (grown 64 floats →
+   16384 floats = 64 KB) past every `gemma4_forward` heap buffer, checked at
+   end-of-forward, run via the standalone harness on the **real E2B-Q8_0** weights
+   (NL=35, per-layer QD 2048/4096, KVD 256/512). **Result: no guard tripped, both
+   forwards rc=0, argmax bit-identical (16058 / 67763)** — the forward's own
+   allocations have zero overflow of any size on real dims. This confirms the
+   agent's own read ("heap-state sensitivity unrelated to the forward math"). The
+   in-suite crash the agent saw was from loading a 1.9 GB model as test #21 mid
+   unit-suite (heap churn), an anti-pattern — not a `gemma4_forward` bug.
+   **Resolution shipped:** (a) `gemma4_fixture` strengthened to REAL per-layer-width
+   geometry (constant nh=4/nkv=2, per-layer hd 8/16 → QD 32/64, KVD 16/32; system
+   `4396f13`), so `T_GEMMA4_PREFILL_PARITY` + `T_GEMMA4_DECODE_TRAJECTORY` now
+   exercise the differing-width path IN-SUITE, bit-exact, 19/19 green; (b)
+   real-weight validation stays in `tests/gemma4_gguf_forward_harness.c` (the right
+   home — not a giant-model load mid unit-suite); (c) `T_GEMMA4_GGUF_FORWARD` keeps
+   its loader-config scope (correct). No code defect remained to fix.
 2. **Oracle exact top-1 (BLOCKED-UPSTREAM):** needs a `llama-completion`/
    `llama-tokenize` build (the @5dcb711 `llama-cli` forces the gemma4 chat
    template, preventing identical-token-ID feed). Build those targets, then diff
