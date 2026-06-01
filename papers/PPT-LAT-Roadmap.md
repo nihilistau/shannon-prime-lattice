@@ -7966,14 +7966,27 @@ does not have.
    global → `n_embd_head=512`, RoPE base 1e6, `n_rot=512`, full causal, **+ a
    per-layer `rope_freqs [128]` proportional-RoPE freq-factor table** (SWA has none).
    Q/K/V projection widths are constant; head count/width is the per-layer reshape.
+   **Exact per-layer geometry (constraint-derived from `attn_q` out=2048,
+   `attn_k/v` out=512, rope dims 256/512, head_dim≥rope_dim — airtight):**
+   SWA = head_dim 256, n_head 8, n_head_kv 2; global = head_dim 512, n_head 4,
+   n_head_kv 1. group = n_head/n_head_kv = 4 both; QD = 2048, KVD = 512 both
+   (so K/V buffers are uniform-width across layers; only the head split differs).
+   (GGUF `head_count`=8/`head_count_kv`=2 scalars are the SWA-majority values;
+   llama.cpp's `n_head_arr`/`n_head_kv_arr` carry the per-layer split.)
 3. **Q-norm + K-norm** are per-layer-`head_dim`-sized RMS (`attn_q_norm`,
    `attn_k_norm` = `{n_embd_head(il)}`), applied after reshape, before RoPE.
    **V-norm** = weightless `rms_norm` (delta from gemma3).
-4. **Shared-KV:** `n_layer_kv_from_start = n_layer − shared_kv_layers` (E4B:
-   42−18 = **24**). Layers ≥ 24 have `has_kv=false` → the graph passes K=V=null
-   and **reuses an earlier layer's KV cache**, *ignoring* any `wk/wv` present in
-   the GGUF. **Open risk for bit-exactness:** must replicate the exact KV-reuse
-   map from `build_attn_inp_kv_iswa` (study before claiming the M_GEMMA4 gate).
+4. **Shared-KV — RESOLVED (exact map).** `n_layer_kv_from_start = n_layer −
+   shared_kv_layers` (E4B: 42−18 = **24**). `has_kv(il) = il < 24`. Layers ≥ 24
+   compute **no** K/V (ignore any `wk/wv` in the GGUF) and reuse an earlier
+   layer's stored K/V per `llama-model.cpp:2075` reuse-cb:
+   `reuse(il) = n_layer_kv_from_start − (is_swa(il) ? 2 : 1)` →
+   **shared SWA layers reuse layer 22's K/V; shared global layers reuse layer
+   23's K/V** (22 = last own-KV SWA layer, 23 = last own-KV global layer).
+   Geometry matches by construction (SWA↔SWA-source, global↔global-source). The
+   shared layer still applies its OWN Q (own proj/norm/RoPE) + own mask
+   (sliding for SWA, full for global) against the reused K/V. Implementation:
+   store K/V for layers 0–23; layers 24–41 point at layer 22 (SWA) or 23 (global).
 5. **Residual/norm order:** `attn_out = inpL + attn_post_norm(attn(attn_norm(inpL)))`;
    then `ffn_out = attn_out + ffn_post_norm(FFN(ffn_norm(attn_out)))` (FFN =
    GeGLU, `LLM_FFN_GELU` tanh-approx, parallel gate/up). Same sandwich shape as
