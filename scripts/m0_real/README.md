@@ -48,11 +48,77 @@ JSONL, one example per line, HF chat-template `messages` format:
 {"messages": [...]}
 ```
 
-Upload to `/workspace/data/m0_real.jsonl`. The script does a 90/10 train/eval
-split automatically if `--eval_dataset` is not provided.
+The script does a 90/10 train/eval split automatically if `--eval_dataset`
+is not provided.
 
 For the 3-turn protocol, each example can be a single turn (most efficient
 for SFT) or all three turns concatenated — the chat template handles both.
+
+### 2.1 Generate the dataset (you have to make it)
+
+There is no pre-existing M.0-real dataset — the entities + phrasings have
+to match your Memory model use case. Use `generate_dataset.py` to produce
+the JSONL. Two modes, run them in order:
+
+**Stage 1 — template bootstrap (no GPU, seconds):**
+
+```bash
+python generate_dataset.py --mode template \
+    --seeds seed_topics.txt \
+    --n_per_seed 30 \
+    --out /workspace/data/m0_real_bootstrap.jsonl
+```
+
+This produces ~600 examples from the default `SEED_ENTITIES` table inside
+`generate_dataset.py` (~22 entities × 30 phrasings, dedup applied). Cheap,
+deterministic, useful for smoke-testing the train pipeline end-to-end
+before spending teacher compute.
+
+**Stage 2 — teacher-LLM enrichment (uses the GPU):**
+
+```bash
+python generate_dataset.py --mode teacher \
+    --teacher Qwen/Qwen2.5-7B-Instruct \
+    --seeds seed_topics.txt \
+    --n_per_seed 50 \
+    --out /workspace/data/m0_real_teacher.jsonl
+```
+
+For each entity in the table, the teacher LLM is prompted to generate N
+diverse `(context, fact)` triples; output is parsed strictly (malformed
+batches are skipped honestly). Default teacher fits 24 GB VRAM at bf16; use
+`--load_4bit` for 8 GB pods.
+
+**One-shot launcher** (runs both stages and concatenates):
+
+```bash
+bash generate_dataset.sh
+# combined dataset lands at /workspace/data/m0_real.jsonl
+```
+
+### 2.2 Customizing the entity table
+
+The default `SEED_ENTITIES` in `generate_dataset.py` is a starting set —
+edit it directly for your domain, OR pass `--entities entities.json` with:
+
+```json
+[
+  {"domain": "PROJECT", "slug": "YOUR_THING",
+   "phrase": "Your Thing — short descriptor of what it is"},
+  ...
+]
+```
+
+Domain naming: uppercase, no spaces. Slug: uppercase snake_case. Phrase:
+human-readable description used both as the entity referent and as the
+fillable token in template phrasings.
+
+### 2.3 Customizing seed context phrases
+
+`seed_topics.txt` holds natural-language context wrappers ("I'm researching
+this for a project.", "A colleague mentioned this yesterday.") — the
+generator randomly prefixes ~40% of examples with one of these. Edit to
+match how YOU expect users to query the Memory model.
 
 ---
 
