@@ -1,327 +1,310 @@
 #!/usr/bin/env python3
 """
-M.0-real dataset generator — produces the JSONL the SFT script consumes.
+M.0-real dataset generator — builds the JSONL the SFT script consumes.
 
-Two modes:
+The Memory model is the factual-response component of the M.2 dialogue
+protocol (Grounding → Entity ID → Synthesis). Executive sends a grounding
+query; Memory responds with the factual content; Executive synthesizes
+the user-facing answer. Memory must handle ANY question the Executive
+can probe with — it's the general world-knowledge engine, not a
+domain-specific classifier.
 
-  --mode teacher   Load a teacher LLM on the GPU and generate synthetic
-                   3-turn dialogues (Grounding -> Entity ID -> Synthesis).
-                   Default teacher: Qwen2.5-7B-Instruct (fits 24 GB VRAM bf16;
-                   8 GB at 4-bit). For each seed prompt, generates N variations.
+This generator pulls from public Hugging Face datasets, filters for
+factual/instruction-following quality, and reformats into the
+Memory-role chat template the SFT script expects. Default sources are
+balanced for coverage:
 
-  --mode template  No GPU required. Generates programmatic examples by
-                   filling templates against a seed entity table. Fast,
-                   deterministic, useful for bootstrap + smoke testing the
-                   train pipeline before spending teacher compute.
+    trivia_qa            — 950k trivia Q&A pairs; broad topic coverage
+    nq_open              — Natural Questions (real Google search queries
+                           with Wikipedia answers)
+    databricks-dolly-15k — instruction-tuning examples across 8 categories
+    squad_v2             — reading-comprehension Q&A
+    sciq                 — science Q&A
 
-The Memory model handles Turn 2 (entity-ID lookup). By default each output
-row is a single-shot Memory-focused training example (system + user fact +
-canonical ID assistant turn). Use --multi_turn to include all three turns
-per example.
+You can override the source list, per-source limits, system prompt, or
+add your own JSONL of in-domain Q&A. The output is a single shuffled
+JSONL ready for `run_train.sh`.
 
 Usage on RunPod:
 
-  # No-GPU bootstrap (~1k examples in 10 seconds):
-  python generate_dataset.py --mode template \\
-      --seeds seed_topics.txt \\
-      --n_per_seed 20 \\
-      --out /workspace/data/m0_real_bootstrap.jsonl
+    # Default: pulls all 5 sources, ~80k examples mixed:
+    python generate_dataset.py --out /workspace/data/m0_real.jsonl
 
-  # Teacher-LLM generation (~10k examples in 1-3 hr on A40):
-  python generate_dataset.py --mode teacher \\
-      --teacher Qwen/Qwen2.5-7B-Instruct \\
-      --seeds seed_topics.txt \\
-      --n_per_seed 50 \\
-      --out /workspace/data/m0_real.jsonl
+    # Restrict to factual Q&A only (skip instruction-following):
+    python generate_dataset.py --out ... \\
+        --sources trivia_qa,nq_open,squad_v2,sciq
 
-Output JSONL format (per line):
+    # Add your own custom Q&A on top of the defaults:
+    python generate_dataset.py --out ... \\
+        --custom_jsonl /workspace/data/my_custom_qa.jsonl
 
-  {"messages": [
-    {"role": "system", "content": "..."},
-    {"role": "user", "content": "Fact: ..."},
-    {"role": "assistant", "content": "ENTITY:..."}
-  ]}
+    # Fewer examples for a fast first pass:
+    python generate_dataset.py --out ... --per_source 2000
+
+Custom JSONL format (each line one of these):
+
+    {"question": "...", "answer": "..."}
+    {"prompt": "...", "completion": "..."}
+    {"messages": [{"role": "user", ...}, {"role": "assistant", ...}]}
 """
 
 import argparse
-import hashlib
 import json
-import os
 import random
-import re
 import sys
 from pathlib import Path
 
-# --- Memory-model system prompt (3-turn protocol per sp_daemon dialogue) ---
+# ── Memory-role system prompt (matches M.2 dialogue protocol) ─────────
 
 MEMORY_SYSTEM = (
     "You are the Memory module of the Shannon-Prime dialogue protocol. "
-    "Given a grounded fact, return its canonical entity ID in the form "
-    "ENTITY:<DOMAIN>/<SLUG>. Domains are uppercase, slugs are uppercase "
-    "snake_case. Return ONLY the entity ID, nothing else."
+    "The Executive module sends you a grounding query — a question or "
+    "probe drawn from a user conversation. Your job is to respond with "
+    "concise, accurate factual content: the relevant names, dates, "
+    "definitions, facts, or knowledge that answers the query. Be direct "
+    "and informative. The Executive will synthesize your response into "
+    "the final user-facing answer."
 )
 
-# Domain → seed entity table used in --mode template. Edit to suit your
-# project. Each entry is (domain, slug, descriptive_phrase).
-SEED_ENTITIES = [
-    ("CHIP", "SNAPDRAGON_8GEN1",  "Snapdragon 8 Gen 1 with Hexagon V69 NPU"),
-    ("CHIP", "SNAPDRAGON_8GEN3",  "Snapdragon 8 Gen 3 with Hexagon V73 NPU"),
-    ("CHIP", "APPLE_M3",          "Apple M3 SoC with unified memory"),
-    ("CHIP", "RTX_4090",          "NVIDIA RTX 4090 with 24 GB GDDR6X"),
-    ("CHIP", "A100_80GB",         "NVIDIA A100 80 GB HBM2e datacenter GPU"),
-    ("PHONE", "SAMSUNG_S22U",     "Samsung Galaxy S22 Ultra (Snapdragon 8 Gen 1)"),
-    ("PHONE", "PIXEL_8_PRO",      "Google Pixel 8 Pro (Tensor G3)"),
-    ("MODEL", "QWEN3_06B",        "Qwen3 0.6B parameter language model"),
-    ("MODEL", "GEMMA3_1B",        "Gemma 3 1B parameter language model"),
-    ("MODEL", "QWEN25_05B",       "Qwen 2.5 0.5B parameter language model"),
-    ("PROJECT", "SHANNON_PRIME",  "Shannon-Prime PPT ARM Lattice"),
-    ("CONCEPT", "CRT",            "Chinese Remainder Theorem"),
-    ("CONCEPT", "FROBENIUS_LIFT", "Frobenius lift Q8 quantization"),
-    ("CONCEPT", "NTT",            "Number Theoretic Transform"),
-    ("LIB", "PYTORCH",            "PyTorch deep learning framework"),
-    ("LIB", "TRANSFORMERS",       "Hugging Face Transformers library"),
-    ("ORG", "QUALCOMM",           "Qualcomm Technologies Inc."),
-    ("ORG", "ANTHROPIC",          "Anthropic AI safety company"),
-    ("ORG", "NVIDIA",             "NVIDIA Corporation"),
-    ("CITY", "SYDNEY",            "Sydney, Australia"),
-    ("CITY", "SAN_FRANCISCO",     "San Francisco, California, USA"),
-    # Add your own here — the more domain-specific, the more useful the
-    # Memory model becomes for your dialogue use case.
-]
+# ── Source loaders. Each returns an iterator of (user_query, factual_response) tuples.
 
-# Templated phrasings for --mode template. Each is a (context, fact) pair
-# where {phrase} is the descriptive phrase of the entity.
-TEMPLATES = [
-    ("Tell me about the {phrase}.",                          "Fact: the {phrase}."),
-    ("What is the {phrase}?",                                "Fact: the {phrase} is a known entity."),
-    ("I'm reading about the {phrase}.",                      "Fact: subject is the {phrase}."),
-    ("Has anything been published on the {phrase}?",         "Fact: the {phrase} appears in the literature."),
-    ("Can you summarize the {phrase}?",                      "Fact: focus entity is the {phrase}."),
-    ("The {phrase} was mentioned in my notes.",              "Fact: the user references the {phrase}."),
-    ("Background context: the {phrase}.",                    "Fact: context anchored on the {phrase}."),
-    ("Show me details about the {phrase}.",                  "Fact: the {phrase} is the subject."),
-]
+def _load_trivia_qa(n: int, seed: int):
+    """TriviaQA — 950k trivia Q&A pairs."""
+    from datasets import load_dataset
+    ds = load_dataset("trivia_qa", "rc.nocontext", split="train", streaming=True)
+    rng = random.Random(seed)
+    yielded = 0
+    for ex in ds:
+        if yielded >= n:
+            return
+        q = ex.get("question", "").strip()
+        ans_struct = ex.get("answer") or {}
+        a = ans_struct.get("value", "").strip() if isinstance(ans_struct, dict) else ""
+        if not q or not a:
+            continue
+        # Skip examples where answer is suspiciously short (likely a token, not a fact)
+        if len(a) < 2:
+            continue
+        yield q, a
+        yielded += 1
 
 
-def _slugify(s: str) -> str:
-    s = re.sub(r"[^a-zA-Z0-9]+", "_", s).strip("_").upper()
-    return s
+def _load_nq_open(n: int, seed: int):
+    """Natural Questions Open — real Google queries with Wikipedia answers."""
+    from datasets import load_dataset
+    ds = load_dataset("nq_open", split="train", streaming=True)
+    yielded = 0
+    for ex in ds:
+        if yielded >= n:
+            return
+        q = ex.get("question", "").strip()
+        answers = ex.get("answer", [])
+        if not q or not answers:
+            continue
+        a = answers[0].strip() if isinstance(answers, list) else str(answers).strip()
+        if len(a) < 2:
+            continue
+        # NQ questions are often lowercase + no question mark; normalize lightly.
+        if not q.endswith("?"):
+            q = q[0].upper() + q[1:] + "?"
+        yield q, a
+        yielded += 1
 
 
-def _format_example(domain: str, slug: str, phrase: str, context: str,
-                    fact: str, multi_turn: bool) -> dict:
-    """Produce one JSONL row (HF chat-template format)."""
-    if multi_turn:
-        # Full 3-turn protocol. Memory model role is Turn 2 — the assistant
-        # message gives the entity ID. Turns 1 + 3 are framing.
-        messages = [
-            {"role": "system",    "content": MEMORY_SYSTEM},
-            {"role": "user",      "content": f"Context: {context}"},
-            {"role": "assistant", "content": f"Grounded fact: {fact}"},
-            {"role": "user",      "content": fact},
-            {"role": "assistant", "content": f"ENTITY:{domain}/{slug}"},
-        ]
-    else:
-        # Single-turn Memory-focused example (most efficient for SFT). The
-        # context is folded into the user message so the model still learns
-        # to ignore distractors before emitting the ID.
-        messages = [
-            {"role": "system",    "content": MEMORY_SYSTEM},
-            {"role": "user",      "content": fact},
-            {"role": "assistant", "content": f"ENTITY:{domain}/{slug}"},
-        ]
-    return {"messages": messages}
+def _load_dolly_15k(n: int, seed: int):
+    """Databricks Dolly 15k — instruction-following across 8 categories.
+    We keep open_qa, closed_qa, classification, information_extraction,
+    summarization. Skip 'brainstorming' and 'creative_writing' (not the
+    factual mode Memory model targets)."""
+    from datasets import load_dataset
+    ds = load_dataset("databricks/databricks-dolly-15k", split="train")
+    keep = {"open_qa", "closed_qa", "classification",
+            "information_extraction", "summarization", "general_qa"}
+    rng = random.Random(seed + 1)
+    rows = [r for r in ds if r.get("category") in keep]
+    rng.shuffle(rows)
+    for r in rows[:n]:
+        instr = (r.get("instruction") or "").strip()
+        ctx = (r.get("context") or "").strip()
+        resp = (r.get("response") or "").strip()
+        if not instr or not resp:
+            continue
+        # Fold context into the user message if present.
+        q = f"{instr}\n\nContext: {ctx}" if ctx else instr
+        yield q, resp
 
 
-# ── Mode 1: template generation (no GPU) ────────────────────────────────
-
-def gen_template(args):
-    rng = random.Random(args.seed)
-    # Load seed entities. Use SEED_ENTITIES default unless a custom JSON is
-    # passed via --entities.
-    if args.entities:
-        with open(args.entities) as f:
-            ents = [(e["domain"], e["slug"], e["phrase"]) for e in json.load(f)]
-    else:
-        ents = SEED_ENTITIES
-
-    # Optional extra seed phrases — used as additional "context" wrappers.
-    extra_contexts = []
-    if args.seeds and os.path.exists(args.seeds):
-        with open(args.seeds) as f:
-            extra_contexts = [ln.strip() for ln in f if ln.strip() and not ln.startswith("#")]
-
-    out_path = Path(args.out)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    seen_hashes = set()  # dedupe by hash of fact
-    n_written = 0
-
-    with open(out_path, "w") as fout:
-        for ent in ents:
-            domain, slug, phrase = ent
-            for _ in range(args.n_per_seed):
-                ctx_template, fact_template = rng.choice(TEMPLATES)
-                # Maybe wrap with extra context text from --seeds file.
-                if extra_contexts and rng.random() < 0.4:
-                    extra = rng.choice(extra_contexts)
-                    context = f"{extra} {ctx_template.format(phrase=phrase)}"
-                else:
-                    context = ctx_template.format(phrase=phrase)
-                fact = fact_template.format(phrase=phrase)
-                h = hashlib.sha256((domain + slug + fact).encode()).hexdigest()[:16]
-                if h in seen_hashes:
-                    continue
-                seen_hashes.add(h)
-                row = _format_example(domain, slug, phrase, context, fact, args.multi_turn)
-                fout.write(json.dumps(row, ensure_ascii=False) + "\n")
-                n_written += 1
-    print(f"[template] wrote {n_written} examples to {out_path}")
-    print(f"[template] entities={len(ents)}  contexts={len(extra_contexts)}  multi_turn={args.multi_turn}")
+def _load_squad_v2(n: int, seed: int):
+    """SQuAD v2 reading comprehension. Folds passage into the question."""
+    from datasets import load_dataset
+    ds = load_dataset("squad_v2", split="train", streaming=True)
+    yielded = 0
+    for ex in ds:
+        if yielded >= n:
+            return
+        q = ex.get("question", "").strip()
+        ctx = (ex.get("context") or "").strip()
+        answers = ex.get("answers", {}).get("text", [])
+        if not q or not ctx or not answers:
+            continue
+        a = answers[0].strip()
+        if len(a) < 2:
+            continue
+        prompt = f"Based on the passage, {q}\n\nPassage: {ctx}"
+        yield prompt, a
+        yielded += 1
 
 
-# ── Mode 2: teacher-LLM generation (needs GPU) ──────────────────────────
+def _load_sciq(n: int, seed: int):
+    """SciQ — science Q&A with multiple-choice + correct answer."""
+    from datasets import load_dataset
+    ds = load_dataset("sciq", split="train")
+    rng = random.Random(seed + 2)
+    rows = list(ds)
+    rng.shuffle(rows)
+    for r in rows[:n]:
+        q = (r.get("question") or "").strip()
+        a = (r.get("correct_answer") or "").strip()
+        support = (r.get("support") or "").strip()
+        if not q or not a:
+            continue
+        if support and len(support) < 800:
+            # Synthesize a richer factual response from the support text.
+            yield q, f"{a}. {support}"
+        else:
+            yield q, a
 
-def gen_teacher(args):
-    """Use a teacher LLM to generate richer synthetic examples.
 
-    Strategy: ask the teacher to produce a JSON array of {context, fact,
-    entity_id} triples for each seed phrase. Parse strictly; skip malformed.
+SOURCE_LOADERS = {
+    "trivia_qa":  _load_trivia_qa,
+    "nq_open":    _load_nq_open,
+    "dolly_15k":  _load_dolly_15k,
+    "squad_v2":   _load_squad_v2,
+    "sciq":       _load_sciq,
+}
+
+
+def _load_custom(path: str):
+    """Load user-supplied JSONL. Accept three shapes:
+       {question, answer}, {prompt, completion}, {messages: [...]}.
     """
-    try:
-        import torch
-        from transformers import AutoTokenizer, AutoModelForCausalLM
-    except ImportError:
-        sys.exit("teacher mode needs torch + transformers; pip install -r requirements.txt")
-
-    print(f"[teacher] loading {args.teacher} (this takes 1-3 min)")
-    tok = AutoTokenizer.from_pretrained(args.teacher, trust_remote_code=True)
-    if tok.pad_token is None:
-        tok.pad_token = tok.eos_token
-
-    dtype = torch.bfloat16 if args.bf16 else torch.float16
-    qcfg = None
-    if args.load_4bit:
-        from transformers import BitsAndBytesConfig
-        qcfg = BitsAndBytesConfig(
-            load_in_4bit=True, bnb_4bit_quant_type="nf4",
-            bnb_4bit_compute_dtype=dtype, bnb_4bit_use_double_quant=True,
-        )
-    model = AutoModelForCausalLM.from_pretrained(
-        args.teacher, torch_dtype=dtype, device_map="auto",
-        quantization_config=qcfg, trust_remote_code=True,
-    )
-    model.eval()
-
-    # Load seed entities
-    if args.entities:
-        with open(args.entities) as f:
-            ents = [(e["domain"], e["slug"], e["phrase"]) for e in json.load(f)]
-    else:
-        ents = SEED_ENTITIES
-
-    instruction = (
-        "Generate {n} diverse short fact-and-context pairs about the entity "
-        "described below. Each pair must be ONE conversational context "
-        "sentence (what a user might say) followed by ONE 'Fact: ...' line "
-        "that grounds the subject. Vary phrasing widely. Output ONLY a JSON "
-        "array of objects with keys 'context' and 'fact', nothing else.\n\n"
-        "Entity: {phrase}\n"
-        "Canonical ID: ENTITY:{domain}/{slug}\n\n"
-        "Output:"
-    )
-
-    out_path = Path(args.out)
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    seen_hashes = set()
-    n_written = 0
-
-    with open(out_path, "w") as fout:
-        for i, (domain, slug, phrase) in enumerate(ents):
-            prompt = instruction.format(n=args.n_per_seed, phrase=phrase,
-                                         domain=domain, slug=slug)
-            messages = [{"role": "user", "content": prompt}]
-            text = tok.apply_chat_template(messages, tokenize=False,
-                                            add_generation_prompt=True)
-            inputs = tok(text, return_tensors="pt").to(model.device)
-            with torch.no_grad():
-                out = model.generate(
-                    **inputs,
-                    max_new_tokens=args.n_per_seed * 60,
-                    do_sample=True,
-                    temperature=args.temperature,
-                    top_p=args.top_p,
-                    pad_token_id=tok.pad_token_id,
-                )
-            gen = tok.decode(out[0][inputs.input_ids.shape[1]:], skip_special_tokens=True)
-
-            # Parse: find the first '[' ... ']' span and json.loads it.
-            try:
-                start = gen.find("[")
-                end = gen.rfind("]")
-                if start < 0 or end < 0:
-                    raise ValueError("no JSON array in output")
-                arr = json.loads(gen[start:end+1])
-            except Exception as e:
-                print(f"[teacher] entity {domain}/{slug}: parse fail ({e}); skipping batch")
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
                 continue
-
-            n_kept = 0
-            for item in arr:
-                if not isinstance(item, dict):
-                    continue
-                ctx = str(item.get("context", "")).strip()
-                fact = str(item.get("fact", "")).strip()
-                if not ctx or not fact:
-                    continue
-                if not fact.lower().startswith("fact:"):
-                    fact = "Fact: " + fact
-                h = hashlib.sha256((domain + slug + fact).encode()).hexdigest()[:16]
-                if h in seen_hashes:
-                    continue
-                seen_hashes.add(h)
-                row = _format_example(domain, slug, phrase, ctx, fact, args.multi_turn)
-                fout.write(json.dumps(row, ensure_ascii=False) + "\n")
-                n_written += 1
-                n_kept += 1
-            print(f"[teacher] {i+1}/{len(ents)} {domain}/{slug}: kept {n_kept}/{len(arr)}")
-
-    print(f"[teacher] wrote {n_written} examples to {out_path}")
+            try:
+                ex = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if "messages" in ex:
+                msgs = ex["messages"]
+                user_msg = next((m for m in msgs if m["role"] == "user"), None)
+                asst_msg = next((m for m in reversed(msgs) if m["role"] == "assistant"), None)
+                if user_msg and asst_msg:
+                    yield user_msg["content"], asst_msg["content"]
+            elif "question" in ex and "answer" in ex:
+                yield ex["question"], ex["answer"]
+            elif "prompt" in ex and "completion" in ex:
+                yield ex["prompt"], ex["completion"]
 
 
-# ── CLI ─────────────────────────────────────────────────────────────────
+def _format_row(q: str, a: str, system: str) -> dict:
+    """Wrap a (query, answer) pair into the Memory chat-template."""
+    return {
+        "messages": [
+            {"role": "system",    "content": system},
+            {"role": "user",      "content": q.strip()},
+            {"role": "assistant", "content": a.strip()},
+        ]
+    }
+
 
 def main():
     p = argparse.ArgumentParser(
-        description="M.0-real dataset generator",
+        description="M.0-real dataset generator (public HF Q&A → Memory chat-template)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    p.add_argument("--mode", choices=["template", "teacher"], default="template")
     p.add_argument("--out", required=True, help="Output JSONL path")
-    p.add_argument("--seeds", default=None,
-                   help="Optional seed_topics.txt — extra context phrases (one per line)")
-    p.add_argument("--entities", default=None,
-                   help="Optional JSON file overriding the default SEED_ENTITIES table. "
-                        "Format: [{\"domain\": ..., \"slug\": ..., \"phrase\": ...}, ...]")
-    p.add_argument("--n_per_seed", type=int, default=20,
-                   help="Examples per entity (template) or generated triples per entity (teacher)")
-    p.add_argument("--multi_turn", action="store_true",
-                   help="Emit full 3-turn dialogues instead of single-turn Memory examples")
+    p.add_argument("--sources", default="trivia_qa,nq_open,dolly_15k,squad_v2,sciq",
+                   help=f"Comma-separated source list. Available: {','.join(SOURCE_LOADERS.keys())}")
+    p.add_argument("--per_source", type=int, default=20000,
+                   help="Cap examples drawn from each source (default 20000 → ~80-100k total)")
+    p.add_argument("--custom_jsonl", default=None,
+                   help="Optional path to your own Q&A JSONL (appended to the mix)")
+    p.add_argument("--system_prompt", default=MEMORY_SYSTEM,
+                   help="System prompt for the Memory role (default: M.2-protocol-aligned)")
+    p.add_argument("--max_query_len", type=int, default=4000,
+                   help="Drop examples whose user message exceeds this char length")
+    p.add_argument("--max_answer_len", type=int, default=2000,
+                   help="Drop examples whose answer exceeds this char length")
+    p.add_argument("--min_answer_len", type=int, default=2,
+                   help="Drop examples whose answer is shorter than this")
+    p.add_argument("--shuffle", action="store_true", default=True)
     p.add_argument("--seed", type=int, default=42)
-    # Teacher-only
-    p.add_argument("--teacher", default="Qwen/Qwen2.5-7B-Instruct",
-                   help="Teacher LLM (HF repo or local path). Default fits 24 GB bf16 / 8 GB 4-bit.")
-    p.add_argument("--temperature", type=float, default=0.9)
-    p.add_argument("--top_p", type=float, default=0.95)
-    p.add_argument("--bf16", action="store_true", default=True)
-    p.add_argument("--load_4bit", action="store_true",
-                   help="QLoRA-style 4-bit teacher load — needed for 8 GB VRAM pods")
     args = p.parse_args()
 
-    if args.mode == "template":
-        gen_template(args)
-    else:
-        gen_teacher(args)
+    sources = [s.strip() for s in args.sources.split(",") if s.strip()]
+    unknown = [s for s in sources if s not in SOURCE_LOADERS]
+    if unknown:
+        sys.exit(f"unknown source(s): {unknown}. Available: {list(SOURCE_LOADERS)}")
+
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+
+    print(f"[gen] sources={sources}  per_source={args.per_source}")
+    print(f"[gen] system_prompt={args.system_prompt[:80]}...")
+
+    rng = random.Random(args.seed)
+    all_pairs = []
+
+    for src in sources:
+        print(f"[gen] loading {src} (cap {args.per_source})...")
+        try:
+            loader = SOURCE_LOADERS[src]
+            kept = 0
+            for q, a in loader(args.per_source, args.seed):
+                if not q or not a:
+                    continue
+                if len(q) > args.max_query_len or len(a) > args.max_answer_len:
+                    continue
+                if len(a) < args.min_answer_len:
+                    continue
+                all_pairs.append((q, a))
+                kept += 1
+            print(f"[gen]   {src}: {kept} examples kept")
+        except Exception as e:
+            print(f"[gen]   {src}: FAILED ({type(e).__name__}: {e}) — skipping this source")
+            print(f"[gen]   continuing with other sources; this source contributes 0 examples")
+
+    if args.custom_jsonl:
+        print(f"[gen] loading custom JSONL: {args.custom_jsonl}")
+        kept = 0
+        for q, a in _load_custom(args.custom_jsonl):
+            if not q or not a:
+                continue
+            if len(q) > args.max_query_len or len(a) > args.max_answer_len:
+                continue
+            if len(a) < args.min_answer_len:
+                continue
+            all_pairs.append((q, a))
+            kept += 1
+        print(f"[gen]   custom: {kept} examples kept")
+
+    if not all_pairs:
+        sys.exit("[gen] no examples produced — check network / HF cache / source names")
+
+    if args.shuffle:
+        rng.shuffle(all_pairs)
+
+    with open(out_path, "w", encoding="utf-8") as f:
+        for q, a in all_pairs:
+            row = _format_row(q, a, args.system_prompt)
+            f.write(json.dumps(row, ensure_ascii=False) + "\n")
+
+    print(f"[gen] wrote {len(all_pairs)} examples to {out_path}")
+    print(f"[gen] next: bash run_train.sh   (will pick up DATASET={out_path})")
 
 
 if __name__ == "__main__":

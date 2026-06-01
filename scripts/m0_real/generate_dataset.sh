@@ -1,79 +1,51 @@
 #!/usr/bin/env bash
 # M.0-real — one-shot dataset generation launcher.
 #
-# Two stages:
-#   1. Template bootstrap (no GPU; ~1k examples in seconds) — runs first
-#      so you have *something* to feed the train pipeline immediately.
-#   2. Teacher-LLM enrichment (uses GPU) — generates richer, more diverse
-#      examples. Concatenates onto the bootstrap output.
+# Pulls public HF Q&A + instruction datasets, reformats into the
+# Memory-role chat-template, writes a single shuffled JSONL ready for
+# run_train.sh. No teacher LLM needed — the source datasets are
+# high-quality curated factual data covering broad topics, which is
+# what the general-purpose Memory model must learn.
 #
-# Override the entity table by passing ENTITIES=/path/to/entities.json.
+# Override defaults via env:
+#   DATA_DIR=/workspace/data
+#   OUT=/workspace/data/m0_real.jsonl
+#   SOURCES=trivia_qa,nq_open,dolly_15k,squad_v2,sciq
+#   PER_SOURCE=20000
+#   CUSTOM=/path/to/your_in_domain.jsonl   (optional, appended)
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 DATA_DIR="${DATA_DIR:-/workspace/data}"
 OUT="${OUT:-$DATA_DIR/m0_real.jsonl}"
-SEEDS="${SEEDS:-$SCRIPT_DIR/seed_topics.txt}"
-ENTITIES="${ENTITIES:-}"
-N_TEMPLATE="${N_TEMPLATE:-30}"      # examples per entity in template mode
-N_TEACHER="${N_TEACHER:-50}"        # examples per entity in teacher mode
-TEACHER="${TEACHER:-Qwen/Qwen2.5-7B-Instruct}"
-MULTI_TURN="${MULTI_TURN:-0}"       # set to 1 to use full 3-turn examples
-SKIP_TEMPLATE="${SKIP_TEMPLATE:-0}"
-SKIP_TEACHER="${SKIP_TEACHER:-0}"
+SOURCES="${SOURCES:-trivia_qa,nq_open,dolly_15k,squad_v2,sciq}"
+PER_SOURCE="${PER_SOURCE:-20000}"
+CUSTOM="${CUSTOM:-}"
 
 mkdir -p "$DATA_DIR"
 
-EXTRA_FLAGS=""
-if [[ "$MULTI_TURN" == "1" ]]; then
-  EXTRA_FLAGS="$EXTRA_FLAGS --multi_turn"
-fi
-if [[ -n "$ENTITIES" ]]; then
-  EXTRA_FLAGS="$EXTRA_FLAGS --entities $ENTITIES"
-fi
-
-# ── Stage 1: template bootstrap ────────────────────────────────────────
-if [[ "$SKIP_TEMPLATE" != "1" ]]; then
-  BOOT="$DATA_DIR/m0_real_bootstrap.jsonl"
-  echo "[1/2] template bootstrap -> $BOOT"
-  python "$SCRIPT_DIR/generate_dataset.py" \
-      --mode template \
-      --out "$BOOT" \
-      --seeds "$SEEDS" \
-      --n_per_seed "$N_TEMPLATE" \
-      $EXTRA_FLAGS
-  cp "$BOOT" "$OUT"
-  echo "[1/2] $(wc -l <"$BOOT") bootstrap examples"
-else
-  echo "[1/2] SKIP_TEMPLATE=1 — skipping bootstrap"
-  : > "$OUT"   # empty file so the cat below succeeds
-fi
-
-# ── Stage 2: teacher-LLM enrichment ────────────────────────────────────
-if [[ "$SKIP_TEACHER" != "1" ]]; then
-  ENRICH="$DATA_DIR/m0_real_teacher.jsonl"
-  echo "[2/2] teacher-LLM enrichment -> $ENRICH"
-  echo "      teacher=$TEACHER  n_per_seed=$N_TEACHER"
-  if ! python -c 'import torch; assert torch.cuda.is_available()' 2>/dev/null; then
-    echo "      WARNING: no CUDA visible — teacher mode will be very slow on CPU"
+EXTRA=""
+if [[ -n "$CUSTOM" ]]; then
+  if [[ ! -f "$CUSTOM" ]]; then
+    echo "ERROR: CUSTOM=$CUSTOM does not exist" >&2
+    exit 1
   fi
-  python "$SCRIPT_DIR/generate_dataset.py" \
-      --mode teacher \
-      --out "$ENRICH" \
-      --seeds "$SEEDS" \
-      --n_per_seed "$N_TEACHER" \
-      --teacher "$TEACHER" \
-      $EXTRA_FLAGS
-  cat "$ENRICH" >> "$OUT"
-  echo "[2/2] $(wc -l <"$ENRICH") teacher examples appended"
-else
-  echo "[2/2] SKIP_TEACHER=1 — skipping enrichment"
+  EXTRA="--custom_jsonl $CUSTOM"
 fi
 
-# ── Summary ────────────────────────────────────────────────────────────
-TOTAL=$(wc -l <"$OUT")
+echo "[gen] out=$OUT"
+echo "[gen] sources=$SOURCES"
+echo "[gen] per_source=$PER_SOURCE"
+[[ -n "$CUSTOM" ]] && echo "[gen] custom=$CUSTOM"
+
+python "$SCRIPT_DIR/generate_dataset.py" \
+    --out "$OUT" \
+    --sources "$SOURCES" \
+    --per_source "$PER_SOURCE" \
+    $EXTRA
+
 echo "── done ─────────────────────────────────────────────────────"
-echo "  combined dataset: $OUT"
-echo "  total examples:   $TOTAL"
-echo "  next: bash run_train.sh   (will pick up DATASET=$OUT)"
+echo "  dataset: $OUT"
+echo "  total:   $(wc -l <"$OUT") examples"
+echo "  next:    bash run_train.sh"

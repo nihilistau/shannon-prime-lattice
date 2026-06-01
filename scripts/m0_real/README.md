@@ -35,90 +35,110 @@ volume, sanity-checks CUDA visibility.
 
 ---
 
-## 2. Dataset format
+## 2. What Memory is and what to train it on
+
+**Memory is the factual-response component of the M.2 dialogue protocol**
+(see `sp_daemon/src/dialogue.rs` and `CLOSURE-M2-DIALOGUE.md`):
+
+```
+Turn 1 — Grounding:   Executive consumes user prompt → emits grounding query
+Turn 2 — Entity ID:   Memory consumes grounding query → emits factual response
+Turn 3 — Synthesis:   Executive consumes Memory response → emits final answer
+```
+
+The current Memory in M.2 is a Qwen2.5-Coder-0.5B-Instruct **placeholder**.
+M.0-real trains a proper general-purpose Memory model — one that responds
+to any question Executive can probe with. Memory is a world-knowledge +
+factual-recall engine; it has to handle "What is the capital of France?"
+just as well as "Explain how OAuth refresh tokens work."
+
+**Training data is broad-coverage factual Q&A + instruction-following**
+drawn from established public HF datasets, not a hand-crafted entity table.
+
+### 2.1 Output format
 
 JSONL, one example per line, HF chat-template `messages` format:
 
 ```json
 {"messages": [
-  {"role": "system",    "content": "You are the Memory module. Given a grounded fact, return its canonical entity ID."},
-  {"role": "user",      "content": "Fact: Snapdragon 8 Gen 1 launched in late 2021 with Hexagon V69."},
-  {"role": "assistant", "content": "ENTITY:CHIP/SNAPDRAGON_8GEN1"}
+  {"role": "system",    "content": "You are the Memory module of the Shannon-Prime dialogue protocol..."},
+  {"role": "user",      "content": "What is the capital of France?"},
+  {"role": "assistant", "content": "Paris is the capital and most populous city of France..."}
 ]}
-{"messages": [...]}
 ```
 
-The script does a 90/10 train/eval split automatically if `--eval_dataset`
-is not provided.
+The SFT script does a 90/10 train/eval split automatically.
 
-For the 3-turn protocol, each example can be a single turn (most efficient
-for SFT) or all three turns concatenated — the chat template handles both.
+### 2.2 Generate the dataset
 
-### 2.1 Generate the dataset (you have to make it)
+`generate_dataset.py` pulls from public HF datasets, filters for quality,
+reformats into Memory chat-template, shuffles, and writes a single JSONL.
+Default source mix (~80-100k examples total):
 
-There is no pre-existing M.0-real dataset — the entities + phrasings have
-to match your Memory model use case. Use `generate_dataset.py` to produce
-the JSONL. Two modes, run them in order:
+| Source | Examples | Coverage |
+|---|---:|---|
+| `trivia_qa` (rc.nocontext, train) | 20k | 950k pool, broad trivia |
+| `nq_open` (Natural Questions Open) | 20k | real Google queries + Wikipedia answers |
+| `databricks/databricks-dolly-15k` | ~10k filtered | instruction-following (open_qa, closed_qa, classification, info_extraction, summarization, general_qa) |
+| `squad_v2` | 20k | reading-comprehension with passage |
+| `sciq` | 13k pool | science Q&A with support text |
 
-**Stage 1 — template bootstrap (no GPU, seconds):**
-
-```bash
-python generate_dataset.py --mode template \
-    --seeds seed_topics.txt \
-    --n_per_seed 30 \
-    --out /workspace/data/m0_real_bootstrap.jsonl
-```
-
-This produces ~600 examples from the default `SEED_ENTITIES` table inside
-`generate_dataset.py` (~22 entities × 30 phrasings, dedup applied). Cheap,
-deterministic, useful for smoke-testing the train pipeline end-to-end
-before spending teacher compute.
-
-**Stage 2 — teacher-LLM enrichment (uses the GPU):**
-
-```bash
-python generate_dataset.py --mode teacher \
-    --teacher Qwen/Qwen2.5-7B-Instruct \
-    --seeds seed_topics.txt \
-    --n_per_seed 50 \
-    --out /workspace/data/m0_real_teacher.jsonl
-```
-
-For each entity in the table, the teacher LLM is prompted to generate N
-diverse `(context, fact)` triples; output is parsed strictly (malformed
-batches are skipped honestly). Default teacher fits 24 GB VRAM at bf16; use
-`--load_4bit` for 8 GB pods.
-
-**One-shot launcher** (runs both stages and concatenates):
+One-shot launcher:
 
 ```bash
 bash generate_dataset.sh
-# combined dataset lands at /workspace/data/m0_real.jsonl
+# writes /workspace/data/m0_real.jsonl
 ```
 
-### 2.2 Customizing the entity table
+Or directly:
 
-The default `SEED_ENTITIES` in `generate_dataset.py` is a starting set —
-edit it directly for your domain, OR pass `--entities entities.json` with:
+```bash
+python generate_dataset.py --out /workspace/data/m0_real.jsonl
+```
+
+### 2.3 Customizing
+
+**Restrict to factual Q&A only** (skip instruction-following):
+
+```bash
+SOURCES=trivia_qa,nq_open,squad_v2,sciq bash generate_dataset.sh
+```
+
+**Smaller dataset for a fast first pass:**
+
+```bash
+PER_SOURCE=2000 bash generate_dataset.sh
+# → ~10k examples, trains in 20-40 min on a 24 GB GPU
+```
+
+**Add your in-domain Q&A on top of the defaults:**
+
+```bash
+CUSTOM=/workspace/data/my_in_domain_qa.jsonl bash generate_dataset.sh
+```
+
+Your custom JSONL can use any of three shapes (auto-detected):
 
 ```json
-[
-  {"domain": "PROJECT", "slug": "YOUR_THING",
-   "phrase": "Your Thing — short descriptor of what it is"},
-  ...
-]
+{"question": "...", "answer": "..."}
+{"prompt": "...", "completion": "..."}
+{"messages": [{"role": "user", ...}, {"role": "assistant", ...}]}
 ```
 
-Domain naming: uppercase, no spaces. Slug: uppercase snake_case. Phrase:
-human-readable description used both as the entity referent and as the
-fillable token in template phrasings.
+**Custom system prompt** (default matches the M.2 protocol):
 
-### 2.3 Customizing seed context phrases
+```bash
+python generate_dataset.py --out ... \
+    --system_prompt "Custom system message describing Memory's role"
+```
 
-`seed_topics.txt` holds natural-language context wrappers ("I'm researching
-this for a project.", "A colleague mentioned this yesterday.") — the
-generator randomly prefixes ~40% of examples with one of these. Edit to
-match how YOU expect users to query the Memory model.
+### 2.4 First-run download note
+
+The HF datasets stream from the Hub on first use (~5-15 GB cached under
+`/workspace/.hf_cache` thanks to `runpod_init.sh`). `trivia_qa` and
+`nq_open` use streaming so memory pressure stays low. Network glitches:
+the script catches per-source failures and continues with the remaining
+sources, so a partial dataset still ships if one source 404s.
 
 ---
 
