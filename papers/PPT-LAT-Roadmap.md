@@ -7927,6 +7927,15 @@ sources** and pins the spec the `sp_model_to_gemma4` bridge must implement:
 - **No MTP/draft tensors** in this GGUF — Gemma4's native MTP draft is not exported
   here; Phase 4-MTP needs a different fixture for native heads.
 
+**Operator caveat (2026-06-02): do not generalize this dense-E4B finding to all
+Gemma4.** The E-series (E4B/E2B) are the Matryoshka / Per-Layer-Embedding
+*efficiency* variants — the AltUp per-layer-input injection is their signature.
+The features the secondary sources describe (K→V aliasing on global layers,
+native MTP draft) **may be MoE-variant features** not present in the dense
+E-series. Re-inspect the Gemma4 **MoE** checkpoint for V-aliasing + MTP heads when
+Phase 3-MoE lands; treat the V-elimination question as resolved *for dense E4B
+only*. (No Gemma4-MoE GGUF on disk yet; fetch when 3-MoE starts.)
+
 **Bridge contract (Stage 1+):** `sp_model_to_gemma4` mirrors the closed
 `sp_model_to_gemma3` zero-copy `alias_mask` bridge; `kv_step_gemma4` extends
 `kv_step_gemma3` with (a) per-layer head-geometry dispatch on `sliding_window_pattern`,
