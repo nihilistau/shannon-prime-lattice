@@ -8445,3 +8445,17 @@ path) / System-2 (large ctx, Spinor+Ring-2) with a crossover oracle — proven p
 **Next:** implement C1 (unblocks qwen35moe `.sp-model` on local disk via OK_Q4; lands the
 `sp_model_to_qwen36` bridge + arena-aware expert path, tested vs oracle), then measure under C2.
 
+
+### 2026-06-02 - C1 done + C2 first measurement (Spinor-KV is ~3x, not 120x)
+
+C1 PROVEN: qwen35moe .sp-model reducing + output-lossless (16.33GB vs 19.7GB Q4_K_M src, ~17%;
+round-trip top-1 5444==oracle; core 66ccab9). add_q4 OK_Q4 codec-by-source; sp_model_to_qwen36
+(loader=swivel); build_packed_q4/q8 rank-3 fix; arena-aware expert_mm; f32 router via sp_as_f32.
+fp16 swivel confirmed viable (preferred_precision FP16 + sp_matmul g_f16_act). See CONTRACT-C1.
+
+C2 DRAFTED + first measurement (CONTRACT-C2): the frozen Spinor block (63B = 7 hdr + 55 int8
+anchors + 1 CRC, NBLK=ceil(HD/55)) gives **~2-3x/f32 lossy-deterministic** (HD256=3.25x), verified
+1 int8/element (not a basis). **NOT 120x.** The 120x target needs a different mechanism (true
+anchor-basis / Ring-2 effective-context-vs-RAM / sub-int8) - under investigation, no claim without
+a measurement. C2 remaining: wire Spinor-KV into qwen36, Ring-2 offload (Optane tier), System-1/2 +
+oracle, fp16 swivel; gate each on its own metric (not system tok/s).
