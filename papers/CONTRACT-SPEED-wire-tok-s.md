@@ -49,8 +49,14 @@ Prereq unblocked: the engine forward crashed (fork-tax struct divergence) — FI
 | **Q8 arena + OpenMP-threaded `matmul_arena`** (engine `8975753`) | **10.53** | **12.5×** | **6.7× over single-thread Q8.** Threading the per-output-row loop was the dominant lever. Parity-safe by construction (each Y[j] an independent single-threaded dot). |
 
 **Finding:** packing to Q8 ~doubles throughput (bandwidth thesis), then **threading the matmul gives 6.7× more → 10.53 tok/s, 12.5× over the f16 baseline.** **vs llama.cpp 28.2 t/s, SP is now ~2.7× short (was ~33×).** Threading was the dominant gap, as predicted. Remaining WIRE-CPU-V2 levers (smaller now, Amdahl-bound):
-1. ~~Multi-thread the decode matmul~~ **DONE (`8975753`, 6.7×).**
-2. **SIMD `matmul_arena` inner dot** — it's still scalar `acc += (float)cp[i]*x[i]`; AVX2/VNNI int8 dot is the next ALU lever (gated on whether decode is now ALU- or bandwidth-bound at 10.5 t/s).
-3. **Thread/【SIMD】the non-matmul ops** (attention scores+softmax+V-sum, rmsnorm, rope) — as matmul sped up these serial parts became a larger fraction (Amdahl); llama.cpp threads them too.
+1. ~~Multi-thread the decode matmul~~ **DONE (`8975753`, 6.7× → 10.53).**
+3. ~~Thread the non-matmul ops~~ **DONE (`d7735a4`): per-head QK-norm/RoPE + attention head-loop (per-thread score scratch). → 12.55 tok/s (+19% at n_gen=32). Confirmed Amdahl: once matmul was threaded the per-head serial work mattered.**
+2. **SIMD `matmul_arena` inner dot** [NEXT, the substantial one] — still scalar `acc += (float)cp[i]*x[i]`; AVX2/VNNI int8 dot. At 12.55 t/s the decode is matmul-ALU-bound, so this is where the next big gain is.
 4. Q4: a vectorized unpack so its bandwidth win isn't eaten.
-**Net: the speed thesis is validated — SP is within ~2.7× of llama.cpp on a 0.6B from packed-Q8 + threading alone, no SIMD yet.**
+
+| add'l path | tok/s | |
+|---|---|---|
+| Q8 + threaded matmul | 10.53 | (n_gen=32) |
+| **Q8 + threaded matmul + threaded attention/per-head** | **12.55** | **+19% (n_gen=32); 10.56 at n_gen=128 as attention O(pos) grows** |
+
+**Net: speed thesis validated — SP within ~2.25× of llama.cpp on 0.6B from packed-Q8 + full threading, NO SIMD yet.** The parallel substrate now covers matmul + attention + per-head ops. (gemma3/qwen36 attention share the pattern → follow-up.)
