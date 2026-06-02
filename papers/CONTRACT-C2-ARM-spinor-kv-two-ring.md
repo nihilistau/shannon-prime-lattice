@@ -95,6 +95,40 @@ gcc -O2 -std=gnu11 -D_POSIX_C_SOURCE=199309L -Iinclude tests/c2_ring2_measure.c 
 
 **The honest scope limit (state it, don't bury it).** Ring-2 solves the **memory wall** (unlimited context at bounded RAM), NOT the **compute wall**: full attention over N tokens is still O(N) per step / O(N²) prefill, and naively every step would recall the whole history. Turning the storage multiplier into *usable* context requires a sparse/recalled-attention pattern — Gemma-style SWA windows, the Fibonacci φ sub-sampling eviction (§4.3 / `SP_KV_FIB`), or retrieval — so that only a bounded, relevant subset is recalled per step. The 794× is the **storage** multiplier; the usable-context multiplier is bounded by the recall pattern, which is the next design piece (C2.1 Ring-2 + the System-1/2 oracle deciding when to spill/recall).
 
+## C2.0.4 MEASURED (2026-06-02) — sparse-recall fidelity + the System-1/2 oracle, harness `tests/c2_sparse_recall.c`
+
+The Ring-2 multiplier is *storage*; usable context needs recalling only a budget B≪N tokens per query that reproduce full attention. Built gcc -O2 (kste only). Needle-in-haystack synthetic: N=4096, HD=128, a recent-coherent cluster (last 64) + 8 planted distant q-aligned "needles" + diffuse background; metric = cosine(o_pattern, o_full) and needles-captured. Reproduce: `gcc -O2 -std=gnu11 -Iinclude tests/c2_sparse_recall.c core/kste/kste_encode.c -lm -o c2_sparse_recall && ./c2_sparse_recall`.
+
+| budget B | SWA (last B) | PHI (Fibonacci) | RECENT+PHI | KSTE-guided | ORACLE (top-B) |
+|---|---|---|---|---|---|
+| 64 | 0.9967 (0/8) | 0.9515 (0/8) | 0.9956 (0/8) | 0.9967 (0/8) | **1.0000 (8/8)** |
+| 128 | 0.9967 (0/8) | 0.9515 (0/8) | 0.9967 (0/8) | 0.9985 (4/8) | 1.0000 (8/8) |
+| 256 | 0.9967 (0/8) | 0.9842 (1/8) | 0.9967 (0/8) | 0.9990 (5/8) | 1.0000 (8/8) |
+| 512 | 0.9967 (0/8) | 0.9842 (1/8) | 0.9843 (1/8) | **0.9994 (6/8)** | 1.0000 (8/8) |
+| 1024 | 0.9967 (0/8) | 0.9842 (1/8) | 0.9843 (1/8) | 0.9994 (6/8) | 1.0000 (8/8) |
+
+**Findings (honest):**
+1. **Attention is sparse → the ORACLE recalls full attention at B=64 (cosine 1.0000, 8/8 needles).** The usable-context premise holds: *if* you can cheaply identify the high-mass tokens, a tiny budget reproduces full attention, so Ring-2's hundreds-× storage becomes usable context. The whole game is the **recall router**.
+2. **Query-agnostic patterns (SWA, φ) capture the recent cluster but MISS the distant needles (0–1/8).** Their ~0.99 cosine is misleadingly high — it comes from recent+background mass; on a genuine long-range-retrieval task (needles matter) they fail. **Pure Fibonacci-φ is the *worst* recall router (0.95, 0–1/8)** — it is built for *uniform coverage*, not for finding peaked mass. (φ stays the right tool for *eviction* coverage, §4.3 — a different job.)
+3. **KSTE-signature-guided recall is the best practical router measured — 4–6/8 needles, cosine up to 0.9994 — beating SWA/φ.** This partly overturns my prior: the lossy 64-B dominance signature *does* carry enough directional information to route recall, because a q-aligned needle has a shifted component *distribution* that the tier-0 order-statistics label detects. It is a viable cheap pre-filter — **but it does NOT reach the oracle (6/8, not 8/8; 0.9994, not 1.0).**
+4. **No cheap pattern hits oracle quality.** Closing the KSTE→oracle gap needs a better cheap *directional* score (a low-rank/projected dot-product, an NTT-attention coarse pre-score, or a small stored projection per token) — that is the open recall-router problem.
+
+*Caveat:* one synthetic attention profile (8 strong needles + recent cluster); directional, not a universal law. The KSTE win relies on needles being q-aligned (which they are by definition of high score) shifting their order-stats.
+
+## C2.0.5 The System-1/System-2 crossover oracle (DERIVED from the measured numbers)
+
+The regime split is now parameterized by measurement, not asserted. Let `pt` = per-token KV bytes, `RAMbudget` = KV RAM cap, `W` = recent window, `B` = recall budget, `Nctx` = context length.
+
+- **System-1 (flat cache, full attention).** RAM = `Nctx·pt_f32`; compute = full attention O(Nctx)/step. Best while context is small — no compression/offload/recall overhead.
+- **System-2 (Spinor Ring-1 window W + Ring-2 offload + recent-W ∪ KSTE-routed-B recall).** RAM = `W·pt_spinor` + `Nctx·(64 B signature/head)` [tiny index]; compute = attention over `W+B` + recall I/O of B tokens; context unbounded (Ring-2).
+
+**Crossover rule (switch System-1 → System-2 when `Nctx > Ncrit`):**
+`Ncrit = min( RAM-driven cap , compute-crossover )` where
+- RAM-driven cap = `RAMbudget / pt_f32` (when the flat f32 cache no longer fits — *hard* switch). For qwen3-0.6B-like (`pt_f32`=224 KB) at an 8 GB KV budget ≈ **36 k tokens**; with Spinor-in-RAM (`pt_spinor`=84.7 KB) ≈ 99 k before offload is forced.
+- compute-crossover = `(W+B)·k` — System-2's sparse attention over `W+B` beats System-1's full attention over `Nctx` once `Nctx ≳ W+B` plus recall overhead. With the measured best budget `W≈64, B≈512` (KSTE-router knee), this is **~1–4 k tokens**.
+
+So: **stay System-1 below ~1–4 k tokens; switch to System-2 above** (and System-2 is *forced* by RAM at tens of k tokens). **The load-bearing dependency the oracle inherits:** System-2's *quality* at large Nctx is bounded by the recall-router fidelity (KSTE 6/8 today) — so the oracle must also expose a *quality floor*: if the router can't hit a target needle-capture, widen B or fall back to a denser recall. [DESIGN — oracle rule derived from measurement; the router-fidelity gap is the open item.]
+
 ---
 
 ## C2.1 Scope (the contract)

@@ -84,6 +84,8 @@ qwen35moe is a **Gated DeltaNet (Qwen3-Next) + 256-expert MoE + IMRoPE hybrid**,
 
 [DESIGN here / PROVEN-pattern in old SP]. This is *why* §0's gating rule matters: System-2 looks slow at small ctx in isolation — it's not meant to run there. Belongs in contract **C2** (ARM memory) with the oracle spec'd explicitly.
 
+**[MEASURED 2026-06-02, harness `tests/c2_sparse_recall.c`, contract C2.0.4/C2.0.5]** Sparse-recall fidelity vs full attention (needle-in-haystack, N=4096): **ORACLE top-B reproduces full attention at B=64 (cosine 1.0, 8/8 needles)** — so Ring-2 storage *does* become usable context IF the recall router is good. **Query-agnostic SWA/φ capture the recent cluster but miss distant needles (0–1/8)**; pure Fibonacci-φ is the *worst* router (φ is for eviction *coverage*, not peaked-mass recall). **KSTE-signature-guided recall is the best practical router (4–6/8 needles, cosine→0.9994), beating SWA/φ** — the lossy 64-B dominance signature carries enough directional info (q-aligned needles shift order-stats) — **but it does NOT reach oracle quality.** Closing the gap needs a cheap *directional* score (low-rank/projected dot-product or NTT coarse pre-score). **System-1/2 oracle DERIVED:** switch at `Ncrit = min(RAMbudget/pt_f32, ~(W+B)) ≈ 1–4 k tokens` (forced by RAM at tens of k); System-2 quality is bounded by router fidelity → oracle exposes a quality floor (widen B / denser fallback). The recall-router fidelity gap is the open C2 item.
+
 ---
 
 ## 5. TARGET — the envelope (the value; measure, don't assume)
