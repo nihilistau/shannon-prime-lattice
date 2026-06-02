@@ -142,6 +142,19 @@ So: **stay System-1 below ~1–4 k tokens; switch to System-2 above** (and Syste
 
 ---
 
+## C2.0.6 RECALL ROUTER SOLVED (2026-06-02) — ±1 random projection, harness `tests/c2_router_proj.c`
+
+The open problem from C2.0.4/C2.0.5 (KSTE falsified as a router) is **closed**. Router shootout on the same adversarial needle+decoy set:
+
+| budget | KSTE (64 B) | **±1 proj r=16 (32 B)** | ±1 proj r=32 (64 B) | ORACLE |
+|---|---|---|---|---|
+| **B=64** | cos 0.997, **0/8** needles | **cos 1.0000, 8/8, 0 decoys** | 1.0000, 8/8, 0 | 1.0000, 8/8, 0 |
+| B=512 | 0.995, 3/8 | 1.0000, 8/8 | 1.0000, 8/8 | 1.0000, 8/8 |
+
+**A ±1 (Rademacher) random projection of rank 16 (= 32 B/token, SMALLER than the KSTE 64-B signature) is ORACLE-PERFECT at B=64: 8/8 needles, cosine 1.0000, 0 decoys.** Johnson–Lindenstrauss preserves the inner product, so the projected dot ranks by true relevance — and the **±1 matrix keeps it INTEGER / Z_q-native (discrete, Lattice-pure — NOT the "dirty float" it was framed as).** (At larger B the projection picks up some decoys, but so does the oracle — decoys have small-positive true scores that softmax down-weights; cosine stays 1.0.)
+
+**Design decision: the recall router is a per-token ±1 projection sidecar (r=16/32), stored alongside the Spinor/KSTE record.** Path B (NTT low-freq coarse score) is unnecessary and would low-pass-smear spiky needles (predicted; not pursued). **This unblocks System-2 usable context** (C2.0.5): Ring-2 stores the cold tail; the projection sidecar (tiny, in-RAM for all tokens) routes the top-B recall; Tail-Slayer/Spinor reconstructs the fetched blocks losslessly. Router (projection) and Compressor (Spinor/Tail-Slayer) are now cleanly separated. Wiring the sidecar into the real KV path + a real-model long-context gate is the C2.1 follow-up.
+
 ## C2.1 Scope (the contract)
 
 - **Ring 1 — inline Spinor KV.** Each cached K/V head-vector encoded to NBLK Spinor blocks on write, decoded on read during attention. Already wired in `forward.c` (SP_KV_SPINOR, gemma3/qwen3 decode path; E_CPU_8). **C2 task:** wire it into `qwen36_forward`'s GDN+full-attn KV (currently plain f32 KV), and report the round-trip determinism + ratio.
