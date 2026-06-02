@@ -33,6 +33,46 @@ Both are real and trade **fidelity for ratio**. The 130× requires the lossy KST
 
 ---
 
+## C2.0.1 MEASURED (2026-06-02) — both overlays, math-core harness `tests/c2_kv_measure.c`
+
+Built gcc -O2 against `vht2 + kste` only (no model). Representative K head-vectors (σ=2.0 gaussian + spike channels). **This closes gate C2_KV_RATIO and the fidelity side of C2_120X_INVESTIGATION.** Reproduce (from `shannon-prime-system/`):
+```
+gcc -O2 -std=c11 -Iinclude tests/c2_kv_measure.c \
+    core/vht2/spinor_block.c core/vht2/vht2.c core/vht2/mobius_reorder.c \
+    core/kste/kste_encode.c -lm -o c2_kv_measure && ./c2_kv_measure
+```
+
+**(a) `sp_spinor_encode_vec` — faithful, dimension-preserving (in-RAM 63 B/block, NBLK=⌈HD/55⌉):**
+
+| HD | NBLK | spinor B | ratio /f32 | ratio /f16 | maxAbsErr | RMSE | cosine |
+|---|---|---|---|---|---|---|---|
+| 64 | 2 | 126 | 2.03× | 1.02× | 0.046 | 0.025 | 0.999955 |
+| 128 | 3 | 189 | 2.71× | 1.35× | 0.044 | 0.018 | 0.999970 |
+| 256 | 5 | 315 | 3.25× | 1.63× | 0.052 | 0.020 | 0.999963 |
+| 512 | 10 | 630 | 3.25× | 1.63× | 0.049 | 0.015 | 0.999975 |
+| 1024 | 19 | 1197 | 3.42× | 1.71× | 0.055 | 0.014 | 0.999977 |
+| 2048 | 38 | 2394 | 3.42× | 1.71× | 0.043 | 0.012 | 0.999982 |
+| 4096 | 75 | 4725 | 3.47× | 1.73× | 0.056 | 0.013 | 0.999980 |
+
+→ **The faithful codec asymptotes at ~3.5×/f32 and only ~1.0–1.7×/f16, at very high fidelity (cosine ≥ 0.99996).** It is NOT a 120× scheme and never will be — it is 1 int8/element + a per-block scale. The high cosine is the good news: it is almost certainly **top-1-safe** (to be confirmed by the real-model `qwen3_generate_kv` run, follow-on). **Sobering for the north-star gate:** a production KV cache is usually f16, so the real win over the baseline is only ~1.4–1.7× at typical HD.
+
+**(b) `sp_kste_encode` — lossy ~130× signature (64 B regardless of HD):**
+
+| HD | kste B | ratio /f32 | distinct-fraction @scale 65536 | @scale 2 |
+|---|---|---|---|---|
+| 128 | 64 | 8× | 1.0000 | 1.0000 |
+| 1024 | 64 | 64× | 1.0000 | 1.0000 |
+| 2048 | 64 | **128×** | 0.9995 | 1.0000 |
+| 4096 | 64 | 256× | 0.9990 | 1.0000 |
+
+→ **The ~130× headline = the KSTE signature at HD ≈ 2048** (ratio = HD/16). It is **lossy up to ⪯_d — a dominance/dedup/routing signature, NOT reconstructable attention KV.** Discrimination is ~1.0 even at the forward-path scale 65536: my hypothesis that the i16-clamp (M.5 gotcha) would collapse discrimination was **WRONG for the continuous-K domain** (the order-statistics still separate distinct vectors; the clamp only bit in the *token-ID* domain where IDs cluster). So KSTE-KV is a valid signature here — but you cannot run attention on it directly.
+
+## C2.0.2 The decisive conclusion (now measured, not speculated)
+
+**Neither single overlay gives "120× at bit-exact, reconstructable KV."** The faithful codec is ~3.5×/f32; the 130× one is a non-reconstructable signature. Therefore the "~120× inline KV → unlimited context" headline is **NOT a per-vector codec property** — it must be **(faithful ~3.5× reconstructable KV) × (Ring-2 effective-context multiplier)**, where Ring-2 disk/Optane offload keeps the in-RAM KV window bounded while context grows. **This makes Ring-2 recall the load-bearing piece for the headline, not the per-vector block.** The remaining C2/C3 work is therefore: measure the Ring-2 recall cost vs recompute (C2_RING2_RECALL) and the effective-context multiplier — that is where the "unlimited context" number actually lives. (Candidate #1 from C2.0 — "anchor-basis reconstructs HD≫55" — is **falsified**: the codec is 1 int8/element, confirmed by the linear NBLK=⌈HD/55⌉ scaling.)
+
+---
+
 ## C2.1 Scope (the contract)
 
 - **Ring 1 — inline Spinor KV.** Each cached K/V head-vector encoded to NBLK Spinor blocks on write, decoded on read during attention. Already wired in `forward.c` (SP_KV_SPINOR, gemma3/qwen3 decode path; E_CPU_8). **C2 task:** wire it into `qwen36_forward`'s GDN+full-attn KV (currently plain f32 KV), and report the round-trip determinism + ratio.
