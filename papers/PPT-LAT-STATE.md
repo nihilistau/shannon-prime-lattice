@@ -48,6 +48,7 @@ qwen35moe is a **Gated DeltaNet (Qwen3-Next) + 256-expert MoE + IMRoPE hybrid**,
 | KSTE encoder + Friedman sieve | E_CPU_6, sieve tests | [PROVEN] |
 | Spinor block: KV encode/decode + 64-byte receipt ABI | vht2 / spinor tests; silicon-confirmed | [PROVEN] |
 | Garner 2-prime recombination constants | ntt_crt.c | [PROVEN] |
+| **OK_Q4 reducing codec** — `SP_DT_OK_Q4=11`, transcoder `use_q4` flag, Frobenius Q4 pack/unpack (mixed-prec w/ per-row promote), arena Q4 path (`row_prec[]` 8/4 + `q4_unpack`) | gate `E_PARITY_2` | [PROVEN/WIRED] — *the reducing artifact already exists; C1 wires it for Q4-source archs, does NOT build it* |
 
 ---
 
