@@ -46,8 +46,11 @@ Prereq unblocked: the engine forward crashed (fork-tax struct divergence) — FI
 | f16 (gguf, dequant per row) | **0.84** | 1.0× | the as-is baseline |
 | **Q8 arena** (`SP_ARENA=q8 SP_ARENA_EMBED=1`) | **1.58** | **1.88×** | packed int8, `matmul_arena` inline-lift, no unpack — **the bandwidth lever, confirmed** |
 | Q4 arena (`SP_ARENA=q4`) | 0.85 | 1.0× | per-row `sp_frob_q4_unpack` overhead negates the smaller read → **Q4 needs a SIMD/streaming unpack or it's a wash in this scalar path** |
+| **Q8 arena + OpenMP-threaded `matmul_arena`** (engine `8975753`) | **10.53** | **12.5×** | **6.7× over single-thread Q8.** Threading the per-output-row loop was the dominant lever. Parity-safe by construction (each Y[j] an independent single-threaded dot). |
 
-**Finding:** packing to Q8 ~doubles throughput (bandwidth thesis holds); Q4's nibble-unpack cost cancels its bandwidth win in the current scalar `matmul_arena`. **vs llama.cpp 28.2 t/s, Q8-packed SP is still ~18× short — and the residual is now diagnosed: `matmul_arena` is a scalar single-threaded `acc += (float)cp[i]*x[i]` loop, while llama.cpp is multi-threaded + SIMD.** The two remaining WIRE-CPU-V2 levers, in expected‑impact order:
-1. **Multi-thread the decode matmul** (SP forward is single-threaded; llama.cpp uses all P-cores) — likely the dominant ~Ncore× gap. [next, biggest]
-2. **SIMD `matmul_arena`** — AVX2/VNNI int8 dot (it currently ignores `dot_f32`/the AVX path); for Q4, a vectorized unpack so the packed read actually pays.
-Both are real kernel changes (the substantive WIRE-CPU-V2 work); the env-only ladder above is the floor they build on.
+**Finding:** packing to Q8 ~doubles throughput (bandwidth thesis), then **threading the matmul gives 6.7× more → 10.53 tok/s, 12.5× over the f16 baseline.** **vs llama.cpp 28.2 t/s, SP is now ~2.7× short (was ~33×).** Threading was the dominant gap, as predicted. Remaining WIRE-CPU-V2 levers (smaller now, Amdahl-bound):
+1. ~~Multi-thread the decode matmul~~ **DONE (`8975753`, 6.7×).**
+2. **SIMD `matmul_arena` inner dot** — it's still scalar `acc += (float)cp[i]*x[i]`; AVX2/VNNI int8 dot is the next ALU lever (gated on whether decode is now ALU- or bandwidth-bound at 10.5 t/s).
+3. **Thread/【SIMD】the non-matmul ops** (attention scores+softmax+V-sum, rmsnorm, rope) — as matmul sped up these serial parts became a larger fraction (Amdahl); llama.cpp threads them too.
+4. Q4: a vectorized unpack so its bandwidth win isn't eaten.
+**Net: the speed thesis is validated — SP is within ~2.7× of llama.cpp on a 0.6B from packed-Q8 + threading alone, no SIMD yet.**
