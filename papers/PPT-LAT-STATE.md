@@ -106,6 +106,18 @@ These justify the project and are **not yet measured here**. They are the point.
 
 ---
 
+## 6.1 Disk / storage layout (Knack's host, 2026-06-02)
+
+| Drive | Kind | Role |
+|---|---|---|
+| **C:** | OS SSD (~50 GB free) | build trees, scratch |
+| **D:** | working SSD (~50 GB free) | repos (`D:\F\shannon-prime-repos`), source GGUFs, active `.sp-model` (transcode source+artifact side-by-side, ~40 GB peak — fits) |
+| **E: / F:** | Intel Optane (16 / 32 GB) | **reserved for Ring-2 KV offload spill/recall** — near-RAM latency + byte-addressable = the tier that keeps "context beyond RAM" *fast*. A C2/C3 design input, not just storage. |
+| **G:** | Google Drive 5 TB (streaming) | cold archive only (backups, superseded artifacts). **Never mmap'd live.** |
+| **H:** | external SD 1 TB | bulk cold model storage + transcode overflow |
+
+qwen35moe transcode: source (D:, 19.7 GB) → OK_Q4 `.sp-model` (D:, ~20 GB). No longer blocked.
+
 ## 7. Discipline that is working (keep it)
 
 Clean rewrite · bounded crates + frozen seams · contract system (RFC + C1–C6) · per-cell closure docs · oracle-fingerprint validation · honest PROVEN/TARGET tagging · surface-upstream-never-silently-revise-a-gate · separate worktrees for parallel agents · this STATE ledger updated every session. **This is the structure that finally works. Maintain it. Update this file at the end of every session.**
