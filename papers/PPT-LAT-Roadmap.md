@@ -115,7 +115,7 @@ environment-variable gates until they are individually proven.
 | 3-attn | Pure-attention bridges in math-core | Gemma3 + Qwen2.5 + Qwen3 base running end-to-end via session ABI | Per-cell M_*_1 forward bit-identity | **CLOSING 2026-05-26** — Gemma3 ✅ + Qwen2.5 ✅; Qwen3 base transitively ✅. Umbrella `lat-phase-3-attn-closed` after Phase log entry. |
 | 3-SSM | Mamba-hybrid arch sub-phase | SSM kernels (selective scan, conv1d, dt) + Qwen3.5-9B bridge | Qwen3.5-9B bit-identity vs reference + RSS within Phase 3-attn envelope | Deferred; multi-day kernel work |
 | 3-G4 | Gemma4 family sub-phase | Per-layer embedding injection + dual head_dim + logit softcap + Gemma4-E2B bridge | Gemma4-E2B top-1 bit-exact vs llama.cpp + M_GEMMA4 PPL gate | **CLOSED 2026-06-02** (engine `b41fcf1`); E2B end-to-end |
-| 3-MoE | MoE arch sub-phase | Routing layer + sparse FFN gather + Qwen3.6 bridge | Qwen3.6 bit-identity vs reference (single-machine MoE) | Deferred; pre-inspect GGUF before scoping |
+| 3-MoE+GDN | qwen35moe (Qwen3.6-35B-A3B) sub-phase | Gated DeltaNet linear-attn + 256-expert MoE + IMRoPE full-attn hybrid (NOT Mamba2) + k-quant dequant | **Forward bit-exact top-1 vs llama.cpp (2026-06-02)**; Stage 3 (transcode + arena + M_QWEN36) pending | core `d8e614f`; ~4-6× G4 scope; SPEC-qwen35moe-GDN.md |
 | 3-FP8 | FP8 weight sub-phase | DeepSeek-V4 FP8 dequant + bridge | DeepSeek-V4 bit-identity vs reference | Aspirational; no fixture |
 | 4 | Inline cache compression validated | PPL drift and memory savings measured per backend × model | Drift ≤ 1% on calibrated families | 4 weeks |
 | 4-MTP | Multi-Token Prediction (built-in heads) | Target-model self-drafting + verifying via auxiliary prediction heads; transactional Spinor block rewind | M_MTP_1: bit-identical output + > 1.5× t/s speedup on code-heavy prompts at K=4; native MTP-head fixture (DeepSeek-V4 or Qwen3.6 MTP variant) | 3 weeks; **UNBLOCKED 2026-05-26** by lat-phase-3-attn-closed; can spawn on any MTP-head-bearing arch |
@@ -8385,4 +8385,31 @@ verified at load: `softcap=30 swa_period=5 kvfs=15 per-layer-input=256 n_ff0=614
 
 **Phase 3-G4 is CLOSED.** Next spine arch: **3-SSM** (Qwen3.5 Mamba-hybrid) or **3-MoE**
 (Qwen3.6) per §2.2.
+
+### 2026-06-02 — Phase 3-MoE+GDN: qwen35moe reference forward bit-exact (core `d8e614f`)
+
+Qwen3.6-35B-A3B (`qwen35moe`) reference forward implemented + **argmax bit-exact to
+llama.cpp** (3/3 non-trivial greedy tokens `5444 8 198`; per-layer fingerprints match
+through every block). Full closure detail in `SESSION-CLOSED-lat-3-moe-forward.md`; spec
+in `SPEC-qwen35moe-GDN.md`; oracle fingerprints + SP logs in
+`qwen35moe-oracle-fingerprints.txt` + `qwen35moe-sp-validation-logs.txt`.
+
+- **Architecture corrected:** it is a **Gated DeltaNet (Qwen3-Next family) linear-attn +
+  256-expert MoE + IMRoPE full-attn hybrid**, NOT Mamba2 (the 2026-05-26 GGUF-INVEST doc
+  mislabeled it from metadata; superseded). 40 layers, full-attn iff `(L+1)%4==0` else GDN,
+  MoE on all; no NextN/MTP block in this GGUF.
+- **Blocks (all validated vs oracle fingerprints):** GDN (conv1d+SiLU, L2-norm q/k, per-token
+  gated delta-rule recurrence, gated output norm — bug caught: `beta` needed sigmoid); MoE
+  (f32 softmax/top-8/renorm router + rank-3 expert SwiGLU + sigmoid-gated shared expert);
+  gated full-attn + IMRoPE (NEOX-on-first-64; IMRoPE collapses to NEOX for text).
+- **Math-core prereq (Stage 1.5):** Q4_K + Q6_K dequant added to `weight_dtype`
+  (`sp_dequant_row` + `row_bytes`, ggml-exact) — REQUIRED by the reference matmul, the
+  frobenius arena packer, AND the loader/transcoder (the shared dequant leaf).
+- **Methodology (Knack):** f32-expand-vs-Q4-oracle is a WIRING check, not a bit-exactness
+  proof (wrong formula → O(10%) divergence, precision → O(0.01%)); the bit-exact gate is
+  **top-1 argmax**; production is the discrete Z_q path, never f32 expansion.
+
+**Remaining (Stage 3):** engine `sp_transcode` Q4_K/Q6_K source `row_bytes` + rank-3 expert
+packing; `sp_model_to_qwen36` bridge; transcode→load→forward top-1; discrete arena (Z_q) path
+on Q4_K_M; formal `M_QWEN36` ctest (top-1 gate; PPL hits the f32-vs-Q4 smoke floor cf. M_GEMMA4).
 
