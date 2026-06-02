@@ -17,7 +17,9 @@ The frozen Spinor block (`sp/spinor_block.h`, LAYOUT v1) is **63 B = 7 vht2_head
 | 128 | 3 | 189 | 512  | 2.71× | 1.35× |
 | 256 | 5 | 315 | 1024 | 3.25× | 1.63× |
 
-**Finding:** the current per-vector Spinor encoding is **lossy int8 (one int8 anchor/element), ~2–3× over f32 (~1–1.6× over f16), with a deterministic CRC-checked decode** (bit-exact decode, NOT lossless KV — gate E_CPU_8). **This is NOT 120×.** [PROVEN measurement.]
+**What the block IS (canonical):** `Spinor 63-byte KV-cache block = VHT2 anchor projection + Möbius reorder + int8-quantized anchors + CRC-8 trailer + 0xA5 sentinel`. One ARM Cortex-X2 cache line. The FROZEN on-wire KV record format (`spinor_block.h`, LAYOUT v1). The encode does a **VHT2 anchor projection** of each ≤55-element chunk, Möbius-reorders the anchors, int8-quantizes them into `mobius_body[55]`, CRC-8 over header‖body.
+
+**Finding:** the VHT2 projection is **dimension-preserving** (`NBLK=ceil(HD/55)`; ~55 anchors per ~55 elements — confirmed in `sp_spinor_encode_vec`), so the per-vector compression is **int8-vs-f32 ~2–3×** (~1–1.6× over f16), lossy with a deterministic CRC-checked decode (E_CPU_8). **The per-vector block is NOT 120×.** [PROVEN measurement.]
 
 **Where 120× would actually come from (the C2 investigation, [TARGET]):** the per-vector int8 block alone cannot give 120×. Candidates to investigate, each gated:
 1. **True anchor-basis compression** — if the 55 `anchor_coeff` are a *low-rank/sparse basis* that reconstructs HD ≫ 55 elements (not 1 int8/element), the ratio rises with HD. Need to confirm whether the encoder is 1:1 quant (current, ~3×) or a genuine basis projection.

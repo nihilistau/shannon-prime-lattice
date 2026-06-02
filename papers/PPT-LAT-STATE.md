@@ -91,7 +91,7 @@ These justify the project and are **not yet measured here**. They are the point.
 
 | Target | Where measured | Status |
 |---|---|---|
-| Spinor inline KV compression ratio | C2 | **[MEASURED 2026-06-02]** current block = lossy int8, **~2–3×/f32** (HD256 3.25×, HD128 2.71×, HD64 2.03×), deterministic CRC decode (verified 1 int8/element, not a basis). **NOT 120×** — the 120× target needs a different mechanism (anchor-basis / Ring-2 effective-context / sub-int8); under investigation (C2.0). |
+| Spinor inline KV compression ratio | C2 | **[MEASURED 2026-06-02]** The Spinor 63-B KV block = **VHT2 anchor projection + Möbius reorder + int8-quantized anchors + CRC-8 trailer + 0xA5 sentinel** (one Cortex-X2 cache line; the FROZEN on-wire KV record format, `spinor_block.h`). `NBLK=ceil(HD/55)`; the VHT2 projection is dimension-preserving (~55 anchors / ~55 elements), so the per-vector byte ratio is **int8-vs-f32 ~2–3×** (HD256 3.25×, HD128 2.71×, HD64 2.03×), deterministic CRC decode. **The per-vector block is NOT 120×** — the "120× / unlimited context" is the projection-enabled quant **× Ring-2 offload (effective context vs bounded RAM)**; the offload is where the big multiplier lives. Measure Ring-2 next (C2.0). |
 | `.sp-model` converter REDUCTION ratio (≤ source; sub-Q4) | C1 | [TARGET] |
 | tok/s vs the bar: **beat llama.cpp + old SP hier-KV @ 40 tok/s, Qwen3.6** | system gate (envelope assembled) | [TARGET] |
 | Ring-2 disk offload + residual recall cost | C2/C3 | [TARGET] |
