@@ -53,7 +53,17 @@ Each cached K/V head-vector is encoded **inline** to a Spinor block (the 63-byte
 - **Ring 1 — active compute.** The Z_q working set: weights (O_K object) + the live Spinor-compressed KV window. Integer matmul + discrete attention happen here.
 - **Ring 2 — offload / recall.** KV and state **spill to disk and are recalled**; **residuals + CRT** make the spill near-zero-bandwidth and make **multiple devices act as one**: each device holds/works a residue (mod q_i) and recombines via Garner, so you **ship residues, not full tensors** — dual GPU, CPU+GPU, or phone+host collaborate with inter-device bandwidth virtually eliminated. **This was always Ring 2's design.** The PoUW ledger and mesh-shareable memory are *tenants* of Ring 2, not its purpose.
 
-### 2.3 Why this beats "llama.cpp + hier-KV @ 40 tok/s"
+### 2.3 Regime-adaptive memory: System-1 / System-2 + crossover oracle
+The KV/memory path is **not one-size** — this is a proven prior design from old SP, re-established here.
+- **System-1 (small context):** a fast, simple path. Compression + Ring-2 overhead don't pay at short ctx, so System-1 keeps latency low (closer to a plain cache).
+- **System-2 (large context):** the Spinor-compressed + Ring-2-offload path — where the ~120× / unlimited-context / multi-device envelope lives.
+- **A crossover oracle predicts the System-1 → System-2 switch** (by ctx length, bandwidth pressure, cache occupancy).
+This is *why* the stage-gating rule below matters: System-2 measured at small ctx in isolation looks slow — it is not meant to run there. Spec'd in contract **C2**.
+
+### 2.3.1 Stage-gating rule (do not gate a stage on system tok/s)
+**The system does not work in isolation.** A stage will miss an end-system number (tok/s, context) that it only hits once the rest of the envelope is assembled (Spinor cache + Ring-2 + island sharding). **Gate each stage on its OWN correctness/metric** (bit-exact output; the kernel's own throughput; the compressor's own ratio) — **never on assembled-system tok/s.** Declaring a stage failed for missing a system number it structurally cannot hit alone is a category error. System-level numbers are *system* gates, measured only when the envelope is assembled. (See `PPT-LAT-STATE.md` §0.)
+
+### 2.4 Why this beats "llama.cpp + hier-KV @ 40 tok/s"
 llama.cpp can't: (a) hold context beyond RAM at bit-exact via 120× inline compression; (b) split one model across two GPUs with **no NVLink-class bandwidth** by exchanging CRT residues; (c) recall offloaded KV from disk cheaply via residual reconstruction. PPT-ARM's reason to exist is exactly this envelope. **The gates for PPT-ARM are therefore capability + performance gates (compression ratio, tok/s at long ctx, multi-device scaling), with bit-exact as an invariant underneath — not bit-exact as the headline.**
 
 **OPEN QUESTIONS §2:** measured Spinor KV compression ratio at bit-exact? Ring-2 residual-recall cost vs. recompute? Is the dual-GPU "ship residues" path a 2-prime CRT split of the *weights*, the *activations*, or both? What's the bandwidth model that says CRT-residue exchange < full-tensor NVLink?

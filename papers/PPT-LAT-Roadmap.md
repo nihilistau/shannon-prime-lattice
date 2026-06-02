@@ -8418,3 +8418,30 @@ free → the `sp_model_to_qwen36` bridge + arena-aware expert path + an OK_Q4 tr
 the remaining production-path items. See `SESSION-CLOSED-lat-3-moe-forward.md`. Forward + math are
 proven and gated; only the OK_Q8 `.sp-model` RUN is disk-gated.
 
+### 2026-06-02 — Project formalized: PPT-ARM primary, document hierarchy established
+
+The framework is now formalized into a maintained document system (the structure that finally
+works after 20 rewrites — keep it):
+
+- **`PPT-LAT-STATE.md`** — the PROVEN record (anti-amnesia spine). Read it FIRST; trust it; build
+  on it; do not re-derive. Evidence-cited. Updated every session.
+- **`PPT-LAT-RFC-001-Universal-Discrete-Architecture.md`** (v2) — the architecture/why. **PPT-ARM
+  is the primary, load-bearing product** (13-step forward replacement + Spinor-KV/two-ring memory);
+  the **Lattice fell out of it**. Value = envelope (compression/unlimited-context/bandwidth-bypass/
+  multi-device/speed); bit-exact = invariant floor, not headline. North-star: beat llama.cpp + old
+  SP hier-KV @ 40 tok/s on Qwen3.6.
+- **Contracts `CONTRACT-C1..C6`** — the forward work. C1 (`.sp-model` v1 + O_K REDUCING container)
+  drafted. C2 (ARM Spinor-KV two-ring + System-1/System-2 + crossover oracle — measures the ~120×).
+  C3 (L1 ABI v2 + Garner service + Ring-2). C4 (MTP transaction protocol). C5 (MeMo receipts). C6
+  (cyclotomic-ring paper).
+- Per-cell **`SESSION-CLOSED-*.md`** — closure detail.
+
+**Two binding principles re-established (operator):** (1) a stage is gated on its OWN
+correctness/metric, NEVER on assembled-system tok/s — the system doesn't work in isolation, and a
+stage will miss numbers it only hits once the envelope is assembled. (2) The converter REDUCES
+on-disk size (OK_Q8 was backwards). (3) Memory is regime-adaptive: System-1 (small ctx, fast simple
+path) / System-2 (large ctx, Spinor+Ring-2) with a crossover oracle — proven prior SP design.
+
+**Next:** implement C1 (unblocks qwen35moe `.sp-model` on local disk via OK_Q4; lands the
+`sp_model_to_qwen36` bridge + arena-aware expert path, tested vs oracle), then measure under C2.
+
