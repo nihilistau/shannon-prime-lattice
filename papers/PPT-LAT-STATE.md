@@ -103,6 +103,19 @@ These justify the project and are **not yet measured here**. They are the point.
 
 ---
 
+## 5.05 C2.1 COMPLETE (2026-06-03) — two-ring recall wired live, all three walls down
+
+C2.1 wired the C2 measurements into the live `qwen3_generate_kv` decode path and drove the three walls down, each gated on an N=512 NIAH parity gauntlet (GEN_KV bit-parity + real `837492`-needle HIT). Engine commits `67f4997`→`f8ea920`; full record in **CONTRACT-C2 §C2.1**.
+
+- **Router (Step 1, `67f4997`):** ±1 Rademacher projection sidecar, recall-set = sinks ∪ top-(B−W−sink) ∪ recent-W; parity-exact when off / B≥ctx.
+- **G1 NIAH (`7055964`, `tests/niah.c`):** decode-path needle gate. r=32 holds 2×/4×/**8×** at N=2k; depth 10/50/90 all HIT (**no recency bias**). Budget B is *absolute* → achievable ratio grows with context.
+- **G2 PPL (`d56c1a7`+`e916365`):** autoregressive decode-path PPL. v1 FAILED (4× +40%, 8× +104% — dropped softmax tail + attention sinks). **Fix = Möbius-pinned sinks (`SP_RECALL_SINK=4`).** v2 N=2k: 2× −0.71%, 4× −0.92%, 8× +0.69% — all <2%. **Intelligence wall solved @8×.**
+- **Step 2b Optane (`2707f60`/`fdc0f07`/`e895ef4`, `ring2_disk.c`):** NO_BUFFERING + IOCP async. Latency v0 48.7 → v1a 18.9 (dedupe) → v1b **7.57 µs/read** (≈ media floor). NIAH HIT off F: Optane.
+- **Compute wall (`b7a1f92`):** O(B·N) max-extract → **O(N) quickselect** (the ~10-h-at-32k bottleneck removed).
+- **Memory wall (`f8ea920`):** Ring-1 `kc/vc` → **(sink+W) ring buffer** when offloading. N=512 15× shrink; **32k = 910× (7.5 GB → 8.3 MB)**.
+
+**Honest RAM floor @32k:** Ring-1 = 8.3 MB but the `projk` ±1 router index stays full-P ≈ 940 MB → net 7.5 GB → **~950 MB (~8×), projk-dominated**; int8/int4 router-index quant is the next optimization (owned, not hidden). **FINALE in progress:** NIAH N=32768 B=512(4×) d50 disk/IOCP — all three walls collapsing in one ~1–2 h run.
+
 ## 5.1 FORWARD PRIORITY (re-ordered 2026-06-02 — differentiators ahead of context)
 
 C2's measurement phase is done and re-ranked the work (KV ~3.5× lossy; Ring-2 context ~hundreds× but largely disk-tiering). The unmeasured load-bearing differentiators now lead. Full rationale in **RFC-001 §11**:

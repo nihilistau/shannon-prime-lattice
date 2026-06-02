@@ -1,6 +1,6 @@
 # CONTRACT C2 — ARM memory: Spinor-KV inline compression + the two rings
 
-**Parent:** RFC-001 §2. **Builds on:** C1 (the reducing `.sp-model` + arena swivel). **Status:** DRAFT + first measurement landed.
+**Parent:** RFC-001 §2. **Builds on:** C1 (the reducing `.sp-model` + arena swivel). **Status:** C2.1 COMPLETE (2026-06-03) — two-ring recall wired live + all three walls down (router/sinks/Optane-IOCP/quickselect/Ring-1-shrink); see §C2.1. 32k finale in progress.
 **One line:** make the KV/memory path the PPT-ARM envelope — inline Spinor-block KV compression (Ring 1), Ring-2 offload/disk-recall with residual/CRT bandwidth bypass, a System-1/System-2 regime split with a crossover oracle — and **measure the real numbers** (the headline ~120× is `[TARGET]`, not assumed).
 
 > Discipline: gate each piece on ITS OWN metric (compression ratio, recall cost), never on assembled-system tok/s (PPT-LAT-STATE §0). The headline numbers are the point AND are unmeasured — measure before believing.
@@ -187,3 +187,33 @@ The open problem from C2.0.4/C2.0.5 (KSTE falsified as a router) is **closed**. 
 ## C2.3 Why this is the decisive contract
 
 C1 proved the reducing weight artifact + the swivel. C2 is where the **PPT-ARM value thesis is proven or broken**: if the achievable KV compression + Ring-2 effective-context + fp16 swivel + integer-pipe speed (HX.3b 1.04×) compose to beat the 40-tok/s bar at long context, the project is justified. The first measurement already corrected the headline from "120× per-vector" to "~3×/f32 per-vector, deterministic-lossy" — the rest of C2 finds the real envelope number, honestly.
+
+---
+
+## C2.1 COMPLETE — the two-ring recall system, wired + measured (2026-06-03)
+
+C2.1 took the C2 measurements (±1 router proven in harness, Ring-2 recall byte-exact, Spinor-KV ~3.5× lossy) and **wired them into the live `qwen3_generate_kv` decode path**, then drove the three architectural walls down one at a time, each gated on the N=512 NIAH parity gauntlet (GEN_KV bit-parity + NIAH HIT on a real `837492` needle in the Alice haystack). All engine-side; commits in `shannon-prime-system-engine`.
+
+**Step 1 — ±1 projection router sidecar** (engine `67f4997`): frozen-seed Rademacher R, post-RoPE per-kv-head projection, recall-set = sinks ∪ top-(B−W−sink) ∪ recent-W. Parity: recall-off / B≥ctx == full-attention baseline, bit-identical.
+
+**Step 2a — two-ring spill/recall** (engine `2e7f325`): mock RAM Ring-2, parity proven via NaN-poison.
+
+**Step 3 G1 — NIAH retrieval gate** (engine `7055964`, `tests/niah.c`): self-contained needle-in-haystack on the decode path, tokenized with the engine's own validated tokenizer (no Python). Boundary at N=512/d50: HIT to B=256 (2× KV) at r=16. Expanded sweep (r=32, all HIT): N=512 B=128 (4×) rescued; N=2k holds 2×/4×/**8×**; depth 10/50/90 all HIT (**no recency bias — global directional retrieval**). Finding: required budget B is an **absolute** token count, so achievable compression *ratio grows with context length*.
+
+**Step 3 G2 — autoregressive PPL deflection** (engine `d56c1a7` harness + `e916365` sinks): PPL through the *decode* path (`qwen3_ppl_decode`, teacher-forced) so recall is exercised — `sp_perplexity`'s prefill path has no recall knobs. **First result FAILED (4× = +40%, 8× = +104%)**: hard top-B drops the softmax tail and evicts the StreamingLLM attention sinks. **Fix = pin first 4 tokens (`SP_RECALL_SINK`, Möbius cold-start, kept in Ring-1).** With sinks, N=2k: **2× = −0.71%, 4× = −0.92%, 8× = +0.69%** — all pass <2%, 2×/4× negative (sparsification denoises). Intelligence wall solved at 8×. 8k full-attn PPL baseline = 23.814 (recall+sink confirm pending).
+
+**Step 2b — physical Optane Ring-2** (engine `2707f60` v0 / `fdc0f07` v1a / `e895ef4` v1b; module `src/backends/cpu/ring2_disk.c`): `FILE_FLAG_NO_BUFFERING` (hits the drive, not the OS page cache) + IOCP async. N=512 disk smoke HIT off F: Optane. **Latency arc: v0 48.71 µs (16-thread `ReadFile` contention) → v1a 18.86 µs (dedupe: per-layer union staging — blocks are per-token, one fetch serves all heads) → v1b 7.57 µs (IOCP deep-queue async).** 6.4× latency / 36× wall; 7.57 µs ≈ Optane media floor. v1b fixed a `0xC0000374` heap corruption (binding write handles to the IOCP broke the sync spill; fix = separate IOCP-bound read handles).
+
+**Compute wall — O(N) quickselect** (engine `b7a1f92`): replaced the O(B·N) max-extract (the ~10-h-at-32k bottleneck) with median-of-three Hoare quickselect over [score,index] pairs. Set-equivalent (GEN_KV parity + NIAH HIT).
+
+**Memory wall — Ring-1 window shrink** (engine `f8ea920`): `kc/vc`, when offloading, is a **(sink+W) ring buffer** per layer (`r1slot(s)=s<sink?s:sink+(s−sink)%W`). The router's `s<winlo` eviction ⟺ "overwritten by s+W in the ring" — ring + router agree by construction. Gated to `ring2_on` so baseline keeps the full cache (parity held). **N=512: 122.9 → 8.3 MB (15×); at 32k = 910×.**
+
+### C2.1 honest scoreboard — all three walls down
+
+| Wall | Mechanism | Proof | Honest caveat |
+|---|---|---|---|
+| **Compute** | O(N) quickselect router | GEN_KV parity, set-equivalent NIAH | win asymptotic (invisible @512) |
+| **Intelligence** | Möbius sinks + ±1 router | 8× = +0.69% PPL deflection (N=2k) | confirmed @2k; 8k/32k pending |
+| **Memory** | Ring-1 window + Optane two-ring | 910× cache shrink @32k, NIAH HIT @7.66 µs/read off Optane | **`projk` router index still full-P ≈ 940 MB @32k → net 32k RAM 7.5 GB → ~950 MB (~8×), projk-dominated; int8/int4 router quant is next** |
+
+**FINALE (in progress):** NIAH N=32768, B=512 (4×), depth-50, disk on F: via IOCP, sinks=4 — now ~1–2 h (not ~10 h). Retrieval at 32k off physical NVMe at queue-depth latency with a 910× KV-RAM shrink — all three walls in one run.

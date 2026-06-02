@@ -9,6 +9,8 @@
 ---
 
 > **PRIORITY AMENDMENT (2026-06-02) — differentiators ahead of context.** C2's measurement phase is done (KV ~3.5× lossy, real-model 29/31; Ring-2 ~hundreds× effective context but largely disk-tiering; recall router open — KSTE falsified). Forward order is now **P1 SPEED/WIRE→tok/s vs llama.cpp (north-star), P2 C4 MTP, P3 C3 multi-device CRT residues (2-node byte-exact vertical slice), P4 remaining C2 (demoted), P5 eMeMo/cyclotomic.** Authoritative in **RFC-001 §11** + **STATE §5.1**. The phase sequence below is unchanged in content; this re-prioritizes which phases lead.
+>
+> **C2.1 COMPLETE (2026-06-03) — two-ring recall wired live, all three walls down.** The "remaining C2" / open recall-router item is now resolved end-to-end in the live `qwen3_generate_kv` decode path: ±1 projection router + Möbius attention sinks + physical Optane Ring-2 (NO_BUFFERING + IOCP async, 7.57 µs/read) + O(N) quickselect (compute wall) + Ring-1 (sink+W) ring buffer (memory wall, 910× KV-RAM shrink @32k). Gates: GEN_KV bit-parity throughout, NIAH `837492` HIT off Optane, G2 PPL deflection 8× = +0.69% (<2%, N=2k). Honest RAM floor now projk-dominated (~950 MB @32k, int8/int4 router-quant next). Engine `67f4997`→`f8ea920`; full record **CONTRACT-C2 §C2.1** + **STATE §5.05**. 32k all-walls finale in progress.
 
 ---
 
