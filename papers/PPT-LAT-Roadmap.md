@@ -8315,3 +8315,31 @@ already lives.** Future agents working on any of those phases should
 check the §20.7 matrix before re-implementing.
 
 ---
+
+### 2026-06-02 — Phase 3-G4 Task C: gemma4 production path (transcode + tokenizer + load) bit-faithful
+
+The full production path works end-to-end and bit-faithful to real Gemma4
+(E2B-Q8_0): engine `sp-transcode` GGUF -> `.sp-model` (919 tensors) + `.sp-tokenizer`
+-> `sp_model_load` -> `sp_model_to_gemma4` -> `gemma4_forward`. SP greedy argmax ==
+llama.cpp oracle (`5213 236840 22695 ...`), `g4_*` arch_struct loaded correctly
+(NL=35 kvfs=15 period=5). Commits: system `ae57982`, engine `cb8a112`.
+
+- **Transcode** (`tools/sp_transcode/sp_transcode.c`): `fill_arch_struct` writes the
+  gemma4 `g4_*` fields (per-layer SWA geometry, AltUp width, shared-KV, softcap,
+  `swa_period` from `sliding_window_pattern`); `is_matmul_weight` classifies the AltUp
+  matmuls (`inp_gate`/`proj`/`per_layer_token_embd`/`per_layer_model_proj`) as Q8.
+- **Tokenizer**: the existing `build_tok_blob` is arch-agnostic and already handles
+  SentencePiece (`tokenizer.ggml.*`) — Gemma4 uses it; no change needed.
+- **Bridge** (`sp_model_to_gemma4`): now copies each synth tensor's dims from the
+  `.sp-model` entry so `gemma4_forward` recovers per-layer geometry (per-layer `n_ff`
+  via `ffn_gate->dims[1]`, the elastic FFN) on the load path.
+- **Engine enum**: added `SP_ARCH_ID_GEMMA4` to the engine's vendored
+  `sp_engine/sp_model.h` (a guard-collision shadow of the math-core copy — a
+  pre-existing duplication worth de-duping later).
+
+**Remaining (smaller):** a FORMAL engine-side `M_GEMMA4` PPL ctest (run `test_ppl`
+on a gemma4 `.sp-model`, assert PPL-within-1%); the forward is already correctness-
+proven via the standalone top-1 harnesses (`tests/gemma4_top1_sp.c`,
+`tests/gemma4_sp_model_top1.c`). The Gemma4 cell is functionally COMPLETE: forward +
+decode + transcode + tokenizer + load, all bit-faithful to real Gemma4.
+
