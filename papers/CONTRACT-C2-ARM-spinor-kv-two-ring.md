@@ -112,10 +112,19 @@ The Ring-2 multiplier is *storage*; usable context needs recalling only a budget
 **Findings (honest):**
 1. **Attention is sparse → the ORACLE recalls full attention at B=64 (cosine 1.0000, 8/8 needles).** The usable-context premise holds: *if* you can cheaply identify the high-mass tokens, a tiny budget reproduces full attention, so Ring-2's hundreds-× storage becomes usable context. The whole game is the **recall router**.
 2. **Query-agnostic patterns (SWA, φ) capture the recent cluster but MISS the distant needles (0–1/8).** Their ~0.99 cosine is misleadingly high — it comes from recent+background mass; on a genuine long-range-retrieval task (needles matter) they fail. **Pure Fibonacci-φ is the *worst* recall router (0.95, 0–1/8)** — it is built for *uniform coverage*, not for finding peaked mass. (φ stays the right tool for *eviction* coverage, §4.3 — a different job.)
-3. **KSTE-signature-guided recall is the best practical router measured — 4–6/8 needles, cosine up to 0.9994 — beating SWA/φ.** This partly overturns my prior: the lossy 64-B dominance signature *does* carry enough directional information to route recall, because a q-aligned needle has a shifted component *distribution* that the tier-0 order-statistics label detects. It is a viable cheap pre-filter — **but it does NOT reach the oracle (6/8, not 8/8; 0.9994, not 1.0).**
-4. **No cheap pattern hits oracle quality.** Closing the KSTE→oracle gap needs a better cheap *directional* score (a low-rank/projected dot-product, an NTT-attention coarse pre-score, or a small stored projection per token) — that is the open recall-router problem.
+3. **KSTE-signature-guided recall LOOKED best (4–6/8) — but the adversarial test (C2.0.4.1) FALSIFIES it as a router.** The clean-test win was an artifact: needles were the *only* histogram-distinctive vectors, so ranking by KSTE tier-0 distance accidentally surfaced them.
+4. **No cheap pattern hits oracle quality.** Closing the gap needs a genuine *directional* cheap score (a low-rank/projected dot-product, an NTT-attention coarse pre-score, or a small stored projection per token) — that is the open recall-router problem. **KSTE is NOT a candidate (see below).**
 
-*Caveat:* one synthetic attention profile (8 strong needles + recent cluster); directional, not a universal law. The KSTE win relies on needles being q-aligned (which they are by definition of high score) shifting their order-stats.
+### C2.0.4.1 ADVERSARIAL (2026-06-02) — KSTE is NOT a directional recall router [harness `tests/c2_kste_router_adv.c`]
+
+Planted 32 **permuted decoys**: each = a needle's components randomly shuffled → **identical order-statistics histogram, ~zero dot product with q** (mean true score: needle 16.30 vs decoy 0.47). If KSTE routed on *direction* it would ignore them.
+
+| | KSTE-router top-B | ORACLE top-B |
+|---|---|---|
+| **mean KSTE tier-0 L1 dist → q** | needle **985.2** vs decoy **937.4** (decoys *closer*!) | — |
+| B=512 | cos 0.9986, **6/8 needles, 21/32 decoys** | cos 1.0000, 8/8, (decoys down-weighted by softmax) |
+
+**Verdict: the KSTE tier-0 order-statistics signature cannot distinguish a needle from a zero-alignment permuted decoy** — it ranks decoys *as close to q* as the needles, and pulls 21 of 32 into the budget. Order statistics are a *histogram* (permutation-invariant in dimension), but dot-product is *directional* — so KSTE is structurally the wrong tool for recall routing. It remains valid for its designed job (dedup/dominance signature, §4.2a). **The recall router must be a directional cheap-score; KSTE is ruled out.** *(This corrects an earlier overstatement — "KSTE best practical router" — caught by adversarial verification, not theory.)*
 
 ## C2.0.5 The System-1/System-2 crossover oracle (DERIVED from the measured numbers)
 
