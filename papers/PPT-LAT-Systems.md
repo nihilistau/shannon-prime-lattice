@@ -1,3 +1,5 @@
+> **⚠️ SUPERSEDED (2026‑06‑02) by `PPT-LAT-Systems-v1.md`.** This is the May‑23 v0 draft, written before almost all of the empirical record (Phase 2‑L1/CPU/CU/HX, Phase 3 Gemma4 + qwen35moe bit‑exact, the reducing OK_Q4 `.sp-model` + swivel, Phase 4‑MeMo M0, Mode‑D/Hexagon, the TS hedge, the dual‑model scheduler, MTP=T8). Its hierarchy is inverted (it centers the Lattice; **PPT-ARM is primary**) and several claims are stale (e.g. §2.2 "no compression on disk" — the converter REDUCES). Content re‑homed + corrected into Systems v1 §3/§4/§5/§11–§13 + Appendices A/B. Kept for provenance only. **Read `PPT-LAT-Systems-v1.md`.**
+
 # PPT-LAT-Systems
 
 **Shannon-Prime Lattice: Systems Architecture**

@@ -1,3 +1,5 @@
+> **⚠️ SUPERSEDED (2026‑06‑02) — now Appendix A of `PPT-LAT-Systems-v1.md`.** The v0 three tear‑down axes are PROVEN (shipped through Phase 2‑L1, `lat-phase-2-l1-closed`). Appendix A carries the current deltas: `sp_arch_info` grew (`preferred_precision` for the fp16 swivel, `mtp_variant`, per‑arch tails), the arch_id enum runs through `QWEN36=8`, `OK_Q4=11` is the PROVEN reducing codec, and the known `qwen3_config` vs `sp_arch_info` arch_struct divergence is flagged for reconciliation. Kept for provenance. **Read Systems v1 Appendix A.**
+
 # PPT-LAT-L1-ABI — v0 draft
 
 The Layer-1 (math core) C ABI contract for Shannon-Prime. Locks the

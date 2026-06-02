@@ -1,3 +1,5 @@
+> **⚠️ SUPERSEDED (2026‑06‑02) — now Appendix B of `PPT-LAT-Systems-v1.md`.** **The biggest correction:** v0 §1 lists "compression on disk" as a *non‑goal* — but the C1 finding (PROVEN this session) is the opposite: the converter **REDUCES** (body ≤ source quant; OK_Q4 gave ~17% reduction + output‑lossless top‑1 on qwen35moe). Appendix B carries the corrected codec‑by‑source transcoder, the `OK_Q4=11` dtype, the arch_id enum through QWEN36=8, the arch_struct growth rule, and the swivel loader. The mmap‑pure load + Spinor 63→64 padding decision are unchanged and PROVEN. Kept for provenance. **Read Systems v1 Appendix B.**
+
 # PPT-LAT-SP-MODEL — `.sp-model` byte layout v0
 
 Companion document to PPT-LAT-L1-ABI-v0. Defines the on-disk byte
