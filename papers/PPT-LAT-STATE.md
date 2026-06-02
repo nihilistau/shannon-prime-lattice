@@ -48,7 +48,8 @@ qwen35moe is a **Gated DeltaNet (Qwen3-Next) + 256-expert MoE + IMRoPE hybrid**,
 | KSTE encoder + Friedman sieve | E_CPU_6, sieve tests | [PROVEN] |
 | Spinor block: KV encode/decode + 64-byte receipt ABI | vht2 / spinor tests; silicon-confirmed | [PROVEN] |
 | Garner 2-prime recombination constants | ntt_crt.c | [PROVEN] |
-| **OK_Q4 reducing codec** — `SP_DT_OK_Q4=11`, transcoder `use_q4` flag, Frobenius Q4 pack/unpack (mixed-prec w/ per-row promote), arena Q4 path (`row_prec[]` 8/4 + `q4_unpack`) | gate `E_PARITY_2` | [PROVEN/WIRED] — *the reducing artifact already exists; C1 wires it for Q4-source archs, does NOT build it* |
+| **OK_Q4 reducing codec** — `SP_DT_OK_Q4=11`, transcoder `add_q4`/use_q4, Frobenius Q4 pack/unpack, arena Q4 path (`row_prec[]` 8/4 + `q4_unpack`) | gate `E_PARITY_2` | [PROVEN/WIRED] |
+| **C1 — qwen35moe `.sp-model` reducing + output-lossless production path** — transcode OK_Q4 -> `sp_model_load` -> `sp_model_to_qwen36` (the loader/SWIVEL) -> `qwen36_forward`. Rank-3 experts via arena (`build_packed_q4` rank-3 fix); F32 router via `sp_as_f32`; arena-aware `expert_mm`. **Measured: 16.33 GB vs 19.7 GB Q4_K_M source (~17% reduction); round-trip top-1 = 5444 == oracle (OUTPUT-LOSSLESS).** | core `66ccab9`; `qwen36_spmodel_top1` | [PROVEN] this session — *first real envelope number* |
 
 ---
 
