@@ -19,7 +19,11 @@ The frozen Spinor block (`sp/spinor_block.h`, LAYOUT v1) is **63 B = 7 vht2_head
 
 **What the block IS (canonical):** `Spinor 63-byte KV-cache block = VHT2 anchor projection + Möbius reorder + int8-quantized anchors + CRC-8 trailer + 0xA5 sentinel`. One ARM Cortex-X2 cache line. The FROZEN on-wire KV record format (`spinor_block.h`, LAYOUT v1). The encode does a **VHT2 anchor projection** of each ≤55-element chunk, Möbius-reorders the anchors, int8-quantizes them into `mobius_body[55]`, CRC-8 over header‖body.
 
-**Finding:** the VHT2 projection is **dimension-preserving** (`NBLK=ceil(HD/55)`; ~55 anchors per ~55 elements — confirmed in `sp_spinor_encode_vec`), so the per-vector compression is **int8-vs-f32 ~2–3×** (~1–1.6× over f16), lossy with a deterministic CRC-checked decode (E_CPU_8). **The per-vector block is NOT 120×.** [PROVEN measurement.]
+**CORRECTION (2026-06-02, against canonical `PPT-LAT-Theory.md`):** there are **TWO distinct KV-compression overlays — I measured the wrong one for the headline.**
+- **(a) KSTE 64-byte signature** (`core/kste/kste_encode.c`, E_CPU_6 / SP_KSTE_KV): maps R^d → **64 bytes regardless of d** (8 anchors + 55 residuals = top-coefficients of the VHT2/Möbius transform). This is the **~130× headline** (theory §3.4, T2, T8.2) — **LOSSY, valid up to ⪯_d-equivalence** (a dominance/dedup signature, NOT a reversible codec). **Production, 21/21 KSTE gate** (theory §10).
+- **(b) `sp_spinor_encode_vec`** (`vht2/spinor_block.c`, E_CPU_8 / SP_KV_SPINOR): dimension-preserving multi-block int8, `NBLK=ceil(HD/55)`, **~2–3×/f32** (HD256 3.25×), more faithful, deterministic CRC decode. **This is what the earlier measurement reported — the wrong primitive for the 130× headline.**
+
+Both are real and trade **fidelity for ratio**. The 130× requires the lossy KSTE signature; the ~3× is the faithful codec. **C2 must decide which the KV path uses** (and whether attention-on-signatures at ⪯_d-granularity is acceptable), then measure end-to-end accuracy. [Measurement of (b) PROVEN; (a) is theory-Production via the KSTE gate, not yet re-measured here.]
 
 **Where 120× would actually come from (the C2 investigation, [TARGET]):** the per-vector int8 block alone cannot give 120×. Candidates to investigate, each gated:
 1. **True anchor-basis compression** — if the 55 `anchor_coeff` are a *low-rank/sparse basis* that reconstructs HD ≫ 55 elements (not 1 int8/element), the ratio rises with HD. Need to confirm whether the encoder is 1:1 quant (current, ~3×) or a genuine basis projection.

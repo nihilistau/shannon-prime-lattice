@@ -6,7 +6,8 @@
 >
 > Status vocabulary: **[PROVEN]** evidence cited · **[WIRED]** built + in-tree, gated · **[DESIGN]** spec'd, unbuilt · **[TARGET]** a number to measure, not yet measured · **[SPECULATIVE]** idea. Promotion requires a gate + an entry here.
 >
-> Companion docs: **RFC-001** (the architecture/why) · the **C1–C6 contracts** (forward work) · per-cell **SESSION-CLOSED-*.md** (closure detail) · the **roadmap** (sequence). This ledger is the *backward* record; the contracts are the *forward* plan.
+> **READ FIRST, before any work: `papers/PPT-LAT-Theory.md`** — the canonical theory (the 13-step PPT substitution, O_K/Q(√−163), CRT primes, the frozen Spinor + KSTE formats, theorems T1–T8, production status). Skipping it caused real drift this session (a fresh agent inverted the PPT/Lattice hierarchy AND measured the wrong Spinor primitive — both because the theory wasn't read). It IS in the repo; read it.
+> Companion docs: **PPT-LAT-Theory.md** (the math/why — FIRST) · **RFC-001** (architecture synthesis) · the **C1–C6 contracts** (forward work) · per-cell **SESSION-CLOSED-*.md** (closure detail) · the **roadmap** (sequence). This ledger is the *backward* record; the contracts are the *forward* plan.
 
 Last updated: 2026-06-02.
 
@@ -91,7 +92,7 @@ These justify the project and are **not yet measured here**. They are the point.
 
 | Target | Where measured | Status |
 |---|---|---|
-| Spinor inline KV compression ratio | C2 | **[MEASURED 2026-06-02]** The Spinor 63-B KV block = **VHT2 anchor projection + Möbius reorder + int8-quantized anchors + CRC-8 trailer + 0xA5 sentinel** (one Cortex-X2 cache line; the FROZEN on-wire KV record format, `spinor_block.h`). `NBLK=ceil(HD/55)`; the VHT2 projection is dimension-preserving (~55 anchors / ~55 elements), so the per-vector byte ratio is **int8-vs-f32 ~2–3×** (HD256 3.25×, HD128 2.71×, HD64 2.03×), deterministic CRC decode. **The per-vector block is NOT 120×** — the "120× / unlimited context" is the projection-enabled quant **× Ring-2 offload (effective context vs bounded RAM)**; the offload is where the big multiplier lives. Measure Ring-2 next (C2.0). |
+| KV compression — TWO overlays (per `PPT-LAT-Theory.md` §3–4, T2, T8.2) | C2 | **[CORRECTED 2026-06-02 against canonical theory]** (a) **KSTE 64-byte signature** (`core/kste/kste_encode.c`, E_CPU_6/SP_KSTE_KV): R^d → 64 B regardless of d (8 anchors + 55 residuals, top-coefficients) = the **~130× headline, LOSSY up to ⪯_d** (dominance/dedup signature, NOT a reversible codec). **Production, 21/21 KSTE gate** per theory §10. (b) **`sp_spinor_encode_vec`** (`vht2/spinor_block.c`, E_CPU_8/SP_KV_SPINOR): dimension-preserving multi-block int8, **~2–3×/f32**, more faithful (what an earlier C2 step measured — the WRONG primitive for the headline). Both real; trade fidelity for ratio. C2 must decide which the KV path uses (lossy-130× signature vs faithful-3× codec) per accuracy need. |
 | `.sp-model` converter REDUCTION ratio (≤ source; sub-Q4) | C1 | [TARGET] |
 | tok/s vs the bar: **beat llama.cpp + old SP hier-KV @ 40 tok/s, Qwen3.6** | system gate (envelope assembled) | [TARGET] |
 | Ring-2 disk offload + residual recall cost | C2/C3 | [TARGET] |
