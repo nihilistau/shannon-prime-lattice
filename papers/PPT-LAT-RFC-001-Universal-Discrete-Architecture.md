@@ -1,198 +1,169 @@
-# RFC-001: The Shannon-Prime Universal Discrete Architecture
+# RFC-001: PPT-ARM — the Shannon-Prime inference architecture (and the Lattice that fell out of it)
 
-**Status:** DRAFT for review/critique/iteration (elevating from mobile PoC + per-arch cells to a generalized, formalized framework).
-**Author:** Claude (SP hat), 2026-06-02, synthesizing operator intent + a Gemini RFC draft + the empirical record.
-**Disposition:** This is a *constitution + contract skeleton*, not a decree. Every §ends with OPEN QUESTIONS. The next session is expected to fix, cut, and harden it. Nothing here supersedes a frozen spec until it is itself frozen.
+**Status:** DRAFT for review/critique/iteration. v2 — hierarchy corrected (PPT-ARM is primary; the Lattice is its natural extension).
+**Author:** Claude (SP hat), 2026-06-02, synthesizing operator intent + the empirical record. Supersedes the v1 framing that wrongly centered the Lattice.
+**Disposition:** A constitution + contract skeleton, not a decree. Every §ends with OPEN QUESTIONS. Nothing here is frozen until it is itself frozen.
 
-> Reading rule (SP discipline): claims in this doc are tagged **[PROVEN]** (silicon/oracle-confirmed), **[DESIGN]** (sound but unbuilt), or **[SPECULATIVE]** (idea, not yet load-bearing). Do not let a [DESIGN] or [SPECULATIVE] drift into a [PROVEN] without a gate. This is the anti-amnesia fence.
-
----
-
-## 0. What this project actually is (the one paragraph)
-
-Shannon-Prime / PPT-ARM-LAT is **a discrete-integer (Z_q) substrate for transformer inference and continual learning**, whose product is *the math and its primitives*, not a speedup. A model is reduced to **one canonical discrete object (the O_K object)** carried at its true information content, from which **every backend (CPU AVX-512, CUDA PTX, Vulkan, Hexagon HVX, and any future island) computes bit-identical output**. Floating point is relegated to plumbing (routers, final temperature/softmax). The system's reason to exist is **composability, lossless portability, mesh-shareable continual learning, and heterogeneous-silicon parallelism** — *not* "NTT beats fp32." Everything must live in **bounded crates/engines** with frozen seams.
+> Tagging rule (anti-amnesia fence): **[PROVEN]** = silicon/oracle-confirmed · **[DESIGN]** = sound but unbuilt · **[TARGET]** = a number we are aiming at, not yet measured · **[SPECULATIVE]** = idea, ungated. A claim may not move toward [PROVEN] without a gate.
 
 ---
 
-## 1. First principles (the constitution)
+## 0. What this project actually is (corrected)
 
-These are load-bearing invariants. Violating one is a bug, not a tradeoff.
+**PPT-ARM is the product.** It is a **drop-in replacement for the standard transformer's ~13-step forward pass *and* its KV/memory architecture**, which we **bolt onto existing models** by transcoding their weights into a *smaller* discrete artifact. A bolted-on model keeps its exact output but gains the PPT-ARM envelope:
 
-1. **The math is the product.** Primitives (Barrett, Frobenius lift Q4/Q8, NTT-CRT, KSTE, VHT2/Spinor, Garner) are the deliverable. Models, backends, and the daemon are *consumers* of the primitive set.
-2. **O_K one-object, zero fidelity loss.** A weight tensor has exactly one canonical discrete representation. No backend may hold a *different* numerical truth. Dequant-to-fp32 in RAM as a *storage* form is forbidden (the **zero-copy / zero-inflation invariant**). fp is allowed only as transient per-matmul *compute scratch* that is streamed, never persisted. **[PROVEN]** in the core forwards; **[DESIGN]** as a uniform cross-backend guarantee.
-3. **Bit-exact composability is the gate, not speed.** The closure test for any backend/arch is *bit-identical output vs the reference* (greedy top-1 argmax for arch cells; byte-equal logits for backend cells), never a wall-clock number. **[PROVEN]** — gemma4 (M_GEMMA4), qwen35moe (M_QWEN36), hex↔ARM (WIRE-HEX-FINISH).
-4. **fp is plumbing; Z_q is truth.** The substrate's value is *structural*, not per-op throughput. Discreteness buys exactness, compression, mesh-shareability, CRT-shardability, and PoUW verifiability. It does **not** buy "NTT faster than fp32 dot" at HD ≤ 256 — that claim is **empirically false** and must never be re-asserted (see §2).
-5. **Bounded crates, frozen seams.** math-core (primitives) ▸ arena (O_K container) ▸ L1 ABI (the seam) ▸ backends ▸ L3 Rust daemon (orchestration). Each crate is replaceable behind its seam. No crate reaches across a seam. Anti-contamination is binding: this is a rewrite; never fall back to legacy SP repos.
-6. **Surface upstream, never silently revise a gate.** If a primitive can't meet a spec'd gate, the spec is wrong or the silicon is — say so; do not tune fixtures until a number passes.
+1. **Inline Spinor-block KV compression (~120× [TARGET]) → effectively unlimited context.**
+2. **Second-ring offload** — KV/state to disk and back, **residual + CRT bandwidth bypass**, so multiple devices (dual GPU / CPU / phone) compute on residues and recombine **without shipping full tensors**.
+3. **Speed on integer silicon pipes** (vrmpy / VNNI / dp4a), **long context**, **bit-exact**, **compressed** — all at once.
 
-**The honest value-proposition list** (what the substrate IS load-bearing for — replaces the discredited "NTT is fast" story):
-(a) **Composability** — bit-exact across CPU/CUDA/Vulkan/Hexagon and mesh peers. **[PROVEN]**
-(b) **Compression** — Q4/Q8 + Frobenius lift, weights never inflated. **[PROVEN]**
-(c) **Mesh-shareable continual learning** — Spinor receipts + canonical Garner order. **[PROVEN]** (receipt ABI) / **[DESIGN]** (load-time fusion).
-(d) **Heterogeneous-SoC parallelism** — CRT-shard a matmul across K islands, Garner-recombine, no mid-compute sync (Trick #1). **[DESIGN]**, dispatch primitives **[PROVEN]**.
-(e) **PoUW verification** — KSTE / Friedman-sieve integer fingerprints as proof-of-useful-work. **[PROVEN]** (encoder + ledger).
+The **Lattice (LAT)** — the broader Z_q discrete substrate, the mesh, the PoUW ledger, cross-backend composability — **fell out of the PPT-ARM math naturally**. It is real and beautiful, but it is the *extension*, not the center. **PPT-ARM is load-bearing and primary; LAT is what the substrate makes possible once PPT-ARM exists.**
 
-**OPEN QUESTIONS §1:** Is (d) a *first-class* pillar or an optimization? (Operator: load-bearing.) Should "bit-exact" relax to "bit-exact under fixed sampling+backend" as the formal definition (cf. lattice-decode-determinism preconditions)?
+**The bar (north-star gate).** The framework is pointless if a user can `llama.cpp` + the old SP hierarchical KV cache + a custom lmstudio build and run Qwen3.6 at **40+ tok/s**. So: **bit-exact correctness is table stakes (the precondition that the bolt-on preserves the model). The WIN is the envelope — more context per byte, faster on the same silicon, longer context than fits in RAM, and multiple devices acting as one.** A PPT-ARM result that matches llama.cpp's tokens at equal-or-slower speed with no compression/context/multi-device gain has *failed*, however bit-exact.
 
 ---
 
-## 2. The substrate: Z_q and the cyclotomic ring R_q
+## 1. PPT — the 13-step replacement forward
 
-**The container of all compute is the negacyclic polynomial ring** R_q = Z_q[X]/(X^N + 1). This is the *Universal Topography*: pin every op to this ring and an H100, an M4, and a Hexagon DSP produce the same bits. This framing (Gemini §1) is **correct** — and Gemini's own correction is correct too: **stop selling NTT as a faster matmul.**
+Standard transformers run ~13 sequential steps per layer (embed, RMSNorm, Q/K/V proj, QK-norm, RoPE, attention, O-proj, residual, norm, FFN gate/up/down, residual). **PPT replaces each with a discrete Z_q equivalent**, so the whole forward runs in integer rings on the platform's vector pipes, bit-exact across backends, with the KV path compressed.
 
-Honest constraints that the framing MUST carry (these are [PROVEN] and have bitten us):
-- **N ≤ 512 with the frozen primes.** Negacyclic NTT needs 2N | (q−1); both frozen primes have v₂(q−1)=10 → max N=512. N=1024+ is *mathematically impossible* without a Phase-5 prime change (cascades through every Garner constant + bit-identity gate). Long context ⇒ tiled N=512, or Bluestein for non-power-of-2 ≤ 512. Mixed-radix/Good-Thomas are invalid for the frozen primes. (ref: NTT frozen-prime cap.)
-- **The NTT win is over HD (polynomial length), not ctx (attention count).** At HD ≤ 256, NTT-attention is *slower* than fp32 dot (~6× per dot at HD=64; measured 0.15–0.72× of fp32). The O(N log N) crossover doesn't arrive until HD ≳ 1024. For HD with odd factors (96/288/384), direct Barrett integer dot is the boring-correct answer. **Do not put NTT on the single-island latency path expecting a win.** (ref: ntt-substrate-win-is-over-HD-not-ctx.)
-- **Where the ring earns its keep:** cross-backend *exactness* (the same NTT/Barrett gives the same bits everywhere), CRT-shardability, and *future* HD≥1024 / heavy-poly regimes — not today's chat-shape latency.
-
-**OPEN QUESTIONS §2:** The cyclotomic-ring story deserves its own short paper (operator flagged the current treatment as thin). What is the *precise* boundary where ring-NTT beats Barrett-direct on each backend (it differs: HVX vrmpy vs AVX-512 VNNI vs CUDA dp4a)? Should N>512 be unblocked via a third prime now (Phase-5) or stay deferred?
-
----
-
-## 3. The entropy-dense container (the O_K object) — operator's killer insight, SP-corrected
-
-**The problem:** packing a 4.5-bit Q4_K weight into an 8-bit container pads it with zeros — a Shannon-bound violation. You pay 8 bits of storage/bandwidth for 4.5 bits of entropy.
-
-**The resolution (and a correction to the RFC draft):**
-
-- **On disk: keep the weight at its true entropy.** Q4_K stays Q4_K (~19 GB for the 35B). Do not expand to OK_Q8 on disk — that is *literally* the padding waste, and it is *also* what just disk-blocked the qwen35moe `.sp-model` (35 GB > free space). **[PROVEN constraint, this session.]**
-- **In RAM/cache/VTCM: the container is an ALU adaptation, and spare bits carry DISTINCT, compute-useful information — never a redundant copy.** This is the entropy-reclamation principle.
-
-**Correction to Gemini's "RNS split" (§3.1 of the draft):** storing `W mod p₁ | W mod p₂` for the *same* W in 8 bits is **not** entropy reclamation — it is the same 4.5 bits encoded twice in two bases (redundant, by CRT). RNS/CRT residue *packing of a single weight* buys nothing for storage. CRT is for (i) **widening the accumulator/intermediate modulus** during compute, or (ii) **sharding *different* data across islands** (§4) — not for duplicating one weight. The honest "fill the spare bits with useful SP math" options are those that carry **independent** information:
-  - **(A) Interleaved scale [DESIGN, high value].** `low nibble = discrete weight`, `high nibble = local Z_q/Frobenius scale exponent`. One byte load yields weight *and* its block scale → halves the matmul's memory fetches (no separate scale-block fetch). This is real entropy use — the scale is distinct information.
-  - **(B) Routing/topology metadata [DESIGN, MoE-specific].** For 256-expert MoE, pack expert-stride / sparsity bits so the DMA engine knows the next token's stride without a branch. Distinct info, real.
-  - **(C) CRT-shard residue for a *different* island [DESIGN].** Only meaningful across Trick #1 — the byte carries this island's residue of *its* shard, not a copy.
-  - **(D) Zeckendorf-sparse weight code [SPECULATIVE].** "No two consecutive 1s ⇒ fewer HVX ops" is weak — encode/decode cost likely dominates; needs a gate before it's load-bearing.
-
-**The O_K object is defined as:** the canonical discrete weight + its provenance, stored at true entropy, with a documented *runtime expansion contract* per backend (how spare-bit metadata is injected in cache and masked before the ALU op). The mask cost MUST be measured — if masking eats the fetch savings, the scheme fails its gate.
-
-**Immediate operating decision (affirming Gemini, corrected):** **lock the disk write to the source quant (Q4_K / OK_Q4), and move all entropy-dense container tricks into the runtime loader / cache-staging path** where we can actually exploit the spare bits without paying disk for them. The disk holds truth at min-entropy; the cache holds the ALU-adapted O_K object.
-
-**OPEN QUESTIONS §3:** Does interleaved-scale (A) actually net-win after the per-element mask op on each backend (HVX `lop3`/`and`, AVX `vpand`, CUDA)? What is the `.sp-model` on-disk format for "min-entropy + runtime-expansion contract" (this needs a v1 format spec)? Is OK_Q4 (vs OK_Q8) the right default disk form for all archs now?
-
----
-
-## 4. Generalized heterogeneous compute (Trick #1, off the phone)
-
-Abstract the S22 into **K Compute Islands** (CPU-AVX, NPU, GPU, DSP, FPGA, mesh peer). The orchestrator detects islands and shards by **co-prime moduli** q₁…q_k; each island computes its residue in isolation; ARM/host **Garner-recombines**; no cross-island sync until recombination. Wall-clock win = **parallel silicon utilization**, not per-op NTT (§2). **[DESIGN]**; the cDSP `mod_q` matmul + NPU INT dispatch + Garner constants are each **[PROVEN]** in isolation; the *combination* is the unbuilt proof (Sprint TRICK-1).
-
-- **Stateless collision-free partition via Beatty/φ [DESIGN, bounded].** A φ-driven Beatty partition (`⌊nφ⌋`, `⌊nφ²⌋`) cleaves an integer address/task space into two sequences that *provably never collide* (Rayleigh), with zero lookup state. Legitimate use: KV-block / expert / task routing across islands without a lock table. **Boundary:** CRT already gives collision-free *residue* split; Beatty is for *address/task* partition — a different layer. Don't conflate them. (ref: sp-uses-phi-extensively — SP already uses φ in Fibonacci-Prime DHT, KV sub-sampling, RoPE-φ, Halton; this generalizes those, it does not invent them.)
-- **Activation quantization is part of the contract** (Gemini's tweak #1, correct): both DSP and NPU want integer inputs; the host dynamically quantizes fp32 activations → int8, and the Garner-recombined integer is dequantized by `weight_scale × activation_scale`. Missing the combined scale ⇒ instant numerical-equivalence failure.
-- **Numerical-equivalence is the critical gate**, not parallel-win. Trick #1 must match the fp32 reference within Q8 rounding; a deviation means a Garner/sign/scale bug. Parallel-win can fail honestly (NPU init-dominated) without invalidating the pattern.
-
-**OPEN QUESTIONS §4:** Should the "ARM Garner library" be promoted into the L1 ABI as a first-class recombination service backends compose against? Is 2-prime the ceiling, or do we want k-prime island scaling (q₁ DSP, q₂ NPU, q₃ GPU)? How does the mesh (remote peer as an "island") fold into the same Garner formula (the recursive-CRT-mesh trick)?
-
----
-
-## 5. MTP as a system pillar (not a bolt-on) — SP-corrected
-
-**Reality anchor:** qwen35moe carries a NextN/MTP decoder block (loaded-not-run in the base forward); the `-Draft` GGUF is the speculative pairing. **[PROVEN]** (this session: the MTP block tensors + the spec exist).
-
-**Correction to Gemini's "parallel roots of a polynomial" framing:** that is poetic but not how MTP works. MTP = **draft-then-verify speculative decode**, made *exact* by the discrete substrate. The SP-specific integration (this is the real, defensible framing):
-- **Draft head** = the NextN block (or the smaller Draft model), proposing K future tokens cheaply.
-- **Target verify** = one batched forward over the drafted block (the cost MTP amortizes).
-- **Deterministic, byte-exact accept/reject** — because draft and target both live in Z_q, acceptance is *exact token-id equality*, not a probability ratio. No sampling-temperature ambiguity on the accept path.
-- **Transactional rewind via Spinor blocks** — a rejected speculation rolls back the KV/state to the last committed Spinor receipt, byte-exactly. This is where MTP *needs* the substrate: the rewind is lossless and verifiable. **[DESIGN]**, Spinor ABI **[PROVEN]**.
-- **System placement:** MTP is not a decode-loop hack; it is a **transaction protocol** in the L3 daemon (propose → verify → commit/rollback) with the Spinor ledger as the journal. Phase 4-MTP.
-
-**OPEN QUESTIONS §5:** Does the accept gate stay byte-exact under temperature>0 (probably needs a discretized-sampling contract)? Is the draft a separate model or the in-model NextN head as the default? How does MTP compose with Trick #1 (draft on island A while target verifies on islands B/C)?
-
----
-
-## 6. MeMo as a system pillar — memory + continual learning, SP-corrected
-
-Operator intent: **MeMo is core, "memo as memory is important," and with MTP, Phase-4-SPEC is redundant.** **[PROVEN intent]**, elevated to core in the roadmap.
-
-Two layers, both first-class:
-- **(i) Memory (retrieval + portable profiles).** A user's memory is a localized set of facts/context + **a set of discrete Z_q additive offsets** ("Spinor receipts") that are *algebraically fused at Frobenius-lift load time*. Because additive deltas in Z_q **commute and associate**, a memory profile is order-independent and **peer-shareable byte-exactly** (mesh-portable). This is the elegant, defensible core. **[DESIGN]** (load-time fusion) / **[PROVEN]** (receipt ABI, canonical Garner order, mesh determinism).
-- **(ii) Continual learning without gradient drift.** Traditional LoRA/SFT is continuous gradient drift — it destroys bit-exactness. MeMo replaces it with **append-only algebraic receipts**: the base frozen Z_q weights never change; learning = accumulating commutative integer deltas + a PoUW ledger entry for provenance. **[DESIGN]**, ledger **[PROVEN]** (M.4).
-
-**Honest caveat:** "learning = matrix addition in Z_q" is clean *only if* the update genuinely decomposes into an additive low-rank Z_q delta. Whether a useful continual-learning signal can be captured purely as commutative additive receipts (vs. needing a non-commutative composition) is an **open research question** — flag as [SPECULATIVE] until a gate shows a real task improving via fused receipts with bit-exact reproducibility.
-
-**OPEN QUESTIONS §6:** What is the receipt format (delta-rank, scale, provenance hash) as a frozen contract? Does fusion happen at load (Frobenius stage) or as a runtime overlay (cf. the KSTE-KV overlay)? How does MeMo relate to the two-tier working-memory/ledger pattern (CLAUDE.md + memory/ dir) at the *agent* level vs the *model* level — are they the same mechanism or analogues?
-
----
-
-## 7. The φ / Wythoff / Beatty / Zeckendorf / Stern-Brocot machinery — precise roles
-
-Operator intuition is right that this bridges rationals↔irrationals inside an integer-only engine. SP-hat discipline: **assign each tool a bounded, gated role; fence against "a solution looking for a problem"** (operator's own earlier instinct). Anchor: SP *already* uses φ extensively (Fibonacci-Prime DHT, KV sub-sampling `⌊k·φ·N⌋`, RoPE-φ, Halton/Sobol). This section *organizes* that, it does not invent it.
-
-| Tool | Role in the lattice | Status |
+| Standard step | PPT replacement | Status |
 |---|---|---|
-| **Stern-Brocot / Fibonacci convergents of φ** | Integer-only approximation of irrational scale constants on islands with no fp (cDSP). Use `F_{n+1}/F_n` instead of a float. | [DESIGN] real |
-| **Beatty / Rayleigh partition (φ, φ²)** | Stateless, collision-free address/task/expert sharding across islands & KV blocks (§4). | [DESIGN] real |
-| **Zeckendorf (base-φ integer rep)** | Sparse weight/index encoding (no consecutive 1s). | [SPECULATIVE] — needs a gate; encode/decode cost may dominate |
-| **Continued-fraction of φ = [1;1,1,…]** | Why φ is the *maximally irrational* hub ⇒ best worst-case equidistribution for QMC sampling / sub-sampling. | [DESIGN] (already in Halton/Sobol upgrade) |
+| Weight storage | O_K object: Frobenius-lifted Q4/Q8 packed, **smaller than source** | [PROVEN] pack; [DESIGN] sub-Q4 |
+| Q/K/V/O/FFN matmul | `mod_q` integer matmul (Barrett) on vrmpy/VNNI; dequant only logits | [PROVEN] HVX vrmpy 1.04× ARM fp32; [DESIGN] full int-end-to-end |
+| RoPE | integer / φ-RoPE (Fibonacci-convergent angle approximation) | [DESIGN] |
+| Attention scores | Barrett-direct dot (HD ≤ 256) or NTT-attention (HD ≳ 1024 only) | [PROVEN] direct; NTT [PROVEN]-but-not-faster at chat HD |
+| **KV cache** | **Spinor-block inline compression (§2) — the headline** | [PROVEN] encode/decode; [TARGET] 120× |
+| Norms | integer RMSNorm | [PROVEN] |
+| Logits | the only fp dequant point | [PROVEN] |
 
-**Rule:** any φ-construct entering a hot path must show a *measured* win vs the boring integer alternative, or it stays a [SPECULATIVE] note. The golden ratio is a beautiful hub; it is not a free lunch.
+**Bolting on a model = the arch cells.** gemma4, qwen35moe (Qwen3.6-35B-A3B), gemma3, qwen3, qwen2.5 each got a PPT forward proven **argmax bit-exact to llama.cpp** (M_GEMMA4, M_QWEN36, …). **[PROVEN].** This is the *foundation*, not the deliverable: it proves PPT reproduces the model exactly, which is the licence to then compress its KV, extend its context, shard it across devices, and run it on integer pipes. Bit-exact is the floor we build the envelope on.
 
-**OPEN QUESTIONS §7:** Which of these is load-bearing *now* (Beatty-sharding for Trick #1 routing is the strongest candidate) vs. parked research? Does the Fibonacci-Prime DHT already subsume the "Beatty routing" need, or are they distinct?
+**OPEN QUESTIONS §1:** which steps are *still* fp plumbing in the current shells (router top-k must stay f32; what else legitimately must)? Is the per-arch forward the unit of "bolting on," or do we factor a generic PPT forward + per-arch deltas so a new model is "a classifier + a delta table"?
 
 ---
 
-## 8. Crate / engine boundaries (the bounded-engine contract)
+## 2. ARM — the memory architecture (Spinor KV + the two rings)
+
+This is where PPT-ARM earns its name and most of its value.
+
+### 2.1 Spinor-block inline KV compression — the headline capability
+Each cached K/V head-vector is encoded **inline** to a Spinor block (the 63-byte block / 0xA5-sentinel cache-line ABI), losslessly under the Z_q + Frobenius geometry, decoded on the fly during attention. **Target ~120× → context becomes bandwidth/disk-bound, not RAM-bound → effectively unlimited.** `sp_spinor_encode_vec`/`decode_vec` are wired in the reference attention path. **[PROVEN]** mechanism / **[TARGET]** ratio — *the compression ratio at bit-exact KV is the single most important number to measure and is not yet pinned.*
+
+### 2.2 The two rings (corrected — Ring 2 is for PPT, not the ledger)
+- **Ring 1 — active compute.** The Z_q working set: weights (O_K object) + the live Spinor-compressed KV window. Integer matmul + discrete attention happen here.
+- **Ring 2 — offload / recall.** KV and state **spill to disk and are recalled**; **residuals + CRT** make the spill near-zero-bandwidth and make **multiple devices act as one**: each device holds/works a residue (mod q_i) and recombines via Garner, so you **ship residues, not full tensors** — dual GPU, CPU+GPU, or phone+host collaborate with inter-device bandwidth virtually eliminated. **This was always Ring 2's design.** The PoUW ledger and mesh-shareable memory are *tenants* of Ring 2, not its purpose.
+
+### 2.3 Why this beats "llama.cpp + hier-KV @ 40 tok/s"
+llama.cpp can't: (a) hold context beyond RAM at bit-exact via 120× inline compression; (b) split one model across two GPUs with **no NVLink-class bandwidth** by exchanging CRT residues; (c) recall offloaded KV from disk cheaply via residual reconstruction. PPT-ARM's reason to exist is exactly this envelope. **The gates for PPT-ARM are therefore capability + performance gates (compression ratio, tok/s at long ctx, multi-device scaling), with bit-exact as an invariant underneath — not bit-exact as the headline.**
+
+**OPEN QUESTIONS §2:** measured Spinor KV compression ratio at bit-exact? Ring-2 residual-recall cost vs. recompute? Is the dual-GPU "ship residues" path a 2-prime CRT split of the *weights*, the *activations*, or both? What's the bandwidth model that says CRT-residue exchange < full-tensor NVLink?
+
+---
+
+## 3. The O_K object + the converter (REDUCES size — corrected)
+
+**The offline converter REDUCES on-disk size; it must never inflate.** My earlier OK_Q8 transcode was backwards — 1 byte/weight is *larger* than a Q4_K source, which is exactly why it ballooned to ~35 GB and disk-blocked. That was a wrong-direction artifact, not a disk problem.
+
+**Principle:** the `.sp-model` artifact is **≤ the source quant** — OK_Q4 at minimum, ideally **sub-Q4 via SP compression** (Frobenius lift + Spinor structure + per-row scale sharing). The disk holds the O_K object at **minimum entropy**; the **runtime loader expands into Ring 1's ALU-adapted container in cache/VTCM**, where spare bits may carry **distinct, compute-useful** info (interleaved block-scale to kill the separate scale fetch; MoE routing/stride; a *different* island's CRT residue) — **never a redundant copy of the same weight** (storing `W mod p1 | W mod p2` for one W is the same entropy twice — a non-reclamation). Any spare-bit scheme ships only if its per-element mask cost is *measured* to net-win.
+
+**Immediate operating decision:** **lock the disk write to OK_Q4 / source-quant-or-smaller; do all entropy-dense container tricks in the runtime cache loader.** This both honors "the converter reduces size" and unblocks the qwen35moe `.sp-model` (OK_Q4 ≈ 20 GB fits; OK_Q8 ≈ 35 GB never should have been the target).
+
+**OPEN QUESTIONS §3:** what is the true sub-Q4 SP compression ratio achievable at bit-exact (this is a headline number)? `.sp-model` v1 format = min-entropy body + runtime-expansion contract — needs a frozen spec (contract C1). Does the weight converter and the Spinor KV compressor share a codec?
+
+---
+
+## 4. Heterogeneous compute — Trick #1, generalized (this is Ring-2's compute face)
+
+K **Compute Islands** (CPU-AVX, NPU, GPU, DSP, mesh peer) each compute a residue (mod q_i) of the same matmul; host **Garner-recombines**; no cross-island sync until recombination. The wall-clock win is **parallel silicon + eliminated inter-device bandwidth** (ship residues, §2.2), not per-op NTT. **[DESIGN]**; cDSP `mod_q`, NPU INT dispatch, Garner constants each **[PROVEN]** in isolation; the combined proof is Sprint TRICK-1.
+- **Activation quant is part of the contract:** islands want int inputs; host quantizes fp32→int8; dequant by `weight_scale × activation_scale` after Garner (miss it → instant equivalence failure).
+- **Numerical-equivalence is the critical gate** (Garner sign/scale edge cases are where CRT projects die); parallel-win may fail honestly (NPU init-dominated) without invalidating the pattern.
+- **Beatty/φ stateless collision-free partition** for routing KV blocks / experts / tasks across islands without a lock table (bounded role; SP already uses φ here — we organize, not invent).
+
+**OPEN QUESTIONS §4:** promote the ARM Garner recombination into the L1 ABI as a first-class service? 2-prime vs k-prime island scaling? mesh peer as an island via recursive CRT?
+
+---
+
+## 5. MTP — a system pillar (transaction protocol, not a decode hack)
+
+qwen35moe carries a NextN/MTP block (loaded-not-run) + a `-Draft` pairing **[PROVEN]**. MTP = **draft → verify → commit/rollback**, made exact by the discrete substrate: draft head proposes K tokens; one batched target forward verifies; **acceptance is byte-exact token-id equality (not a probability ratio)**; rejection **rolls back KV/state to the last committed Spinor block, losslessly** (Ring-1/Ring-2 transactional rewind). It belongs in the L3 daemon as a **transaction protocol with the Spinor journal**, composing with Trick #1 (draft on island A, verify on B/C). **[DESIGN]**, Spinor ABI **[PROVEN]**.
+
+**OPEN QUESTIONS §5:** byte-exact accept under temperature>0 (needs a discretized-sampling contract)? in-model NextN head vs separate draft as default?
+
+---
+
+## 6. MeMo — a system pillar (memory + continual learning on Ring 2)
+
+Operator: MeMo is core; "memo as memory"; with MTP, the old Phase-4-SPEC is redundant. Two first-class layers:
+- **Portable memory profiles:** a user's memory = facts/context + a set of **commutative Z_q additive Spinor receipts** fused at Frobenius-lift load. Additive deltas commute+associate ⇒ order-independent, **peer-shareable byte-exactly** over the mesh (a Ring-2 tenant). **[DESIGN]** fusion / **[PROVEN]** receipt ABI + canonical Garner order + mesh determinism.
+- **Continual learning without gradient drift:** base frozen Z_q weights never change; learning = appended algebraic receipts + a PoUW ledger entry. **[DESIGN]**, ledger **[PROVEN]**.
+
+**Honest caveat [SPECULATIVE]:** "learning = matrix addition in Z_q" is clean *only if* the useful update decomposes into a commutative additive low-rank delta. Whether a real continual-learning signal survives that constraint is unproven — gate it.
+
+**OPEN QUESTIONS §6:** receipt format (rank, scale, provenance) as a frozen contract; load-time fusion vs runtime overlay (cf. KSTE-KV overlay); model-level MeMo vs agent-level two-tier memory — same mechanism or analogue?
+
+---
+
+## 7. The φ / Wythoff / Beatty / Zeckendorf machinery — bounded roles
+
+SP already uses φ extensively (Fibonacci-Prime DHT, KV sub-sampling `⌊k·φ·N⌋`, RoPE-φ, Halton/Sobol) — this section *organizes* it. Each tool gets a gated role; fence against "a solution looking for a problem."
+
+| Tool | Role | Status |
+|---|---|---|
+| Stern-Brocot / Fibonacci convergents of φ | integer-only approximation of irrational scales/angles on fp-less islands | [DESIGN] |
+| Beatty/Rayleigh (φ, φ²) partition | stateless collision-free KV/expert/task sharding across islands (Ring 2) | [DESIGN] |
+| Continued-fraction φ=[1;1,1,…] | maximal irrationality ⇒ best worst-case equidistribution for QMC sub-sampling | [DESIGN] (in Halton upgrade) |
+| Zeckendorf base-φ rep | sparse weight/index encoding | [SPECULATIVE] — encode/decode cost likely dominates; gate first |
+
+**Rule:** any φ-construct on a hot path must beat the boring integer alternative *measured*, or it stays a note.
+
+---
+
+## 8. Crate boundaries (bounded engines)
 
 ```
-┌ math-core (C) ── PRIMITIVES: Barrett, Frobenius lift Q4/Q8, NTT-CRT (N≤512),
-│                  KSTE, VHT2/Spinor, Garner. The reference forward = validation oracle.
-│                  Property: bit-exact, no backend/arena coupling. THE product.
-├ arena (C) ───── the O_K object: packed Q4/Q8 + Frobenius scales; the runtime
-│                  entropy-dense container (§3); zero-inflation invariant.
-├ .sp-model (fmt) ─ on-disk min-entropy form + runtime-expansion contract + arch_struct
-│                  (sp_arch_info, 256-byte reserved tail, grows w/o format bump).
-├ L1 ABI (frozen) ─ the seam: sp_model_load/unload, sp_session_*, the forward entrypoint,
-│                  arch-query, and (PROPOSED) the Garner recombination service (§4).
-├ backends ─────── CPU AVX-512 (VNNI), CUDA (dp4a/PTX), Vulkan, Hexagon (vrmpy/HVX).
-│                  CONTRACT: same primitive set, same packed weights, BIT-EXACT output.
-│                  Current gap: per-backend forward *shells* call scalar f32, not the
-│                  silicon-confirmed integer primitives (the WIRE-* sprints close this).
-└ L3 daemon (Rust) ─ orchestration ONLY: parse .sp-model, island detection + Beatty
-                   dispatch, MTP transaction protocol, MeMo ledger, mesh/QUIC peering,
-                   Garner recombination. Safety + layout + scheduling. No math truth here.
+math-core (C)  — PRIMITIVES: Barrett, Frobenius lift, NTT-CRT (N<=512), KSTE, Spinor (KV + receipt),
+                 Garner. Reference forward = validation oracle. THE substrate of PPT.
+arena (C)      — O_K object: packed, <= source size; runtime entropy-dense container.
+.sp-model fmt  — min-entropy disk body + runtime-expansion contract + arch_struct.
+L1 ABI (frozen)— seam: load/unload, session, forward entry, arch-query, (PROPOSED) Garner service,
+                 (PROPOSED) Ring-2 offload/recall + Spinor-KV API.
+backends       — CPU AVX-512(VNNI), CUDA(dp4a/PTX), Vulkan, Hexagon(vrmpy). SAME primitives, BIT-EXACT.
+L3 daemon(Rust)— orchestration: island detect + Beatty dispatch, MTP transactions, MeMo ledger,
+                 Ring-2 disk/mesh offload, Garner recombine. No math truth here.
 ```
 
-**The single most important current gap (cross-track, [PROVEN diagnosis]):** *the primitives exist; the per-platform forward shells don't call them.* `sp_hex_forward` (and the CPU/CUDA/Vulkan analogues) are scalar-f32 placeholders. The `WIRE-*` sprints replace those calls with the silicon-confirmed integer kernels. HX.3b already did this for Hexagon (vrmpy) and flipped 3.63× slower → 1.04× faster than ARM fp32 — **the project-central proof that the integer substrate matches/beats fp32 on real silicon.** **[PROVEN, reported]**. The same template applies to AVX-512 (VNNI), CUDA, Vulkan.
-
-**OPEN QUESTIONS §8:** Should `sp_model_to_<arch>` bridges + the arena-expert path be unified so a new arch is "add a forward + a transcode classifier" with everything else generic? Is the Garner service in-ABI or a Rust-only orchestration concern?
+**The current cross-track gap [PROVEN diagnosis]:** the primitives exist; the per-backend forward *shells* still call scalar f32 (HX.3b fixed Hexagon → vrmpy → 1.04× over ARM fp32; AVX/CUDA/Vulkan pending — the `WIRE-*` sprints). **Until the shells call the integer + Spinor-KV primitives, none of the PPT-ARM envelope (compression/speed/context) is realized — only correctness is.**
 
 ---
 
-## 9. Honest scorecard (no spin)
+## 9. Honest scorecard
 
-**Proven (oracle / silicon):**
-- Core reference forwards bit-exact to llama.cpp: Qwen3, Qwen2.5, Gemma3, **Gemma4** (M_GEMMA4), **qwen35moe / Qwen3.6-35B-A3B** (M_QWEN36 top-1) — this session.
-- NTT-CRT host dual-prime byte-exact; Frobenius Q4/Q8 + arena; KSTE + Friedman sieve; Spinor receipt ABI (silicon-confirmed); M.4 PoUW ledger + mesh canonical order; L3 daemon (chat/dialogue/ledger/QUIC).
-- Hexagon HVX: Barrett, mod_q matmul, NTT.0–5c, Bluestein; **HX.3b vrmpy 1.04× faster than ARM fp32, byte-equal** (reported).
-- Cross-backend determinism (ARM ↔ cDSP scalar) bit-exact.
+**[PROVEN]:** PPT forward bit-exact to llama.cpp for qwen3/qwen2.5/gemma3/gemma4/qwen35moe (the bolt-on works); NTT-CRT dual-prime byte-exact; Frobenius Q4/Q8 + arena; KSTE + sieve; Spinor encode/decode + receipt ABI (silicon-confirmed); M.4 PoUW ledger + mesh canonical order; L3 daemon (chat/ledger/QUIC); Hexagon HVX Barrett/mod_q/NTT/Bluestein; **HX.3b vrmpy 1.04× > ARM fp32, byte-equal** (reported); cross-backend determinism.
 
-**Real gaps / blockers (honest):**
-- **The WIRE gap:** CPU/CUDA/Vulkan forward shells still call scalar f32, not the primitives (HX.3b done for Hexagon; AVX/CUDA/Vulkan pending).
-- **Integer-end-to-end:** arena still dequantizes Q4/Q8→fp32 before matmul on most paths; the true Z_q `mod_q`-all-the-way path (only logits dequant) is v2.
-- **qwen35moe `.sp-model`:** OK_Q8 transcode disk-blocked (35 GB > free); the bridge + arena-expert path + OK_Q4 are the remainder (forward correctness already gated GGUF-direct).
-- **NTT N≤512** frozen-prime cap; **NTT-not-faster-than-fp32 at HD≤256** (structural, not a bug).
-- **Trick #1, MTP, MeMo continual-learning, entropy-container** are all [DESIGN]/[SPECULATIVE] — sound, unbuilt, ungated.
+**[TARGET]/[DESIGN] — the actual value, not yet measured/built:** Spinor KV compression ratio (the 120×); sub-Q4 converter ratio; tok/s at long ctx vs the 40-tok/s baseline; Ring-2 disk offload + residual recall; dual-GPU residue-sharing; Trick #1 combined; MTP transaction loop; MeMo fusion; int-end-to-end (no per-matmul fp dequant).
+
+**Blockers:** WIRE gap (CPU/CUDA/Vulkan shells scalar-f32); qwen35moe `.sp-model` needs the OK_Q4 (reducing) artifact + bridge + arena-expert; NTT N≤512 + not-faster-at-HD≤256 (structural); engine↔core fork tax (duplicated forwards/dequant/enums).
 
 ---
 
-## 10. Where this design breaks (the part Gemini's RFC under-weighted)
+## 10. Where this design breaks
 
-1. **Entropy-container mask cost.** If injecting interleaved-scale/routing into spare bits costs an ALU mask per element, it can erase the fetch savings. Gate it per backend or it's theater.
-2. **MeMo additive-only assumption.** If useful continual learning is *not* expressible as commutative Z_q additive receipts, the elegant load-time-fusion story collapses to needing ordered/non-commutative composition. Unproven.
-3. **Trick #1 init-cost & precision.** NPU per-process init (~130 ms) can dominate; INT accum overflow before Barrett at large K; P-core pinning may be unavailable. Numerical-equivalence (Garner sign/scale edge cases) is where CRT projects usually die.
-4. **N≤512 ceiling** blocks any design assuming arbitrary-length cyclotomic NTT; a third prime is a Phase-5 cascade, not a config flag.
-5. **The fork tax.** math-core ↔ engine still carry duplicated forwards / dequant / row_bytes / arch-id enums. Generalization presupposes de-duplication, or the "one object" becomes two.
-6. **"Bit-exact" is conditional** — holds under greedy + fixed K + same checkpoint + same backend; temperature/adaptive-K/cross-backend can break it. The formal guarantee must state its preconditions.
+1. **The headline numbers are unmeasured.** 120× KV and "beats 40 tok/s" are [TARGET]. If the measured Spinor ratio is 10×, or PPT-ARM is slower than the hier-KV baseline after all wiring, the value thesis is in question. **Measure these before believing them.**
+2. **Ring-2 residual recall** may cost more than recompute; **dual-GPU residue exchange** only wins if CRT-residue bandwidth < full-tensor transfer — unproven bandwidth model.
+3. **Entropy-container mask cost** can erase the fetch savings; **MeMo additive-only** may not capture real learning; **Trick #1** init-cost/precision/Garner-sign edges.
+4. **N≤512** caps cyclotomic NTT; a third prime is a Phase-5 cascade.
+5. **Bit-exact is conditional** (greedy + fixed-K + same checkpoint/backend); state its preconditions.
+6. **Fork tax:** "one object" presupposes de-duplicating engine↔core.
 
 ---
 
-## 11. What to hand the next session
+## 11. Child contracts to spawn (this RFC is their parent)
 
-Spawn these as **separate frozen contracts** (this RFC is their parent):
-- **C1 — `.sp-model` v1 + O_K container:** min-entropy disk form + runtime-expansion contract + spare-bit metadata schema (§3). Decide OK_Q4 default.
-- **C2 — L1 ABI v2:** add the Garner recombination service + the island-dispatch surface (§4, §8).
-- **C3 — MTP transaction protocol:** propose/verify/commit/rollback over the Spinor journal (§5).
-- **C4 — MeMo receipt format + fusion contract:** additive Z_q deltas, provenance, load-time vs overlay fusion (§6).
-- **C5 — Cyclotomic-ring paper:** the proper treatment operator asked for — ring structure, N≤512, where NTT wins vs Barrett-direct per backend (§2).
-- **C6 — φ-machinery role doc:** Beatty-sharding + Fibonacci-scale promoted to [DESIGN] with gates; Zeckendorf parked (§7).
+- **C1 — `.sp-model` v1 + O_K container (REDUCING):** min-entropy disk body ≤ source + runtime-expansion + spare-bit schema; OK_Q4 default. *(Unblocks qwen35moe + nails the "converter reduces" principle.)*
+- **C2 — ARM memory contract:** Spinor-KV inline-compression API + the two-ring offload/recall + residual reconstruction. *(The headline capability — measure the ratio.)*
+- **C3 — L1 ABI v2:** Garner recombination service + island dispatch + Ring-2 hooks.
+- **C4 — MTP transaction protocol** over the Spinor journal.
+- **C5 — MeMo receipt format + fusion contract.**
+- **C6 — Cyclotomic-ring paper** (N≤512, NTT-vs-Barrett crossover per backend).
 
-**Prime directive for whoever edits this:** keep the [PROVEN]/[DESIGN]/[SPECULATIVE] tags honest. The failure mode of this whole project is a beautiful idea drifting into the "done" column without a gate. This document's only real job is to make that drift impossible.
+**Prime directive:** PPT-ARM is primary; the Lattice is its extension. The win is the **envelope** (compression · unlimited context · bandwidth bypass · multi-device · speed), with **bit-exact as the invariant floor, not the headline**. Keep the [PROVEN]/[TARGET]/[DESIGN]/[SPECULATIVE] tags honest — the project's failure mode is a [TARGET] drifting into the "done" column without a measured gate.
