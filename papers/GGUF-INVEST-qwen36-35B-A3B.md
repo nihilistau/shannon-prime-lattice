@@ -1,3 +1,9 @@
+> **⚠️ SUPERSEDED (2026-06-02) on the architecture claim.** The "Mamba2-style SSM"
+> label below is WRONG — it was inferred from `ssm.*` metadata keys without reading
+> llama's compute graph. The linear layers are **Gated DeltaNet (Qwen3-Next family)**,
+> a gated delta-rule recurrence, not a Mamba selective scan. The tensor inventory here
+> is still useful; for the correct forward see **`SPEC-qwen35moe-GDN.md`**.
+
 # GGUF Investigation: Qwen3.6-35B-A3B (Phase 3-MoE scope)
 
 **Date:** 2026-05-26  
