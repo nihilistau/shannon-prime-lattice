@@ -54,7 +54,9 @@ gcc -O2 -std=c11 -Iinclude tests/c2_kv_measure.c \
 | 2048 | 38 | 2394 | 3.42× | 1.71× | 0.043 | 0.012 | 0.999982 |
 | 4096 | 75 | 4725 | 3.47× | 1.73× | 0.056 | 0.013 | 0.999980 |
 
-→ **The faithful codec asymptotes at ~3.5×/f32 and only ~1.0–1.7×/f16, at very high fidelity (cosine ≥ 0.99996).** It is NOT a 120× scheme and never will be — it is 1 int8/element + a per-block scale. The high cosine is the good news: it is almost certainly **top-1-safe** (to be confirmed by the real-model `qwen3_generate_kv` run, follow-on). **Sobering for the north-star gate:** a production KV cache is usually f16, so the real win over the baseline is only ~1.4–1.7× at typical HD.
+→ **The faithful codec asymptotes at ~3.5×/f32 and only ~1.0–1.7×/f16, at very high per-vector fidelity (cosine ≥ 0.99996).** It is NOT a 120× scheme and never will be — it is 1 int8/element + a per-block scale. **Sobering for the north-star gate:** a production KV cache is usually f16, so the real win over the baseline is only ~1.4–1.7× at typical HD.
+
+**CORRECTION (real-model measured, supersedes my "top-1-safe" optimism above):** the high per-vector cosine does NOT carry to perfect end-to-end top-1. The engine gate **E_CPU_8 (`test_kv_spinor`, Qwen3-0.6B, scalar)** run live 2026-06-02: **argmax = 29/31, KL mean = 2.300e-02, max = 2.585e-01 — PASS** (the gate is a *bounded-divergence* gate: KL mean ≤ 2.0e-1, not bit-exact). So **Spinor-KV is a LOSSY overlay that flips ~6.5% of argmax tokens** accumulated over 28 layers — it is NOT bit-exact to the f32-KV baseline. This means the "bit-exact is table stakes" floor (RFC §0) holds for the *weight* path and gate-OFF, but the *Spinor-KV overlay itself trades a small top-1 divergence for the ~3.5× ratio.* Honest envelope choice (see C2.0.3): Ring-2 can offload *faithful f32/decoded* KV bit-exact (memory tiering, zero compression loss) OR Spinor-compressed KV (3.5× smaller, 29/31 argmax) — two distinct points, choose per accuracy need.
 
 **(b) `sp_kste_encode` — lossy ~130× signature (64 B regardless of HD):**
 
@@ -143,7 +145,7 @@ So: **stay System-1 below ~1–4 k tokens; switch to System-2 above** (and Syste
 ## C2.2 Gates (each on its own metric)
 
 - **C2_KV_RATIO** — report measured Spinor-KV bytes vs f32/f16 KV per head-vector + aggregate over a real context. (Landed: ~3×/f32 for the current int8 block.)
-- **C2_KV_DECODE_DETERMINISM** — Spinor encode→decode round-trip is deterministic (CRC-valid) and the decoded-KV forward top-1 is stable run-to-run (E_CPU_8 extends to qwen36).
+- **C2_KV_DECODE_DETERMINISM** — Spinor encode→decode round-trip is deterministic (CRC-valid); decoded-KV forward is a *bounded-divergence* overlay, not bit-exact. **[PASS 2026-06-02, live E_CPU_8 `test_kv_spinor` Qwen3-0.6B scalar]: argmax 29/31, KL mean 2.300e-02 (gate ≤ 2.0e-1), 7/7 checks.** Regression invariant (gate OFF == f32 forward bit-identical) also holds. *Honest:* Spinor-KV flips ~6.5% argmax — lossy, not bit-exact; the bit-exact floor is the weight path + gate-OFF, not the Spinor-KV overlay. (qwen36 wiring still pending — C2.1.)
 - **C2_RING2_RECALL** — Ring-2 offload + recall reproduces the in-RAM result bit-exact; report recall latency vs recompute. **[PASS 2026-06-02, C2.0.3]** 2000/2000 byte-identical; recall ~10 µs/token + ~2 µs/block decode (page-cached), ≪ recompute; effective-context multiplier ~400× (16 GB) … ~1190× (48 GB) at a 512-token RAM window. *Follow-on:* re-measure on the real Optane tier; pair with a sparse-recall pattern (the storage multiplier ≠ the usable-context multiplier — see C2.0.3 scope limit).
 - **C2_FP16_SWIVEL** — fp16 runtime container: top-1 unchanged vs f32 swivel; report working-RAM reduction. [DESIGN]
 - **C2_120X_INVESTIGATION** — determine which mechanism (anchor-basis / Ring-2 effective-context / sub-int8) yields the headline, or honestly restate the achievable KV-compression number. **No 120× claim without a measurement.**
