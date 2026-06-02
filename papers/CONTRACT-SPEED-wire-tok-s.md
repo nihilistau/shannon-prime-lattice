@@ -69,4 +69,11 @@ Prereq unblocked: the engine forward crashed (fork-tax struct divergence) — FI
 | llama.cpp **f16** | 28.2 | SP-Q8 wins — but NOT apples-to-apples (f16 is bandwidth-heavier) |
 | llama.cpp **Q8_0** | **52.8** | **the fair fight: SP is ~0.75× (llama.cpp ~1.34× faster)** |
 
-**Honest standing:** SP went from ~33× behind to **~1.34× behind llama.cpp on the fair Q8-vs-Q8 comparison** — competitive, not yet winning. SP-Q8 *does* beat llama.cpp-f16, but the quant-matched number is the real one. **The remaining ~1.34× is exactly the AVX2-f32 vs VNNI-int8 ALU gap:** AVX2 does 1 f32-MAC/lane; **VNNI `dpbusd` does 4 int8-MACs/lane (~4× ALU)** → the existing `sp_avx512_vnni_matvec` + int8 activation quant + an accuracy gate is the step that should close it (and is the project's literal integer-pipe thesis). The parallel substrate (matmul + attention + per-head) + the AVX2 SIMD dot are the floor it builds on. (gemma3/qwen36 attention share the threading pattern → follow-up.)
+**Honest standing:** SP went from ~33× behind to **~1.34× behind llama.cpp on the fair Q8-vs-Q8 comparison** — competitive, not yet winning. SP-Q8 *does* beat llama.cpp-f16, but the quant-matched number is the real one.
+
+### VNNI int8×int8 — TESTED, DOCUMENTED NEGATIVE (2026-06-02, gated `SP_VNNI=1`, engine `a2ad1dc`)
+Hypothesis: the ~1.34× gap is the AVX2-f32 (1 MAC/lane) vs VNNI `dpbusd` (4 int8-MAC/lane) ALU gap. **Wired it (dynamic per-vector int8 act-quant + `sp_avx512_vnni_matvec`, threaded, per-tensor bias=128·Σcodes + scale cached) and measured — hypothesis FALSIFIED:**
+- **Speed: VNNI 43.95 vs AVX2 40.38 = only +9%.** VNNI reads the *same int8 weight bytes* as the AVX2-int8 dot; the 4× ALU barely helps → **Q8 decode is BANDWIDTH-bound (weight reads), not ALU-bound.** So the gap to llama.cpp-Q8 is **memory layout / Q8_0 32-elem block format / fewer passes**, NOT ALU/VNNI.
+- **Accuracy: top-1 gate FAILS** — VNNI tokens diverge from the f32-act ref (`3 4 3 4…` vs `3 5 3 9 2 61…21389…`). Naive per-vector dynamic int8 act-quant is too lossy (one `max_abs` scale, outliers crush the rest). Needs per-channel/SmoothQuant = research, not a free win.
+
+**Conclusion: AVX2-f32 dot (40 t/s, accurate, parity-safe) is the production CPU kernel.** VNNI stays gated+OFF as a documented dead-end for this scheme. **The real remaining gap is memory layout/bandwidth — a different investigation than ALU.** Live follow-ups: a Q8_0-style 32-elem block layout to cut passes/improve locality; gemma3/qwen36 attention threading. (gemma3/qwen36 attention share the threading pattern.)
