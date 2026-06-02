@@ -36,3 +36,18 @@ HX.3b taught us the chat-shape (batch-1 decode) matmul is **memory-bandwidth-bou
 - **SP:llama.cpp ratio:** _[pending the SP number]_ → defines the WIRE target multiple.
 
 **First read of the baseline:** llama.cpp f16 0.6B decode at **28 t/s on CPU** confirms decode is bandwidth-bound even in a tuned engine — reinforcing the contract's thesis that the SP lever is **reduced weight-read traffic (packed Q8/Q4)**, not ALU width. The WIRE target: SP's OK_Q8 packed path should move ~2× fewer weight bytes/token than f16 → the gate is whether SP reaches/*beats* llama.cpp's Q8 decode tok/s once the integer pipe is wired (today the SP shell is scalar f32, so it will currently be *slower* — that gap is exactly SPEED_WIRE_CPU's target).
+
+## SPEED_WIRE_CPU — MEASURED LADDER (2026-06-02, `sp_toks`, Qwen3-0.6B, CPU, single-thread)
+
+Prereq unblocked: the engine forward crashed (fork-tax struct divergence) — FIXED engine `0fb39ab`. Then, env-only (no kernel change), via `SP_ARENA`:
+
+| path | tok/s | vs f16 | note |
+|---|---|---|---|
+| f16 (gguf, dequant per row) | **0.84** | 1.0× | the as-is baseline |
+| **Q8 arena** (`SP_ARENA=q8 SP_ARENA_EMBED=1`) | **1.58** | **1.88×** | packed int8, `matmul_arena` inline-lift, no unpack — **the bandwidth lever, confirmed** |
+| Q4 arena (`SP_ARENA=q4`) | 0.85 | 1.0× | per-row `sp_frob_q4_unpack` overhead negates the smaller read → **Q4 needs a SIMD/streaming unpack or it's a wash in this scalar path** |
+
+**Finding:** packing to Q8 ~doubles throughput (bandwidth thesis holds); Q4's nibble-unpack cost cancels its bandwidth win in the current scalar `matmul_arena`. **vs llama.cpp 28.2 t/s, Q8-packed SP is still ~18× short — and the residual is now diagnosed: `matmul_arena` is a scalar single-threaded `acc += (float)cp[i]*x[i]` loop, while llama.cpp is multi-threaded + SIMD.** The two remaining WIRE-CPU-V2 levers, in expected‑impact order:
+1. **Multi-thread the decode matmul** (SP forward is single-threaded; llama.cpp uses all P-cores) — likely the dominant ~Ncore× gap. [next, biggest]
+2. **SIMD `matmul_arena`** — AVX2/VNNI int8 dot (it currently ignores `dot_f32`/the AVX path); for Q4, a vectorized unpack so the packed read actually pays.
+Both are real kernel changes (the substantive WIRE-CPU-V2 work); the env-only ladder above is the floor they build on.
