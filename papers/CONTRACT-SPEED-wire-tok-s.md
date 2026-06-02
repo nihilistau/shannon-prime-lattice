@@ -57,6 +57,16 @@ Prereq unblocked: the engine forward crashed (fork-tax struct divergence) — FI
 | add'l path | tok/s | |
 |---|---|---|
 | Q8 + threaded matmul | 10.53 | (n_gen=32) |
-| **Q8 + threaded matmul + threaded attention/per-head** | **12.55** | **+19% (n_gen=32); 10.56 at n_gen=128 as attention O(pos) grows** |
+| Q8 + threaded matmul + threaded attention/per-head | 12.55 | +19% |
+| **Q8 + threaded + AVX2 int8×f32 dot** (`5e443c9`) | **39.52** | **3.15× — the SIMD lever** |
 
-**Net: speed thesis validated — SP within ~2.25× of llama.cpp on 0.6B from packed-Q8 + full threading, NO SIMD yet.** The parallel substrate now covers matmul + attention + per-head ops. (gemma3/qwen36 attention share the pattern → follow-up.)
+**Full arc (Qwen3-0.6B, CPU, n_gen=32): 0.84 (f16) → 1.58 (Q8) → 10.53 (thread mm) → 12.55 (thread attn) → 39.52 (AVX2 dot) = 47× over baseline.**
+
+### Fair quant-matched comparison (the honest scoreboard)
+| engine / quant | gen tok/s | |
+|---|---|---|
+| SP **Q8** (threaded + AVX2) | **39.52** | |
+| llama.cpp **f16** | 28.2 | SP-Q8 wins — but NOT apples-to-apples (f16 is bandwidth-heavier) |
+| llama.cpp **Q8_0** | **52.8** | **the fair fight: SP is ~0.75× (llama.cpp ~1.34× faster)** |
+
+**Honest standing:** SP went from ~33× behind to **~1.34× behind llama.cpp on the fair Q8-vs-Q8 comparison** — competitive, not yet winning. SP-Q8 *does* beat llama.cpp-f16, but the quant-matched number is the real one. **The remaining ~1.34× is exactly the AVX2-f32 vs VNNI-int8 ALU gap:** AVX2 does 1 f32-MAC/lane; **VNNI `dpbusd` does 4 int8-MACs/lane (~4× ALU)** → the existing `sp_avx512_vnni_matvec` + int8 activation quant + an accuracy gate is the step that should close it (and is the project's literal integer-pipe thesis). The parallel substrate (matmul + attention + per-head) + the AVX2 SIMD dot are the floor it builds on. (gemma3/qwen36 attention share the threading pattern → follow-up.)
