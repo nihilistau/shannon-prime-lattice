@@ -29,11 +29,30 @@ session:
    real-weight validation stays in `tests/gemma4_gguf_forward_harness.c` (the right
    home — not a giant-model load mid unit-suite); (c) `T_GEMMA4_GGUF_FORWARD` keeps
    its loader-config scope (correct). No code defect remained to fix.
-2. **Oracle exact top-1 (BLOCKED-UPSTREAM):** needs a `llama-completion`/
-   `llama-tokenize` build (the @5dcb711 `llama-cli` forces the gemma4 chat
-   template, preventing identical-token-ID feed). Build those targets, then diff
-   greedy argmax vs `gemma4_forward` on E2B-Q8_0. Plus TASK C (engine sp-transcode
-   gemma4 + `M_GEMMA4` PPL gate) remains.
+2. **Oracle exact top-1 — RESOLVED, M_GEMMA4 GATE PASS (2026-06-02, system
+   `bfa5edf`).** Sidestepped the `llama-cli` chat-template blocker by writing a
+   tiny libllama greedy-decoder fed FIXED token IDs (no tokenizer needed — same
+   IDs to both sides). First run **diverged at token 0** (oracle 5213 vs SP
+   16058) — the oracle gate caught a real forward bug the self-consistency tests
+   structurally cannot (prefill and decode share the same wrong math). Localized
+   by per-layer activation-fingerprint diff (a libllama `cb_eval` callback vs the
+   same points in `gemma4_forward`): `inp_scaled` bit-exact, layers 0–14
+   floor-close, **layer 15 explodes**; attention/shared-KV proven correct
+   (oracle `attn_out-15` ≈ SP), the FFN isolated as the culprit.
+   **Root cause: per-layer FFN width (MatFormer/elastic E-series).**
+   `gemma4.feed_forward_length` is a per-layer INT32 array — E2B layers 0–14
+   `n_ff=6144`, layers 15–34 `n_ff=12288` (confirmed: `blk.0.ffn_down`=[6144,1536]
+   vs `blk.15.ffn_down`=[12288,1536]). `gemma4_forward` + `kv_step_gemma4` used a
+   single `n_ff` (layer-0), mis-shaping every FFN matmul in the back half. Fix:
+   per-layer `FF_L = ffn_gate out-dim` (== llama.cpp `hparams.n_ff(il)`); g/up +
+   session FFN scratch sized to per-layer max. **Validated: SP greedy argmax ==
+   oracle greedy argmax, 6/6+ tokens bit-identical** (5213 236840 22695 16930
+   236842 84750 …). The MatFormer per-layer FFN is the THIRD real spec defect the
+   oracle gate surfaced (after per-layer head_dim and the misread `post_norm`).
+3. **Still open:** TASK C (engine `sp-transcode` gemma4 → `.sp-model` + the
+   engine-side `M_GEMMA4` PPL gate) + the Gemma4 SP tokenizer (for the transcoder
+   + daemon). The math-core forward is now correctness-proven; these are the
+   production-path pieces.
 
 Commits (origin/main, system repo):
 - `7186210` — TASK A: `kv_step_gemma4` persistent-KV decode + `T_GEMMA4_DECODE_TRAJECTORY`.

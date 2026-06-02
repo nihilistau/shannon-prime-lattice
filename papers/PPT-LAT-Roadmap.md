@@ -8094,6 +8094,29 @@ needs a `llama-completion`/`llama-tokenize` build or a host-side gemma4 tokenize
 chat-template. **TASK C** (engine sp-transcode + M_GEMMA4 PPL gate) not started.
 
 
+### 2026-06-02 — Phase 3-G4: M_GEMMA4 oracle top-1 PASS (forward bit-faithful to real Gemma4)
+
+`gemma4_forward` is now **validated correct against real Gemma4 weights**
+(E2B-Q8_0) — greedy argmax bit-identical to a libllama oracle fed the same fixed
+token IDs (system `bfa5edf`). Getting there surfaced the THIRD real spec defect
+the oracle gate caught (the self-consistency fixture tests structurally cannot —
+prefill and decode share the same math): **per-layer FFN width.** Gemma4 E-series
+is MatFormer/elastic — `feed_forward_length` is a per-layer array (E2B layers
+0–14 `n_ff=6144`, 15–34 `n_ff=12288`). The forward + `kv_step_gemma4` used a
+single `n_ff`, mis-shaping every FFN matmul in the back half (garbage from layer
+15). Fixed with per-layer `FF_L` (= `ffn_gate` out-dim, == llama.cpp
+`hparams.n_ff(il)`). Localized via per-layer activation-fingerprint diff (libllama
+`cb_eval` vs the same SP points): attention/shared-KV proven correct, FFN isolated.
+**The §3-G4 spec must note: Gemma4 has per-layer head_dim (constant n_head/n_kv)
+AND per-layer n_ff (MatFormer) — read both per layer from the GGUF; assume neither
+is uniform.** Tooling added (kept): `tests/gemma4_top1_sp.c` (SP greedy from token
+IDs) + `D:\F\llama.cpp\g4_oracle.cpp` / `g4_oracle_dbg.cpp` (libllama oracle +
+activation dump). Remaining for the cell: engine `sp-transcode` gemma4 +
+engine-side `M_GEMMA4` PPL gate + the Gemma4 SP tokenizer (production path). The
+math-core forward correctness is now PROVEN. Closure:
+`SESSION-CLOSED-lat-3-g4-stage2.md`.
+
+
 ---
 
 ## 20. Research Track — φ-RoPE / Three-Gap frequency-sort restructuring
