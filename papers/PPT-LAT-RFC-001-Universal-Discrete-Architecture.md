@@ -169,11 +169,24 @@ L3 daemon(Rust)— orchestration: island detect + Beatty dispatch, MTP transacti
 
 ## 11. Child contracts to spawn (this RFC is their parent)
 
-- **C1 — `.sp-model` v1 + O_K container (REDUCING):** min-entropy disk body ≤ source + runtime-expansion + spare-bit schema; OK_Q4 default. *(Unblocks qwen35moe + nails the "converter reduces" principle.)*
-- **C2 — ARM memory contract:** Spinor-KV inline-compression API + the two-ring offload/recall + residual reconstruction. *(The headline capability — measure the ratio.)*
-- **C3 — L1 ABI v2:** Garner recombination service + island dispatch + Ring-2 hooks.
-- **C4 — MTP transaction protocol** over the Spinor journal.
-- **C5 — MeMo receipt format + fusion contract.**
-- **C6 — Cyclotomic-ring paper** (N≤512, NTT-vs-Barrett crossover per backend).
+### FORWARD PRIORITY — re-ordered 2026-06-02 (differentiators ahead of context work)
+
+The C2 measurement phase is **done** and it re-ranked the work: the per-vector KV codec is ~3.5× (lossy, 29/31 real-model) and the Ring-2 context multiplier, while large (~hundreds×), is largely disk-tiering. **The unmeasured, load-bearing differentiators are SPEED, MULTI-DEVICE, and MTP — not more context work.** So the forward order is now:
+
+1. **P1 — SPEED / the WIRE gap → real tok/s (the north-star).** Wire the integer pipes (CPU AVX-512+VNNI first; the dev host has it) into the forward *shell* (today they're scalar f32 off-Hexagon) and measure tok/s vs llama.cpp on a proven small model. This is the literal reason-to-exist gate and the biggest unmeasured risk (HX.3b's 1.04× bandwidth-bound result is the warning). Lives partly in C3 (backend wiring) + a new measurement gate.
+2. **P2 — C4 MTP transaction protocol** (Theorem T8): exact O(1) ring-pointer rollback + batched-draft bit-identity; a speed differentiator that composes with P1.
+3. **P3 — C3 multi-device CRT residues + Garner recombination service** (ship residues not tensors): the most differentiated capability; bigger build. A 2-node CRT-shard byte-exact vertical slice is the proof.
+4. **P4 — remaining C2** (DEMOTED to context axis): fp16 swivel, wire Spinor-KV into `qwen36_forward`, a real *directional* recall router (KSTE ruled out — C2.0.4.1). Secondary; matters most for long-ctx on small models, not the weight-dominated flagship MoE.
+5. **P5 — C5 eMeMo, C6 cyclotomic paper** as before.
+
+### Contract index
+
+- **C1 — `.sp-model` v1 + O_K container (REDUCING):** min-entropy disk body ≤ source + runtime-expansion + spare-bit schema; OK_Q4 default. **[DONE 2026-06-02 — ~17% reduction, output-lossless top-1.]**
+- **C2 — ARM memory contract:** Spinor-KV inline-compression + two-ring offload/recall + recall router. **[MEASUREMENT PHASE DONE 2026-06-02: KV ~3.5×/f32 lossy; Ring-2 ~400–1190× effective context (storage); recall router = open (KSTE falsified). Implementation (P4) demoted.]**
+- **C3 — L1 ABI v2:** Garner recombination service + island dispatch + Ring-2 hooks. **[P3]**
+- **C4 — MTP transaction protocol** over the Spinor journal. **[P2]**
+- **C5 — MeMo receipt format + fusion contract.** **[P5]**
+- **C6 — Cyclotomic-ring paper** (N≤512, NTT-vs-Barrett crossover per backend). **[P5]**
+- **(new) SPEED gate — WIRE the integer pipes → tok/s vs llama.cpp.** **[P1 — the north-star; spawn as its own contract/sprint.]**
 
 **Prime directive:** PPT-ARM is primary; the Lattice is its extension. The win is the **envelope** (compression · unlimited context · bandwidth bypass · multi-device · speed), with **bit-exact as the invariant floor, not the headline**. Keep the [PROVEN]/[TARGET]/[DESIGN]/[SPECULATIVE] tags honest — the project's failure mode is a [TARGET] drifting into the "done" column without a measured gate.

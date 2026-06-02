@@ -8,6 +8,10 @@
 
 ---
 
+> **PRIORITY AMENDMENT (2026-06-02) — differentiators ahead of context.** C2's measurement phase is done (KV ~3.5× lossy, real-model 29/31; Ring-2 ~hundreds× effective context but largely disk-tiering; recall router open — KSTE falsified). Forward order is now **P1 SPEED/WIRE→tok/s vs llama.cpp (north-star), P2 C4 MTP, P3 C3 multi-device CRT residues (2-node byte-exact vertical slice), P4 remaining C2 (demoted), P5 eMeMo/cyclotomic.** Authoritative in **RFC-001 §11** + **STATE §5.1**. The phase sequence below is unchanged in content; this re-prioritizes which phases lead.
+
+---
+
 ## 0. Read-this-first
 
 This document supersedes the prior linear v1 roadmap that staged work as

@@ -103,6 +103,18 @@ These justify the project and are **not yet measured here**. They are the point.
 
 ---
 
+## 5.1 FORWARD PRIORITY (re-ordered 2026-06-02 — differentiators ahead of context)
+
+C2's measurement phase is done and re-ranked the work (KV ~3.5× lossy; Ring-2 context ~hundreds× but largely disk-tiering). The unmeasured load-bearing differentiators now lead. Full rationale in **RFC-001 §11**:
+
+1. **P1 — SPEED / WIRE gap → tok/s vs llama.cpp** (the north-star; integer pipes still scalar-f32 off-Hexagon; HX.3b 1.04× bandwidth-bound is the warning).
+2. **P2 — C4 MTP** (T8 exact O(1) rollback).
+3. **P3 — C3 multi-device CRT residues + Garner service** (2-node CRT-shard byte-exact vertical slice = the proof).
+4. **P4 — remaining C2** (fp16 swivel, qwen36 Spinor-KV wiring, a *directional* recall router — KSTE ruled out) — DEMOTED, secondary context axis.
+5. **P5 — C5 eMeMo, C6 cyclotomic paper.**
+
+---
+
 ## 6. Open blockers (honest)
 
 - **WIRE gap:** CPU/CUDA/Vulkan forward shells still call scalar f32 (Hexagon done via HX.3b). The envelope isn't realized until shells call the integer + Spinor-KV primitives.
