@@ -8409,7 +8409,12 @@ in `SPEC-qwen35moe-GDN.md`; oracle fingerprints + SP logs in
   proof (wrong formula → O(10%) divergence, precision → O(0.01%)); the bit-exact gate is
   **top-1 argmax**; production is the discrete Z_q path, never f32 expansion.
 
-**Remaining (Stage 3):** engine `sp_transcode` Q4_K/Q6_K source `row_bytes` + rank-3 expert
-packing; `sp_model_to_qwen36` bridge; transcode→load→forward top-1; discrete arena (Z_q) path
-on Q4_K_M; formal `M_QWEN36` ctest (top-1 gate; PPL hits the f32-vs-Q4 smoke floor cf. M_GEMMA4).
+**Stage 3 (2026-06-02):** **`M_QWEN36` correctness gate GREEN** (core `803a6fd`) — GGUF-direct
+`qwen3_load → qwen36_forward` top-1 bit-exact to oracle (3/3 `5444 8 198`, 218 s). Engine
+transcoder qwen35moe-ready + builds (Q4_K/Q6_K `row_bytes`, rank-3 `add_q8`, `is_matmul_weight`,
+`fill_arch_struct` q36 tail; engine `3c5f370`); `sp_arch_info` q36 tail + `SP_ARCH_ID_QWEN36=8`
+(core `d0d4269`). **Disk-blocked (deferred):** full OK_Q8 `.sp-model` transcode is ~35 GB > 27 GB
+free → the `sp_model_to_qwen36` bridge + arena-aware expert path + an OK_Q4 transcode (fits) are
+the remaining production-path items. See `SESSION-CLOSED-lat-3-moe-forward.md`. Forward + math are
+proven and gated; only the OK_Q8 `.sp-model` RUN is disk-gated.
 

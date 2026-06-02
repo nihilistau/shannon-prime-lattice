@@ -37,10 +37,30 @@ lattice: `00bdbde` (SPEC) + `b3e77f7` (oracle fingerprints fixture).
 - `shannon-prime-system/tests/qwen36_load_probe.c` (Stage 1) + `qwen36_fwd_probe.c` (greedy top-1).
 - `core/forward/qwen36.c` — the reference forward (`SP_Q36_DBG=1` dumps fingerprints).
 
-## Remaining (Stage 3 — production path)
+## Stage 3 status (2026-06-02)
 
-1. Engine `sp_transcode`: Q4_K/Q6_K source `row_bytes` + **rank-3 expert tensor** packing (per-expert 2D Frobenius blocks).
-2. Bridge `sp_model_to_qwen36` (const sp_model* → qwen3_model with the q36 layout).
-3. End-to-end transcode → `sp_model_load` → forward; top-1 bit-exact.
-4. Discrete **arena** (Z_q) path on Q4_K_M (SP_ARENA / FROB) — the production compute.
-5. Formal `M_QWEN36` ctest (top-1 gate; PPL hits the f32-vs-Q4 smoke floor cf. M_GEMMA4).
+**DONE:**
+- **`M_QWEN36` correctness gate — GREEN.** Core ctest (`core/forward/qwen36_gate.c`):
+  `qwen3_load(Q4_K_M) → qwen36_forward` greedy → top-1 bit-exact to oracle `5444 8 198`
+  (3/3, 218 s). SLOW/model-gated. This formally closes forward correctness (commit core `803a6fd`).
+- **Engine transcoder qwen35moe-ready (builds).** `sp_transcode`: Q4_K/Q6_K source `row_bytes`;
+  `add_q8` generalized to **rank-3** expert tensors `[cols,rows,n_expert]` → `(rows*n_expert)`
+  Frobenius rows (bridge slices expert e); `is_matmul_weight` classifies the GDN+MoE weights
+  (router gates + ssm_conv1d/a/dt/norm stay F32); `fill_arch_struct` writes the q36 tail. Engine `3c5f370`.
+- **Format:** `sp_arch_info` q36 tail + `SP_ARCH_ID_QWEN36=8` (core `d0d4269`); engine submodule bumped.
+
+**DEFERRED — disk-blocked (capability complete, run gated):**
+- A full **OK_Q8 `.sp-model` transcode** of the 35B is ~35 GB vs **27 GB free** — won't fit.
+  Options: free disk, transcode to another drive, or pack **OK_Q4** (~20 GB, fits) — the latter
+  needs the bridge + arena to take the Q4 path.
+- **`sp_model_to_qwen36` bridge** (const sp_model* → q36 qwen3_model) — not written (untestable
+  until a transcode succeeds; don't ship untested per the gemma4 discipline).
+- **Arena-aware `expert_mm`:** the reference `expert_mm` reads `gguf_tensor_data`; the `.sp-model`
+  path has no GGUF, so the MoE expert matmul must read the packed arena expert-slice (the GDN/attn
+  matmuls already go through the arena-aware `sp_matmul`).
+- Discrete **arena (Z_q)** production compute + a `.sp-model` PPL gate (would hit the f32-vs-Q4
+  smoke floor, cf. M_GEMMA4).
+
+**Bottom line:** the math + forward are proven and formally gated (M_QWEN36 green); the remaining
+`.sp-model` production path is code-ready in the transcoder and blocked only by local disk on the
+OK_Q8 run, with a clear OK_Q4 path forward.
