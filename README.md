@@ -100,9 +100,10 @@ Honest snapshot, 2026-06-03.
 | **Two-ring memory (PPT-ARM) — recall router + Optane Ring-2 + window shrink** | **shipped + measured** — 910× KV shrink @32k, needle off NVMe @7.57 µs/read, 8×@+0.69% PPL | engine `cpu_forward.c`; CONTRACT-C2 §C2.1; Position Is Arithmetic paper 01 |
 | Compact-and-spill fusion (exact prefill + window decode RAM) | **shipped** — verified N=512, timed N=8192; 32k headline (R9) in flight | engine `7896bc4` |
 | Reducing loader (GGUF → ~50%-smaller `.sp-model`, bit-faithful) | **shipped + green** — 6/6 E_FMT gates on gemma-3 + Qwen3 | Position Is Arithmetic paper 02 (`EXPECTED.md`) |
+| WIRE-CPU integer pipe → tok/s | **measured** — Qwen3-0.6B 0.84 → **39.52 tok/s (47×)**; ~1.34× behind llama.cpp Q8_0; next step layout (V3) | `papers/CONTRACT-SPEED-wire-tok-s.md`; `papers/PLAN-SPEED-WIRE-CPU-V3-memory-layout.md` |
 | Frozen L1 C ABI | **shipped** | `shannon-prime-system/include/sp/sp_l1.h`; tag `lat-phase2-contract-frozen` |
 | `.sp-model` v0 wire format | **shipped** | `papers/PPT-LAT-SP-MODEL-v0.md`; loader at `core/io_format/` |
-| Math-core reference forward | **shipped** — runs Qwen3-0.6B, Qwen2.5-Coder-0.5B, Gemma3-1B byte-exact host + aarch64-android | `lib/shannon-prime-system/core/forward/forward.c`; closure `SESSION-CLOSED-lat-3-cell-*.md` |
+| Math-core reference forward | **shipped** — Qwen3-0.6B, Qwen2.5-Coder-0.5B, Gemma3-1B, **Gemma4-E2B, Qwen3.6-35B-A3B MoE (Gated DeltaNet)** byte-exact host + aarch64-android | `lib/shannon-prime-system/core/forward/forward.c`; closures `SESSION-CLOSED-lat-3-*.md` |
 | NTT-CRT primitive (host) | **shipped** | `core/ntt_crt/`; tests `T_NTT_*` |
 | NTT-CRT primitive (Hexagon V69 HVX) | **shipped end-to-end byte-exact** vs math-core | sprints NTT.0 → NTT.4; closures `CLOSURE-NTT-{0..4}.md` |
 | Polynomial-ring attention overlay | **shipped** — host + Hexagon | sprints NTT.5a / 5b / 5c |
@@ -142,6 +143,22 @@ device, not the daemon's accelerated path:
 |-------|---------:|-------:|------:|
 | Gemma3-1B | 18.06 | 16 | 0.89 |
 | Qwen3-0.6B | 11.21 | 16 | 1.43 |
+
+Desktop CPU — the **WIRE-CPU production path** (Knack i9-11900KB, Qwen3-0.6B,
+ctx = 4 prefill + 32 decode), showing the lever stack that the phone path
+above does not yet have wired:
+
+| Model | path | Wall (s) | Tokens | tok/s |
+|-------|------|---------:|-------:|------:|
+| Qwen3-0.6B | f16 reference (as-is) | 38.1 | 32 | 0.84 |
+| Qwen3-0.6B | **Q8 + threaded matmul + AVX2 int8 dot** | 0.81 | 32 | **39.52** |
+
+That is **47× over the f16 baseline** (Q8 packing 1.9× → threaded matmul 6.7×
+→ AVX2 dot 3.15×). The fair quant-matched reference is llama.cpp **Q8_0 =
+52.8 tok/s** on the same host, so **SP is ~1.34× behind** — and the remaining
+gap is **memory layout, not ALU** (VNNI was tested and falsified). Full arc +
+next step: `papers/CONTRACT-SPEED-wire-tok-s.md` +
+`papers/PLAN-SPEED-WIRE-CPU-V3-memory-layout.md`.
 
 The Hexagon HVX path is one of four backends (CPU / CUDA / Vulkan / Hexagon);
 the cDSP skel rebuild that flips the on-device tok/s is tracked in
@@ -191,6 +208,16 @@ top — DHT key space → polynomial ring → matmul kernel → vector ALU
 width — and the same prime-factored lattice picks out the right
 operation at each scale. See `papers/PPT-LAT-Systems-v1.md`
 ("Overview: six layers of one math object").
+
+**Not drawn above — the two-ring memory path (the C2.1 headline).** Inside the
+math-core forward, the KV cache runs as **Ring-1** — a small resident
+`sink + W` window plus a ±1 Rademacher recall router — backed by **Ring-2**, a
+byte-addressable spill to NVMe / Optane (`FILE_FLAG_NO_BUFFERING` + IOCP). At
+32k context the resident cache is **8.3 MB (910× smaller than the 7.5 GB full
+cache)** and the needle is served back off the drive at **7.57 µs/read**,
+bit-exact when disabled. A compact-and-spill *fusion* mode gives exact prefill
+and window-sized decode RAM together. See
+`papers/CONTRACT-C2-ARM-spinor-kv-two-ring.md`.
 
 ---
 
@@ -250,11 +277,14 @@ NTT-dispatch hook in `core/poly_ring_bluestein/`.
 ```
 shannon-prime-lattice/
 ├── papers/                            # the project's papers — read these first
+│   ├── PPT-LAT-Systems-v1.md          # CANONICAL systems narrative (read after Theory)
 │   ├── PPT-LAT-Theory.md              # math foundations + 13-step PPT substitution
-│   ├── PPT-LAT-Systems-v1.md             # six-layer architecture
+│   ├── PPT-LAT-RFC-001-*.md           # north-star constitution (PPT-ARM primary)
 │   ├── PPT-LAT-Roadmap.md             # implementation phases (living document)
-│   ├── PPT-LAT-L1-ABI-v0.md           # frozen Layer-1 C ABI contract
-│   ├── PPT-LAT-SP-MODEL-v0.md         # .sp-model / .sp-tokenizer on-disk format
+│   ├── PPT-LAT-STATE.md               # the proven ledger (every PROVEN cites a gate)
+│   ├── CONTRACT-C1..C6 / CONTRACT-C2 / CONTRACT-SPEED  # forward work items
+│   ├── PLAN-SPEED-WIRE-CPU-V3-*.md    # the next P1 (speed) step
+│   ├── PPT-LAT-L1-ABI-v0 / -SP-MODEL-v0.md  # frozen specs (superseded into Systems-v1 App A/B)
 │   ├── SESSION-CLOSED-lat-*.md        # per-sprint closure notes (audit trail)
 │   └── SESSION-STATE-lat-*.md         # session-handoff snapshots
 ├── demos/                             # phase demos
