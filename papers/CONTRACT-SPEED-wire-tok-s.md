@@ -105,4 +105,22 @@ Full stage plan: **`PLAN-SPEED-WIRE-CPU-V3-memory-layout.md`**. Summary: Stage 0
 
 The box is 8 physical / 16 logical. **The OMP default of all-logical threads oversubscribes the 8 physical cores and runs ~1.5× SLOWER than the physical-core count** — so every prior measurement this session (incl. the "39.52" bisect at default‑16 → 15.68) ran the *worst* config. **Fix shipped:** `sp_kernels` now defaults OMP to physical cores (`omp_get_num_procs()/2`), overridable by `OMP_NUM_THREADS` / `SP_OMP_THREADS`. New default **22.91 tok/s** (1.39× free), tuned `SP_OMP_THREADS=5` **25.97**, top-1 parity-exact.
 
-**Corrected honest standing:** SP Qwen3-0.6B Q8 decode = **~23 tok/s default / ~26 tuned**, vs llama.cpp Q8_0 52.8 (which auto-tunes to physical cores) → **~2.0–2.3× behind**, not 1.34× and not 3.8×. The remaining ~2× is the serial pipeline + per-token overhead + llama.cpp's tighter fused kernels — past ~5–6 threads SP is memory-bandwidth-saturated (8 threads is already slower than 5). The dot kernel (AVX2/AVX-512/VNNI) is *not* the lever; pipeline/threading and per-token overhead are.
+### Both engines re-measured on THIS box (2026-06-04) — the fair comparison
+
+The earlier dot conclusions were measured at the broken 16-thread default; **re-measured at the correct thread counts**, both engines reproduced (so the comparison is now valid):
+
+| engine (best config, Qwen3-0.6B Q8, CPU, this box) | gen tok/s |
+|---|---|
+| SP, 5 threads, scalar dot | 6.92 |
+| SP, 5 threads, AVX2 dot | 26.05 |
+| **SP, 5 threads, AVX-512 dot** | **27.32** |
+| **llama.cpp Q8_0, 8 threads (its default)** | **53.27** |
+| llama.cpp Q8_0, 5 threads | 50.50 |
+
+**SP best ~27.3 vs llama.cpp best ~53.3 → ~1.95× behind** (matched at 5 threads: 27.3 vs 50.5 = 1.85×). **llama.cpp reproduces the recorded 52.8** (53.3 today) — it is a trustworthy reference; only SP's 39.52 was non-reproducible.
+
+**Two earlier conclusions RETRACTED (both were measured in the wrong regime):**
+- **The dot IS a lever.** At the correct 5 threads, AVX2 is **3.76×** over scalar (6.92→26.05) and **AVX-512 is +4.9%** (26.05→27.32, top-1 parity-exact). The earlier "+0.1%, dot dead" was measured at 16 oversubscribed threads where the cores thrash and nothing downstream shows. AVX-512 dot is a real (small) win — re-enable for default-on consideration.
+- **block-Q8 is NOT de-prioritized.** The levers **stack** (thread-count × SIMD-width × layout); a faster int8×int8 block dot can still pay on top of the thread fix. Stage 1b remains live.
+
+**Honest standing + what's left:** SP ~27 vs llama ~53 = **~1.95× behind**, both reproduced. The thread fix (physical-core default) is the shipped win; the remaining ~2× is open and **not capped** — llama scales to 8 threads while SP saturates at 5 (its kernels are more memory-efficient per thread), and the stacked levers (AVX-512 dot default-on, block-Q8 int8×int8, threading the serial pipeline parts, per-token overhead) are the path to close it. Note llama.cpp is itself built with AVX-512 (`AVX512=1`) and hits 53 — so SP's headroom is real.
