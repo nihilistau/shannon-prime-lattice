@@ -1,6 +1,6 @@
 # RFC-001: PPT-ARM — the Shannon-Prime inference architecture (and the Lattice that fell out of it)
 
-**Status:** DRAFT for review/critique/iteration. v2 — hierarchy corrected (PPT-ARM is primary; the Lattice is its natural extension).
+**Status:** DRAFT for review/critique/iteration. v2 — hierarchy corrected (PPT-ARM is primary; the Lattice is its natural extension). **Amended 2026-06-03:** the C2.1 memory envelope is now measured (recall router solved, two-ring wired live — §9/§11); public front door live at [Position Is Arithmetic](https://github.com/nihilistau/Position_Is_Arithmetic) (site https://nihilistau.github.io/Position_Is_Arithmetic/); all repos relicensed to MIT.
 **Author:** Claude (SP hat), 2026-06-02, synthesizing operator intent + the empirical record. Supersedes the v1 framing that wrongly centered the Lattice.
 **Disposition:** A constitution + contract skeleton, not a decree. Every §ends with OPEN QUESTIONS. Nothing here is frozen until it is itself frozen.
 
@@ -150,7 +150,9 @@ L3 daemon(Rust)— orchestration: island detect + Beatty dispatch, MTP transacti
 
 **[PROVEN]:** PPT forward bit-exact to llama.cpp for qwen3/qwen2.5/gemma3/gemma4/qwen35moe (the bolt-on works); NTT-CRT dual-prime byte-exact; Frobenius Q4/Q8 + arena; KSTE + sieve; Spinor encode/decode + receipt ABI (silicon-confirmed); M.4 PoUW ledger + mesh canonical order; L3 daemon (chat/ledger/QUIC); Hexagon HVX Barrett/mod_q/NTT/Bluestein; **HX.3b vrmpy 1.04× > ARM fp32, byte-equal** (reported); cross-backend determinism.
 
-**[TARGET]/[DESIGN] — the actual value, not yet measured/built:** Spinor KV compression ratio (the 120×); sub-Q4 converter ratio; tok/s at long ctx vs the 40-tok/s baseline; Ring-2 disk offload + residual recall; dual-GPU residue-sharing; Trick #1 combined; MTP transaction loop; MeMo fusion; int-end-to-end (no per-matmul fp dequant).
+**[PROVEN since 2026-06-03 (C2.1)]:** the **two-ring memory recall envelope** — ±1 recall router + Optane Ring-2 (7.57 µs/read) + (sink+W) window shrink (910× @32k) + needle off physical NVMe + 8×@+0.69% PPL + fusion, bit-exact when off; the **reducing loader** (GGUF → ~50%-smaller `.sp-model`, bit-faithful, paper 02 green); **WIRE-CPU** 0.84 → 39.52 tok/s (47×, ~1.34× behind llama.cpp Q8_0).
+
+**[TARGET]/[DESIGN] — still the open value:** the Spinor *per-vector codec* ratio *at bit-exact* (the ~120× question — the codec is lossy 29/31 today, distinct from the recall envelope); sub-Q4 converter ratio; the **40-tok/s north-star on 35B-A3B** (the 0.6B WIRE gap is closed to ~1.34×); Ring-2 **multi-device** residual recall + dual-GPU residue-sharing (single-device offload now [PROVEN]); Trick #1 combined; MTP transaction loop; MeMo fusion; int-end-to-end (no per-matmul fp dequant).
 
 **Blockers:** WIRE gap (CPU/CUDA/Vulkan shells scalar-f32); qwen35moe `.sp-model` needs the OK_Q4 (reducing) artifact + bridge + arena-expert; NTT N≤512 + not-faster-at-HD≤256 (structural); engine↔core fork tax (duplicated forwards/dequant/enums).
 
@@ -158,7 +160,7 @@ L3 daemon(Rust)— orchestration: island detect + Beatty dispatch, MTP transacti
 
 ## 10. Where this design breaks
 
-1. **The headline numbers are unmeasured.** 120× KV and "beats 40 tok/s" are [TARGET]. If the measured Spinor ratio is 10×, or PPT-ARM is slower than the hier-KV baseline after all wiring, the value thesis is in question. **Measure these before believing them.**
+1. **The *remaining* headline numbers are unmeasured.** The *memory* envelope is now measured (C2.1: 910× resident @32k, off-NVMe retrieval @7.57 µs/read, 8×@+0.69% PPL). Still [TARGET]: the Spinor *per-vector codec* ratio at bit-exact (the 120× — lossy 29/31 today) and "beats 40 tok/s" on the 35B-A3B (the 0.6B WIRE gap is down to ~1.34×). If that codec ratio is only ~3× at bit-exact, or the MoE is slower than the hier-KV baseline after wiring, the value thesis is still partly open. **Measure before believing.**
 2. **Ring-2 residual recall** may cost more than recompute; **dual-GPU residue exchange** only wins if CRT-residue bandwidth < full-tensor transfer — unproven bandwidth model.
 3. **Entropy-container mask cost** can erase the fetch savings; **MeMo additive-only** may not capture real learning; **Trick #1** init-cost/precision/Garner-sign edges.
 4. **N≤512** caps cyclotomic NTT; a third prime is a Phase-5 cascade.
@@ -173,7 +175,7 @@ L3 daemon(Rust)— orchestration: island detect + Beatty dispatch, MTP transacti
 
 The C2 measurement phase is **done** and it re-ranked the work: the per-vector KV codec is ~3.5× (lossy, 29/31 real-model) and the Ring-2 context multiplier, while large (~hundreds×), is largely disk-tiering. **The unmeasured, load-bearing differentiators are SPEED, MULTI-DEVICE, and MTP — not more context work.** So the forward order is now:
 
-1. **P1 — SPEED / the WIRE gap → real tok/s (the north-star).** Wire the integer pipes (CPU AVX-512+VNNI first; the dev host has it) into the forward *shell* (today they're scalar f32 off-Hexagon) and measure tok/s vs llama.cpp on a proven small model. This is the literal reason-to-exist gate and the biggest unmeasured risk (HX.3b's 1.04× bandwidth-bound result is the warning). Lives partly in C3 (backend wiring) + a new measurement gate.
+1. **P1 — SPEED / the WIRE gap → real tok/s (the north-star).** Wire the integer pipes (CPU AVX-512+VNNI first; the dev host has it) into the forward *shell* (today they're scalar f32 off-Hexagon) and measure tok/s vs llama.cpp on a proven small model. This is the literal reason-to-exist gate and the biggest unmeasured risk (HX.3b's 1.04× bandwidth-bound result is the warning). Lives partly in C3 (backend wiring) + a new measurement gate. **[IN PROGRESS 2026-06-03]:** WIRE-CPU took Qwen3-0.6B decode **0.84 → 39.52 tok/s (47×)** (Q8 pack + threaded matmul + AVX2 int8×f32 dot), now **~1.34× behind llama.cpp Q8_0**; VNNI tested + falsified → the gap is **memory layout, not ALU**. Next step filed: `PLAN-SPEED-WIRE-CPU-V3-memory-layout.md` (Stage-0 profile gates a block-Q8 layout). The 0.6B dense dot is "match the tuned ceiling"; the real speed win is the **35B-A3B MoE system gate**, not this kernel.
 2. **P2 — C4 MTP transaction protocol** (Theorem T8): exact O(1) ring-pointer rollback + batched-draft bit-identity; a speed differentiator that composes with P1.
 3. **P3 — C3 multi-device CRT residues + Garner recombination service** (ship residues not tensors): the most differentiated capability; bigger build. A 2-node CRT-shard byte-exact vertical slice is the proof.
 4. **P4 — remaining C2** (DEMOTED to context axis): fp16 swivel, wire Spinor-KV into `qwen36_forward`, a real *directional* recall router (KSTE ruled out — C2.0.4.1). Secondary; matters most for long-ctx on small models, not the weight-dominated flagship MoE.
@@ -182,7 +184,7 @@ The C2 measurement phase is **done** and it re-ranked the work: the per-vector K
 ### Contract index
 
 - **C1 — `.sp-model` v1 + O_K container (REDUCING):** min-entropy disk body ≤ source + runtime-expansion + spare-bit schema; OK_Q4 default. **[DONE 2026-06-02 — ~17% reduction, output-lossless top-1.]**
-- **C2 — ARM memory contract:** Spinor-KV inline-compression + two-ring offload/recall + recall router. **[MEASUREMENT PHASE DONE 2026-06-02: KV ~3.5×/f32 lossy; Ring-2 ~400–1190× effective context (storage); recall router = open (KSTE falsified). Implementation (P4) demoted.]**
+- **C2 — ARM memory contract:** Spinor-KV inline-compression + two-ring offload/recall + recall router. **[MEASUREMENT PHASE DONE 2026-06-02; C2.1 RESOLVED + WIRED LIVE 2026-06-03.]** The recall router is **solved** — a ±1 Rademacher projection (KSTE was falsified, C2.0.4.1) — and the two-ring memory is wired into the live decode path and **measured**: 910× resident KV shrink @32k, needle retrieved off physical Optane @7.57 µs/read, 8× sparsification @ +0.69% PPL, O(N) quickselect, compact-and-spill fusion (verified 512 + timed 8k; 32k R9 in flight). Engine `f8ea920`/`7896bc4`; CONTRACT-C2 §C2.1. The Spinor *per-vector codec* ratio at bit-exact (the ~120× question) remains [TARGET]; the *recall envelope* is now [PROVEN].
 - **C3 — L1 ABI v2:** Garner recombination service + island dispatch + Ring-2 hooks. **[P3]**
 - **C4 — MTP transaction protocol** over the Spinor journal. **[P2]**
 - **C5 — MeMo receipt format + fusion contract.** **[P5]**

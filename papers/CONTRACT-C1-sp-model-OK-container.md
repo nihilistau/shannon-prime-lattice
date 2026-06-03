@@ -1,9 +1,11 @@
 # CONTRACT C1 — `.sp-model` v1 + the O_K container (the REDUCING artifact)
 
-**Parent:** RFC-001. **Status:** DRAFT contract for implementation. **Freezes when:** all C1 gates green on ≥2 archs (gemma4 + qwen35moe).
+**Parent:** RFC-001. **Status:** ✅ **CLOSED 2026-06-03** — all C1 gates green on 2 archs (gemma4 OK_Q8 + qwen35moe OK_Q4). The reducing loader is now public as **Position Is Arithmetic paper 02** (repro green, 6/6 E_FMT gates).
 **One line:** the offline converter produces a discrete model artifact that is **≤ the source quant on disk**, carries **one canonical object (O_K)** every backend reads identically, and defines the **runtime-expansion contract** by which the loader lifts that min-entropy body into Ring-1's ALU-adapted compute container.
 
 > Anchor (RFC-001 §3, STATE §5): the converter **REDUCES** size. Inflating a Q4_K source to OK_Q8 (1 byte/weight, ~35 GB) is the wrong-direction artifact that disk-blocked qwen35moe. C1 makes "reducing" a *gated invariant*, not an aspiration.
+
+> **CLOSED 2026-06-03 — gate results.** **C1_REDUCTION:** qwen35moe 16.33 GB ≤ 19.7 GB Q4_K source (~17% smaller); gemma4 OK_Q8 ≤ source; Qwen3-0.6B-f16 1,439 → 720 MB (50%). **C1_ROUNDTRIP_TOP1:** top-1 bit-exact to GGUF-direct on both archs (qwen35moe `5444`). **C1_ARENA_EXPERT + C1_ZERO_INFLATION:** green. Engine `66ccab9`; gates `qwen36_spmodel_top1` / `E_PARITY_2` + the engine `E_FMT_4`/`E_FMT_4_QWEN3` closure gates (Position paper 02 `EXPECTED.md`). **Open follow-up (not a gate):** true sub-Q4 via shared-scale / Spinor structure — the headline ratio question, carried into C2/§5.
 
 ---
 

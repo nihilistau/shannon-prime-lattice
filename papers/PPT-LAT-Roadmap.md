@@ -3,8 +3,9 @@
 **Project:** shannon-prime-lattice
 **Document role:** Operational roadmap. Read by every future session before doing work.
 **Status:** Living document. Mutable. Papers are scaffolding, not artefacts.
-**Last rewrite:** 2026-05-21
+**Last rewrite:** 2026-05-21 · **Last amended:** 2026-06-03 (C2.1 + public-launch amendments below)
 **Authors:** Knack + Claude + Gemini (Shannon-Prime team)
+**Public front door:** [Position Is Arithmetic](https://github.com/nihilistau/Position_Is_Arithmetic) · [live site](https://nihilistau.github.io/Position_Is_Arithmetic/) — receipts-first paper series. **License: MIT (all repos).**
 
 ---
 
@@ -13,6 +14,8 @@
 > **C2.1 COMPLETE (2026-06-03) — two-ring recall wired live, all three walls down.** The "remaining C2" / open recall-router item is now resolved end-to-end in the live `qwen3_generate_kv` decode path: ±1 projection router + Möbius attention sinks + physical Optane Ring-2 (NO_BUFFERING + IOCP async, 7.57 µs/read) + O(N) quickselect (compute wall) + Ring-1 (sink+W) ring buffer (memory wall, 910× KV-RAM shrink @32k). Gates: GEN_KV bit-parity throughout, NIAH `837492` HIT off Optane, G2 PPL deflection 8× = +0.69% (<2%, N=2k). Honest RAM floor now projk-dominated (~950 MB @32k, int8/int4 router-quant next). Engine `67f4997`→`f8ea920`; full record **CONTRACT-C2 §C2.1** + **STATE §5.05**. 32k all-walls finale in progress.
 >
 > **C2.1 SIGNED OFF (2026-06-03) — modes + fusion + release prep.** Three decode modes shipped (streaming / decode-only `a5e9b86` / compact-and-spill fusion `7896bc4`), all parity-exact when off. Fusion verified N=512 + timed N=8192 (51.4 min, buffer freed, HIT off Optane); 32k *headline* runs the streaming path (always-low-RAM) since dense-exact fusion prefill is O(N²) (~18 h @32k, the stock cost of exact attention). **R9 (streaming 32k) in flight** — last open item is cosmetic (drop its numbers into paper-01 §4 + abstract + EXPECTED + hero). Publishing track: paper-02 repro green (6/6 E_FMT, EXPECTED.md), license MIT wired, `shannon-prime-papers` repo set up. Record in **STATE §5.055**. C2.1 is closed bar the R9 number; next lead per §5.1 is **P1 SPEED/WIRE** (close the ~33× tok/s gap) or **P2 C4 MTP**.
+>
+> **PUBLIC LAUNCH + DOCS ALIGNED (2026-06-03).** Public front door is live: **`Position_Is_Arithmetic`** (repo + GitHub-Pages site) carries the receipts-first paper series — 01 two-ring memory, 02 reducing loader (repro green). **All four repos relicensed AGPL-3.0 → MIT** (copyright Ray Daniels). The three code-repo READMEs + the `PPT-LAT-Systems-v1` master were rebalanced off the phone/Hexagon-era framing onto the current memory-envelope strategy (Hexagon is now one of four backends; the CPU two-ring memory + WIRE-CPU 47× are the realized-envelope story). **Next P1 step filed:** `PLAN-SPEED-WIRE-CPU-V3-memory-layout.md` — Stage 0 (profile: is the last 1.34× vs llama.cpp Q8 bytes, passes, or activation-side?) gates the block-Q8 layout; it is armed to auto-fire when the R9 box frees. The 0.6B dense dot is "match the tuned ceiling"; the real speed differentiator is the 35B-A3B MoE envelope (`SPEED_NORTHSTAR`).
 
 ---
 

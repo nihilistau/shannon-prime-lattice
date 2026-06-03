@@ -53,3 +53,5 @@ Gemini's "route CPU/GPU/NPU via Beatty" **over-reaches.** A Beatty/Rayleigh part
 ## Disposition
 
 These three contracts are **parked at decision-level** until C1 (`.sp-model` reducing container) and C2 (Spinor-KV two-ring, where the ~120× and the regime split get *measured*) are built. Detailed L1-ABI surfaces + the daemon state machine are drafted **after** the substrate they orchestrate is proven, not before. The decisions above are the durable part; the machines wait.
+
+**Update 2026-06-03 — the substrate is now proven.** **C1 is CLOSED** (reducing `.sp-model`, output-lossless top-1) and **C2.1 is wired live + measured** (two-ring memory: 910× resident KV @32k, needle off physical Optane @7.57 µs/read, 8×@+0.69% PPL, fusion). So **C4 (MTP) unparks as the P2 lead** — its Spinor-journal watermark/epoch protocol can now be designed against a measured base, composing with P1 SPEED. C5 (MeMo) and C6 (cyclotomic paper) stay decision-level until their own gates ([SPECULATIVE] continual-learning signal for C5; the NTT crossover paper for C6). The decisions above remain the durable part.
