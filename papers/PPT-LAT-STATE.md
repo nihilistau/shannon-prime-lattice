@@ -114,7 +114,19 @@ C2.1 wired the C2 measurements into the live `qwen3_generate_kv` decode path and
 - **Compute wall (`b7a1f92`):** O(B·N) max-extract → **O(N) quickselect** (the ~10-h-at-32k bottleneck removed).
 - **Memory wall (`f8ea920`):** Ring-1 `kc/vc` → **(sink+W) ring buffer** when offloading. N=512 15× shrink; **32k = 910× (7.5 GB → 8.3 MB)**.
 
-**Honest RAM floor @32k:** Ring-1 = 8.3 MB but the `projk` ±1 router index stays full-P ≈ 940 MB → net 7.5 GB → **~950 MB (~8×), projk-dominated**; int8/int4 router-index quant is the next optimization (owned, not hidden). **FINALE in progress:** NIAH N=32768 B=512(4×) d50 disk/IOCP — all three walls collapsing in one ~1–2 h run.
+**Honest RAM floor @32k:** Ring-1 = 8.3 MB but the `projk` ±1 router index stays full-P ≈ 940 MB → net 7.5 GB → **~950 MB (~8×), projk-dominated**; int8/int4 router-index quant is the next optimization (owned, not hidden).
+
+## 5.055 C2.1 prefill/decode modes + fusion + release prep (2026-06-03)
+
+Three decode modes now exist, all parity-exact when off, additive/gated (proven paths untouched):
+
+- **Streaming** (default): recall during prefill, always-low-RAM (Ring-1 = sink+W throughout). O(B·N) prefill. This is the 32k headline path.
+- **Decode-only** (`SP_RECALL_DECODE_ONLY`, engine `a5e9b86`): dense-exact prefill in RAM, recall engages only at decode (pos ≥ n_prompt). Trades peak-RAM-during-ingest for fast exact ingest.
+- **Fusion / compact-and-spill** (`SP_RECALL_FUSE`, engine `7896bc4`): dense-exact prefill in a full-P RAM buffer, then ONE bulk spill of the cold tail to Optane at the prefill→decode boundary + copy sinks/window into the (sink+W) cache + **free the prefill buffer** → window-sized decode RAM with exact ingest. **Verified N=512** (boundary fired, needle off disk) **and timed N=8192** (51.4 min wall, 1.88 GB buffer freed, HIT `837492`, 10.62 µs/read). Upgrades paper-01 §3.7 future-work → result.
+
+**Honest cost note:** fusion prefill is exact O(N²) attention (recall off during ingest), so 32k dense-exact is ~18 h on one f16 core — the stock cost of exact attention, not a fusion defect, consistent with the ~1.34× throughput gap. The 32k *headline* therefore runs on the streaming path (always-low-RAM, O(B·N)); fusion's receipt is the 512 + 8k runs. **R9 (streaming 32k) in flight** — drop its retrieval/read-count/latency/wall-clock into paper-01 §4 + abstract + EXPECTED.md + landing hero on completion.
+
+**Release prep (publishing track):** paper-02 repro **green** — 6/6 E_FMT gates, L1 reducing (Qwen3-0.6B-f16 1,439.4 → 719.6 MB, 50.0%), L4 bit-faithful forward on gemma-3 + qwen3, captured in `EXPECTED.md`. **License = MIT** (wired through LICENSE / CITATION.cff / README / site). Release staging assembled in `comms/release/` (papers 01–02, site, ledger); **`shannon-prime-papers` repo set up** for the papers series. Public remote URL + first release tag deferred (operator deciding).
 
 ## 5.1 FORWARD PRIORITY (re-ordered 2026-06-02 — differentiators ahead of context)
 

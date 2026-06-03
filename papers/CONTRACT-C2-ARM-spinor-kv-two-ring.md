@@ -217,3 +217,17 @@ C2.1 took the C2 measurements (±1 router proven in harness, Ring-2 recall byte-
 | **Memory** | Ring-1 window + Optane two-ring | 910× cache shrink @32k, NIAH HIT @7.66 µs/read off Optane | **`projk` router index still full-P ≈ 940 MB @32k → net 32k RAM 7.5 GB → ~950 MB (~8×), projk-dominated; int8/int4 router quant is next** |
 
 **FINALE (in progress):** NIAH N=32768, B=512 (4×), depth-50, disk on F: via IOCP, sinks=4 — now ~1–2 h (not ~10 h). Retrieval at 32k off physical NVMe at queue-depth latency with a 910× KV-RAM shrink — all three walls in one run.
+
+### C2.1 prefill/decode modes + compact-and-spill fusion (2026-06-03)
+
+The recall system now has three decode modes, all parity-exact when off, additive/gated (proven paths untouched):
+
+| Mode | Env | Prefill | Decode RAM | Best for |
+|---|---|---|---|---|
+| **Streaming** (default) | recall+ring2 on | recall during prefill, O(B·N) | window throughout (always-low-RAM) | the 32k headline |
+| **Decode-only** | `SP_RECALL_DECODE_ONLY` (`a5e9b86`) | dense-exact in RAM | full cache during ingest, window at decode | fast exact ingest, RAM ok |
+| **Fusion** | `SP_RECALL_FUSE` (`7896bc4`) | dense-exact in full-P buffer | buffer **freed** at boundary → window | exact ingest AND window decode RAM |
+
+Fusion = dense-exact prefill in a full-P RAM buffer, then ONE bulk spill of the cold tail to Optane at the prefill→decode boundary, copy sinks/window into the (sink+W) cache, and free the prefill buffer. **Verified N=512** (boundary fired, needle off disk) and **timed N=8192** (51.4 min wall, 1.88 GB buffer freed, HIT `837492`, 5.35 M reads @ 10.62 µs). Upgrades paper-01 §3.7 future-work → result.
+
+**Honest cost:** fusion prefill is exact O(N²) attention (recall off during ingest), so 32k dense-exact ≈ 18 h on one f16 core — the stock cost of exact attention, not a fusion defect, consistent with the ~1.34× throughput gap. The 32k **headline** therefore uses the streaming path (O(B·N), always-low-RAM); fusion's receipts are the 512 + 8k runs. R9 (streaming 32k) in flight; its retrieval/read-count/latency/wall-clock land in paper-01 §4 + abstract + EXPECTED + landing hero on completion.
