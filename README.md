@@ -189,7 +189,7 @@ the cDSP skel rebuild that flips the on-device tok/s is tracked in
 The "single math object" reappears at six layers. Walk down from the
 top — DHT key space → polynomial ring → matmul kernel → vector ALU
 width — and the same prime-factored lattice picks out the right
-operation at each scale. See `papers/PPT-LAT-Systems.md`
+operation at each scale. See `papers/PPT-LAT-Systems-v1.md`
 ("Overview: six layers of one math object").
 
 ---
@@ -220,7 +220,7 @@ GGUF model, `curl` `/v1/chat`.
 1. `papers/PPT-LAT-Theory.md` — the lattice, `⪯_d` as well-quasi-order,
    CRT cyclotomic ring, HRR, the 13-step PPT substitution, the unified
    role of one math object across the stack.
-2. `papers/PPT-LAT-Systems.md` — six-layer architecture, engine
+2. `papers/PPT-LAT-Systems-v1.md` — six-layer architecture, engine
    backends, inline compression, model-family coverage, gated lattice
    features, blockchain scaffolding.
 3. `papers/PPT-LAT-Roadmap.md` — current implementation phases (1..16
@@ -240,7 +240,7 @@ NTT-dispatch hook in `core/poly_ring_bluestein/`.
 `gemma3_forward_*` / `qwen3_forward_*` arch path.
 
 **You want to add a peer to a running mesh.** Read
-`papers/PPT-LAT-Systems.md` §"DHT and sharded inference" then
+`papers/PPT-LAT-Systems-v1.md` §"DHT and sharded inference" then
 `shannon-prime-system-engine/tools/sp_daemon/src/network/quic_shard.rs`.
 
 ---
@@ -251,7 +251,7 @@ NTT-dispatch hook in `core/poly_ring_bluestein/`.
 shannon-prime-lattice/
 ├── papers/                            # the project's papers — read these first
 │   ├── PPT-LAT-Theory.md              # math foundations + 13-step PPT substitution
-│   ├── PPT-LAT-Systems.md             # six-layer architecture
+│   ├── PPT-LAT-Systems-v1.md             # six-layer architecture
 │   ├── PPT-LAT-Roadmap.md             # implementation phases (living document)
 │   ├── PPT-LAT-L1-ABI-v0.md           # frozen Layer-1 C ABI contract
 │   ├── PPT-LAT-SP-MODEL-v0.md         # .sp-model / .sp-tokenizer on-disk format
@@ -309,7 +309,7 @@ memory entries `feedback-no-silent-gate-revisions`,
 |-------------|------|
 | The results, reproducible from a command (**start here**) | [Position Is Arithmetic](https://github.com/nihilistau/Position_Is_Arithmetic) · [live site](https://nihilistau.github.io/Position_Is_Arithmetic/) |
 | The math foundations | `papers/PPT-LAT-Theory.md` |
-| The systems architecture | `papers/PPT-LAT-Systems.md` |
+| The systems architecture | `papers/PPT-LAT-Systems-v1.md` |
 | The implementation roadmap (living) | `papers/PPT-LAT-Roadmap.md` |
 | The frozen L1 C ABI contract | `papers/PPT-LAT-L1-ABI-v0.md` then `shannon-prime-system/include/sp/sp_l1.h` |
 | The `.sp-model` on-disk format | `papers/PPT-LAT-SP-MODEL-v0.md` |
