@@ -81,3 +81,13 @@ Hypothesis: the ~1.34× gap is the AVX2-f32 (1 MAC/lane) vs VNNI `dpbusd` (4 int
 ## WIRE-CPU-V3 (the layout investigation) — planned
 
 Full stage plan: **`PLAN-SPEED-WIRE-CPU-V3-memory-layout.md`**. Summary: Stage 0 profiles where the 1.34× lives (bytes/token, LLC misses, passes) before any code; Stage 1 adds a block-scoped Q8 layout (32-elem blocks + per-block scale, SP-native Q8_0 analogue) in the Frobenius packer; Stages 2–3 fuse/prefetch and generalize the kernel to gemma3/qwen36. **Strategic note:** the 0.6B dense dot is a *match-the-ceiling* (llama.cpp is tuned); SP's real speed differentiator is the composed **35B-A3B MoE** envelope (reducing weights + expert residency + Spinor-KV window) — that's `SPEED_NORTHSTAR`, a separate lever from the 0.6B kernel.
+
+## WIRE-CPU-V3 Stage 0 + 1a — MEASURED (2026-06-03), and a correction
+
+**The 39.52 is withdrawn — it does not reproduce.** A fresh build of the *exact* commit that recorded it (`5e443c9`) gives **15.68 tok/s (n=32) / 13.91 (n=128)** today; current `main` gives 14.06 / 13.47; a cooler run gave 16.78 (n=128). So `5e443c9 ≈ main` — **not a regression** (C2.1 is clean) — and the honest reproducible figure is **~14–17 tok/s**. **vs llama.cpp Q8_0 (52.8): SP is ~3.2–3.8× behind, not 1.34×.** Docs that cite 39.52 / 1.34× (READMEs, Systems-v1, RFC-001) overstate and should read ~14–17 / ~3.5× behind.
+
+**Stage 0 (env-toggle triangulation):** threading the AVX2 dot on 16 cores adds only **1.24×** (vs ~5.5× on the scalar path) → the dot is **bandwidth/convert-bound**, not compute-bound (~8 GB/s effective, under DRAM peak). The per-row fp32 scale stream is negligible vs int8 weight bytes, so SP and Q8_0 move ~the same bytes — the gap is *passes / the int8→f32 convert / activation side*, not bytes.
+
+**Stage 1a (AVX-512 16-wide int8×f32 dot, `SP_CPU_AVX512DOT=1`, engine `cpu_overlay.c`):** parity-exact (top-1 == scalar) and **+0.1% (16.78 → 16.80)**. Doubling SIMD width does nothing → ALU width is not the lever (same conclusion as VNNI's +9%). **Kept gated + OFF as a documented dead-end.**
+
+**Stage 1b (the real lever, next):** a **block-Q8 int8×int8 dot with per-block activation quant** (Q8_0-faithful: 32-elem blocks, one scale per block on *both* weight and activation). Removes the per-element `int8→f32` convert *and* fixes the accuracy failure that falsified naive per-vector VNNI (per-block, not per-vector, activation scales). Gated + top-1-parity-checked.
