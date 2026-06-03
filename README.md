@@ -6,14 +6,17 @@ object: the prime-factored coordinate lattice over `Z_q` with dual-prime
 Chinese-Remainder-Theorem (CRT) decomposition, the Friedman-Kruskal dominance
 order `⪯_d`, and the CRT cyclotomic ring `R_q = Z_q[x]/(x^N + 1)`.
 
-This repository is the **public project entry point**. It holds the theory,
+This repository is the **developer umbrella**. It holds the theory,
 systems, ABI, and on-disk-format papers; the demos; the integration tests;
 and the bootstrap prompt for new working sessions. Code lives in the two
-companion repositories:
+companion repositories. New here for the results, not the source? Start at
+the public, receipts-first front door: **[Position Is Arithmetic](https://github.com/nihilistau/Position_Is_Arithmetic)**
+(live site: https://nihilistau.github.io/Position_Is_Arithmetic/).
 
 | Repo | Role | URL |
 |------|------|-----|
-| `shannon-prime-lattice` (this) | Papers, roadmap, demos, integration tests | https://github.com/nihilistau/shannon-prime-lattice |
+| `Position_Is_Arithmetic` | **Public front door** — receipts-first paper series + live landing site (every claim reproduces from a command) | https://github.com/nihilistau/Position_Is_Arithmetic |
+| `shannon-prime-lattice` (this) | Developer umbrella: papers, roadmap, demos, integration tests | https://github.com/nihilistau/shannon-prime-lattice |
 | `shannon-prime-system` | Math-core: L1 C ABI, NTT, poly-ring, KSTE, Frobenius, sessions | https://github.com/nihilistau/shannon-prime-system |
 | `shannon-prime-system-engine` | Engine backends (CPU/CUDA/Vulkan/Hexagon), `sp_daemon` HTTP/SSE, tools | https://github.com/nihilistau/shannon-prime-system-engine |
 
@@ -34,6 +37,24 @@ Distinguishing claims (each one validated by a shipped sprint and a closure
 note under `papers/SESSION-CLOSED-*.md` or
 `shannon-prime-system-engine/tools/sp_compute_skel/docs/CLOSURE-*.md`):
 
+- **Two-ring long-context memory (PPT-ARM) — the headline envelope.** A
+  recall + offload layer that bolts onto a frozen pretrained transformer
+  and decouples context length from RAM: a ±1 Rademacher projection router
+  (Johnson–Lindenstrauss, 32 B/token) selects what to attend, attention-sink
+  pinning preserves quality under sparsification, and the cold KV cache
+  spills to byte-addressable storage (a two-ring design). Measured at 32k
+  context: **910× resident KV-cache shrink** (7.5 GB → 8.3 MB), needle
+  retrieved **off a physical NVMe drive** (poison-gated, 7.57 µs/read on
+  Optane), **8× KV sparsification at +0.69% perplexity** (2× and 4× go
+  negative), and **O(N)** selection. Bit-exact (argmax-identical) when
+  disabled. A compact-and-spill *fusion* mode gives exact prefill *and*
+  window-sized decode RAM. Proof-of-mechanism on Qwen3-0.6B; see the
+  receipts-first writeup in
+  [Position Is Arithmetic](https://github.com/nihilistau/Position_Is_Arithmetic).
+- **Reducing loader.** The GGUF → `.sp-model` transcode produces an artifact
+  **~50% smaller than the source**, loaded zero-copy, with a **bit-faithful
+  forward** (closure-gated on gemma-3 + Qwen3). Size win without a quality
+  trade — the dequant round-trip is exact, not approximate.
 - **Discrete `Z_q` substrate.** Two frozen 30-bit Proth primes
   `q_1 = 1073738753`, `q_2 = 1073732609`, `M = q_1·q_2 ≈ 2^60`. Negacyclic
   NTT over each prime with Garner CRT recombination at the boundary. Every
@@ -72,10 +93,13 @@ note under `papers/SESSION-CLOSED-*.md` or
 
 ## 2. Current status
 
-Honest snapshot, 2026-05-31.
+Honest snapshot, 2026-06-03.
 
 | Component | Status | Evidence |
 |-----------|--------|----------|
+| **Two-ring memory (PPT-ARM) — recall router + Optane Ring-2 + window shrink** | **shipped + measured** — 910× KV shrink @32k, needle off NVMe @7.57 µs/read, 8×@+0.69% PPL | engine `cpu_forward.c`; CONTRACT-C2 §C2.1; Position Is Arithmetic paper 01 |
+| Compact-and-spill fusion (exact prefill + window decode RAM) | **shipped** — verified N=512, timed N=8192; 32k headline (R9) in flight | engine `7896bc4` |
+| Reducing loader (GGUF → ~50%-smaller `.sp-model`, bit-faithful) | **shipped + green** — 6/6 E_FMT gates on gemma-3 + Qwen3 | Position Is Arithmetic paper 02 (`EXPECTED.md`) |
 | Frozen L1 C ABI | **shipped** | `shannon-prime-system/include/sp/sp_l1.h`; tag `lat-phase2-contract-frozen` |
 | `.sp-model` v0 wire format | **shipped** | `papers/PPT-LAT-SP-MODEL-v0.md`; loader at `core/io_format/` |
 | Math-core reference forward | **shipped** — runs Qwen3-0.6B, Qwen2.5-Coder-0.5B, Gemma3-1B byte-exact host + aarch64-android | `lib/shannon-prime-system/core/forward/forward.c`; closure `SESSION-CLOSED-lat-3-cell-*.md` |
@@ -101,17 +125,27 @@ Honest snapshot, 2026-05-31.
 | CUDA / Vulkan daemon wiring | **not shipped** — symmetric to WIRE-HEX | `CLOSURE-WIRE-HEX.md` §"What's NOT done" |
 | Fibonacci-Prime DHT | **spec'd** | `papers/PPT-LAT-Roadmap.md` §8 |
 
-**Production tok/s baseline (Knack S22U, math-core reference forward, ctx=16+32):**
+**Where the value is — and isn't (read this honestly).** The headline of the
+project is the **memory envelope** above (long context at a fraction of the
+RAM, served off storage, bit-exact when off), not raw throughput. On raw
+tok/s the scalar reference forward is *behind* a tuned llama.cpp at the same
+quantization (~1.34× on desktop CPU at Q8) — closing that is the explicit
+**P1 SPEED / WIRE** work (wiring the integer + Spinor-KV primitives the
+backends already contain into the hot path). We report the slow numbers on
+purpose.
+
+Reference-path tok/s, one platform (Knack S22U phone, math-core scalar
+reference forward, ctx = 16 prefill + 32 decode) — a single-piece test on
+device, not the daemon's accelerated path:
 
 | Model | Wall (s) | Tokens | tok/s |
 |-------|---------:|-------:|------:|
 | Gemma3-1B | 18.06 | 16 | 0.89 |
 | Qwen3-0.6B | 11.21 | 16 | 1.43 |
 
-These are the **reference path** numbers. Once the cDSP skel is rebuilt
-against the WIRE-HEX-bundled `inc/sp_hex.idl`, `SP_DAEMON_BACKEND=hex`
-routes through the HVX backend end-to-end and the table gains a third
-column. See `shannon-prime-system-engine/tools/sp_compute_skel/docs/CLOSURE-WIRE-HEX.md`.
+The Hexagon HVX path is one of four backends (CPU / CUDA / Vulkan / Hexagon);
+the cDSP skel rebuild that flips the on-device tok/s is tracked in
+`shannon-prime-system-engine/tools/sp_compute_skel/docs/CLOSURE-WIRE-HEX.md`.
 
 ---
 
@@ -273,6 +307,7 @@ memory entries `feedback-no-silent-gate-revisions`,
 
 | If you want | Read |
 |-------------|------|
+| The results, reproducible from a command (**start here**) | [Position Is Arithmetic](https://github.com/nihilistau/Position_Is_Arithmetic) · [live site](https://nihilistau.github.io/Position_Is_Arithmetic/) |
 | The math foundations | `papers/PPT-LAT-Theory.md` |
 | The systems architecture | `papers/PPT-LAT-Systems.md` |
 | The implementation roadmap (living) | `papers/PPT-LAT-Roadmap.md` |
