@@ -26,14 +26,23 @@ Source: critique of a Gemini synthesis directive, 2026-06-02. Where Gemini over-
 
 **Batched-forward ceiling** (`SP_MTP_CEIL`): K=8 in one pass ≈ 19.83 ms/token vs 33.97 ms/token at K=1-per-token → **1.71× weight-read amortization** ceiling.
 
-**[REALIZED 2026-06-04, engine `145bf43`]** — `qwen3_mtp_forward` (persistent-KV batched append-forward) + `qwen3_mtp_decode` (prompt-lookup draft → KV-reuse verify → byte-exact accept → O(1) watermark advance). Run on the **production swivel path**: `qwen3_rt.sp-model` loaded via `sp_model_load` → `sp_model_to_qwen3` (OK_Q8 packed arena, `gguf==NULL`, **zero quant inflation**). 96-token decode, K=8 / NG=2, vs K=0 incremental-KV greedy on the *same* arena substrate:
-- greedy(K=0): 96 tok / 4.240 s = **22.64 tok/s** (96 forwards)
-- MTP(K=8):   96 tok / 2.407 s = **39.88 tok/s** (34 forwards, mean_accept 1.94/8)
-- **1.76× wall-clock speedup**, `bit_identical_to_greedy=1`, forwards 96→34 (2.82× fewer)
+**[MACHINERY PROVEN + HONEST RE-MEASURE 2026-06-04, engine `145bf43`]** — `qwen3_mtp_forward` (persistent-KV batched append-forward) + `qwen3_mtp_decode` (prompt-lookup draft → KV-reuse verify → byte-exact accept → O(1) watermark advance). Run on the **production swivel path**: `qwen3_rt.sp-model` via `sp_model_load` → `sp_model_to_qwen3` (OK_Q8 packed arena, `gguf==NULL`, **zero quant inflation**). 96-token decode, K=8 / NG=2, vs K=0 incremental-KV greedy on the *same* arena. **All runs `bit_identical_to_greedy=1`** — the KV-reuse verify + watermark rollback machinery is correct.
 
-The KV-reuse verify is realized — the forward-count reduction now turns into wall-clock because each verify reuses the cached prefix K/V instead of re-prefilling. Gate (`tests/sp_toks.c SP_MTP_KV=1 SP_TOKS_SP=qwen3_rt.sp-model`).
+| prompt | greedy tok/s | MTP(K=8) tok/s | speedup | mean_accept | forwards |
+|---|---|---|---|---|---|
+| synthetic `[1,2,3,4]` | 22.6 | 39.9 | **1.76×** | 1.94/8 | 96→34 |
+| real prose (37 tok) | 21.9 | 19.0 | **0.87×** | 0.23/8 | 96→78 |
+| real code (88 tok) | 16.7 | 14.6 | **0.87×** | 0.07/8 | 96→90 |
 
-**OPEN (production-daemon integration):** this is the engine CPU *reference* path with a self-contained dense cache. The daemon's transactional speculation should compose this with the frozen `sp_session_clone` / `sp_session_rewind` primitives (`lib/shannon-prime-system/core/session/sp_session.c`) — the epoch/watermark-over-Spinor-ring design above — so rollback is the watermark reset, not a buffer free. MTP × Ring-2/recall/fuse also compose later (the reference path is plain f32 only).
+**Honest verdict:** the eye-catching 1.76× was a **degenerate-prompt artifact** — `[1,2,3,4]` makes the model emit repetitive output that **prompt-lookup** trivially predicts (accept 1.94/8). On real text prompt-lookup almost never hits (accept 0.07–0.23/8), so the batched verify drafts 8 and accepts ~0 → it does *more* work than plain greedy and nets **0.87× (a small loss)**. (Real prompts measured one-process-at-a-time; running two instances concurrently contaminates the tok/s, accept/forwards are deterministic.)
+
+**What this does and doesn't establish:**
+- DONE/PROVEN: persistent-KV batched append-forward, byte-exact greedy accept, O(1) watermark rollback — all bit-identical. The 1.71× batched weight-read amortization ceiling is real. The verify reuses the cached prefix (no re-prefill).
+- NOT established: a general wall-clock win. **Prompt-lookup is too weak a drafter for natural text.** The realized speedup is gated on a high-acceptance draft *source*, not on the verify machinery (which is finished). Options: the model's native **NextN/MTP draft heads** (qwen3.6-35b-a3b HAS them — ties to the Phase 3-MoE spine), a small **draft model**, or a trained Medusa-style head. Prompt-lookup only wins on highly self-similar content (long repeated spans), not prose/short code.
+
+Gate (`tests/sp_toks.c SP_MTP_KV=1 SP_TOKS_SP=qwen3_rt.sp-model SP_PROMPT_IDS=<real-token-ids>`).
+
+**OPEN:** (1) a real draft source (NextN heads / draft model) to make the win general — this is the actual remaining MTP work. (2) Daemon transactional integration via frozen `sp_session_clone`/`sp_session_rewind` (`lib/shannon-prime-system/core/session/sp_session.c`) — watermark reset, not buffer free. (3) MTP × Ring-2/recall/fuse compose later (reference path is plain f32). (4) temperature>0 accept contract.
 
 **OPEN:** byte-exact accept under temperature>0 (needs a discretized-sampling contract); watermark granularity (per-block vs per-layer-block).
 
