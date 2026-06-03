@@ -77,3 +77,7 @@ Hypothesis: the ~1.34× gap is the AVX2-f32 (1 MAC/lane) vs VNNI `dpbusd` (4 int
 - **Accuracy: top-1 gate FAILS** — VNNI tokens diverge from the f32-act ref (`3 4 3 4…` vs `3 5 3 9 2 61…21389…`). Naive per-vector dynamic int8 act-quant is too lossy (one `max_abs` scale, outliers crush the rest). Needs per-channel/SmoothQuant = research, not a free win.
 
 **Conclusion: AVX2-f32 dot (40 t/s, accurate, parity-safe) is the production CPU kernel.** VNNI stays gated+OFF as a documented dead-end for this scheme. **The real remaining gap is memory layout/bandwidth — a different investigation than ALU.** Live follow-ups: a Q8_0-style 32-elem block layout to cut passes/improve locality; gemma3/qwen36 attention threading. (gemma3/qwen36 attention share the threading pattern.)
+
+## WIRE-CPU-V3 (the layout investigation) — planned
+
+Full stage plan: **`PLAN-SPEED-WIRE-CPU-V3-memory-layout.md`**. Summary: Stage 0 profiles where the 1.34× lives (bytes/token, LLC misses, passes) before any code; Stage 1 adds a block-scoped Q8 layout (32-elem blocks + per-block scale, SP-native Q8_0 analogue) in the Frobenius packer; Stages 2–3 fuse/prefetch and generalize the kernel to gemma3/qwen36. **Strategic note:** the 0.6B dense dot is a *match-the-ceiling* (llama.cpp is tuned); SP's real speed differentiator is the composed **35B-A3B MoE** envelope (reducing weights + expert residency + Spinor-KV window) — that's `SPEED_NORTHSTAR`, a separate lever from the 0.6B kernel.
