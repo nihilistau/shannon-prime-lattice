@@ -18,8 +18,7 @@ companion repositories:
 | `shannon-prime-system-engine` | Engine backends (CPU/CUDA/Vulkan/Hexagon), `sp_daemon` HTTP/SSE, tools | https://github.com/nihilistau/shannon-prime-system-engine |
 
 Discord: [Shannon-Prime-Lattice](https://discord.gg/rre9XZmvV)
-License: AGPL-3.0-or-later. Commercial licensing available — contact the
-copyright holder.
+License: MIT. See `LICENSE`.
 
 ---
 
@@ -290,4 +289,4 @@ memory entries `feedback-no-silent-gate-revisions`,
 
 - GitHub Issues: project tracking lives in each of the three repos.
 - Discord: [Shannon-Prime-Lattice](https://discord.gg/rre9XZmvV).
-- Commercial licensing: contact the copyright holder (see `LICENSE`).
+- License: MIT (see `LICENSE`).
