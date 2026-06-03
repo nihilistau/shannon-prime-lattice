@@ -19,6 +19,13 @@ Source: critique of a Gemini synthesis directive, 2026-06-02. Where Gemini over-
 
 **[DESIGN]** (protocol) / **[PROVEN]** (Spinor ABI + transactional-rewind primitive). **Gate (future):** 100-step decode with speculation produces bit-identical output to non-speculative decode (proves rollback is lossless), at K=4 draft depth.
 
+**[MEASURED 2026-06-04, engine `b602ddf`]** — `tests/sp_toks.c SP_MTP=1` on Qwen3-0.6B-f16. Prompt-lookup draft (NG=2) → ONE batched `qwen3_forward` verify → byte-exact greedy argmax accept → corrected token → O(1) advance. N=48 decode steps, draft depth K=8:
+- `greedy_forwards=48  mtp_forwards=18` → **2.67× fewer forward passes**
+- `mean_accept=1.78/8` per verify
+- `bit_identical_to_greedy=1` — **the rollback-lossless gate is met** (ran at K=8, exceeding the K=4 future-gate spec)
+
+**Batched-forward ceiling** (`SP_MTP_CEIL`): K=8 in one pass ≈ 19.83 ms/token vs 33.97 ms/token at K=1-per-token → **1.71× weight-read amortization** ceiling. Realized wall-clock envelope = (forward-count reduction) × (per-forward ceiling), **once the verify reuses the persistent KV cache**. Current demonstrator recomputes from position 0 each verify — correctness-complete and bit-identical, but not yet wall-faster. The KV-reuse batched verify in `generate_kv` is the open production-integration item.
+
 **OPEN:** byte-exact accept under temperature>0 (needs a discretized-sampling contract); watermark granularity (per-block vs per-layer-block).
 
 ---
