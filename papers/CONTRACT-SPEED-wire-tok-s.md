@@ -90,4 +90,19 @@ Full stage plan: **`PLAN-SPEED-WIRE-CPU-V3-memory-layout.md`**. Summary: Stage 0
 
 **Stage 1a (AVX-512 16-wide int8×f32 dot, `SP_CPU_AVX512DOT=1`, engine `cpu_overlay.c`):** parity-exact (top-1 == scalar) and **+0.1% (16.78 → 16.80)**. Doubling SIMD width does nothing → ALU width is not the lever (same conclusion as VNNI's +9%). **Kept gated + OFF as a documented dead-end.**
 
-**Stage 1b (the real lever, next):** a **block-Q8 int8×int8 dot with per-block activation quant** (Q8_0-faithful: 32-elem blocks, one scale per block on *both* weight and activation). Removes the per-element `int8→f32` convert *and* fixes the accuracy failure that falsified naive per-vector VNNI (per-block, not per-vector, activation scales). Gated + top-1-parity-checked.
+**Stage 1b candidate:** a **block-Q8 int8×int8 dot with per-block activation quant** (Q8_0-faithful). Removes the per-element `int8→f32` convert + fixes the per-vector VNNI accuracy failure. **De-prioritized** — Stage 1a + the thread sweep show the dot ALU isn't the bottleneck, so this is unlikely to be the big lever.
+
+**Stage 1b ACTUAL WIN — thread oversubscription (the real lever, FIXED 2026-06-03, engine `cpu_overlay.c`).** A no-rebuild OMP thread sweep on the existing binary:
+
+| OMP threads | tok/s (Qwen3-0.6B Q8, n=64) |
+|---|---|
+| 1 | 11.84 |
+| 4 | 24.85 |
+| **5 (peak)** | **25.82–25.97** |
+| 6 | 25.07 |
+| 8 (physical) | 22.9 |
+| **16 (the OLD default = all logical)** | **16.5** |
+
+The box is 8 physical / 16 logical. **The OMP default of all-logical threads oversubscribes the 8 physical cores and runs ~1.5× SLOWER than the physical-core count** — so every prior measurement this session (incl. the "39.52" bisect at default‑16 → 15.68) ran the *worst* config. **Fix shipped:** `sp_kernels` now defaults OMP to physical cores (`omp_get_num_procs()/2`), overridable by `OMP_NUM_THREADS` / `SP_OMP_THREADS`. New default **22.91 tok/s** (1.39× free), tuned `SP_OMP_THREADS=5` **25.97**, top-1 parity-exact.
+
+**Corrected honest standing:** SP Qwen3-0.6B Q8 decode = **~23 tok/s default / ~26 tuned**, vs llama.cpp Q8_0 52.8 (which auto-tunes to physical cores) → **~2.0–2.3× behind**, not 1.34× and not 3.8×. The remaining ~2× is the serial pipeline + per-token overhead + llama.cpp's tighter fused kernels — past ~5–6 threads SP is memory-bandwidth-saturated (8 threads is already slower than 5). The dot kernel (AVX2/AVX-512/VNNI) is *not* the lever; pipeline/threading and per-token overhead are.
