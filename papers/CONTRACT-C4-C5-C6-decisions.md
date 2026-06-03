@@ -24,7 +24,16 @@ Source: critique of a Gemini synthesis directive, 2026-06-02. Where Gemini over-
 - `mean_accept=1.78/8` per verify
 - `bit_identical_to_greedy=1` — **the rollback-lossless gate is met** (ran at K=8, exceeding the K=4 future-gate spec)
 
-**Batched-forward ceiling** (`SP_MTP_CEIL`): K=8 in one pass ≈ 19.83 ms/token vs 33.97 ms/token at K=1-per-token → **1.71× weight-read amortization** ceiling. Realized wall-clock envelope = (forward-count reduction) × (per-forward ceiling), **once the verify reuses the persistent KV cache**. Current demonstrator recomputes from position 0 each verify — correctness-complete and bit-identical, but not yet wall-faster. The KV-reuse batched verify in `generate_kv` is the open production-integration item.
+**Batched-forward ceiling** (`SP_MTP_CEIL`): K=8 in one pass ≈ 19.83 ms/token vs 33.97 ms/token at K=1-per-token → **1.71× weight-read amortization** ceiling.
+
+**[REALIZED 2026-06-04, engine `145bf43`]** — `qwen3_mtp_forward` (persistent-KV batched append-forward) + `qwen3_mtp_decode` (prompt-lookup draft → KV-reuse verify → byte-exact accept → O(1) watermark advance). Run on the **production swivel path**: `qwen3_rt.sp-model` loaded via `sp_model_load` → `sp_model_to_qwen3` (OK_Q8 packed arena, `gguf==NULL`, **zero quant inflation**). 96-token decode, K=8 / NG=2, vs K=0 incremental-KV greedy on the *same* arena substrate:
+- greedy(K=0): 96 tok / 4.240 s = **22.64 tok/s** (96 forwards)
+- MTP(K=8):   96 tok / 2.407 s = **39.88 tok/s** (34 forwards, mean_accept 1.94/8)
+- **1.76× wall-clock speedup**, `bit_identical_to_greedy=1`, forwards 96→34 (2.82× fewer)
+
+The KV-reuse verify is realized — the forward-count reduction now turns into wall-clock because each verify reuses the cached prefix K/V instead of re-prefilling. Gate (`tests/sp_toks.c SP_MTP_KV=1 SP_TOKS_SP=qwen3_rt.sp-model`).
+
+**OPEN (production-daemon integration):** this is the engine CPU *reference* path with a self-contained dense cache. The daemon's transactional speculation should compose this with the frozen `sp_session_clone` / `sp_session_rewind` primitives (`lib/shannon-prime-system/core/session/sp_session.c`) — the epoch/watermark-over-Spinor-ring design above — so rollback is the watermark reset, not a buffer free. MTP × Ring-2/recall/fuse also compose later (the reference path is plain f32 only).
 
 **OPEN:** byte-exact accept under temperature>0 (needs a discretized-sampling contract); watermark granularity (per-block vs per-layer-block).
 
