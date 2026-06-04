@@ -8470,3 +8470,69 @@ anchors + 1 CRC, NBLK=ceil(HD/55)) gives **~2-3x/f32 lossy-deterministic** (HD25
 anchor-basis / Ring-2 effective-context-vs-RAM / sub-int8) - under investigation, no claim without
 a measurement. C2 remaining: wire Spinor-KV into qwen36, Ring-2 offload (Optane tier), System-1/2 +
 oracle, fp16 swivel; gate each on its own metric (not system tok/s).
+
+## 19. Phase ETA — Gemma 4 Native Sensory Lattice (FILED 2026-06-04)
+
+Stage Eta of the deployment taxonomy (STATE §5.07). The encoder-free Gemma 4
+family makes the modality boundary ONE linear projection — pixels (48×48
+patches → 35M matmul) and raw audio (16 kHz, 40 ms / 640-float frames →
+linear) enter the discrete pipeline at the sensor edge as ordinary OK_Q4
+matmuls. No conformer stack, no SigLIP, no new kernel class.
+
+Source artifact ON DISK: `gemma-4-12b-it-Q4_K_M.gguf` (7.12 GB, llama.cpp
+serves the family → permanent oracle path intact). Port spine = Phase 3-G4
+verbatim: Stage 0 oracle fingerprints → arch bridge (alternating SWA/global +
+dual-RoPE — the E2B geometry, scaled) → Q4-src→OK_Q4 reducing transcode →
+swivel → top-1 bit-exact → PPL gate. New work beyond 3-G4: the `<|turn>`/
+`<|think|>` chat template + thinking channels (tokenizer, not math), 256K
+context, and the modality ingest pipeline (PCM/patch framing + boundary
+quantization into Z_q).
+
+Named sub-gates when the multimodal path lands:
+- **E_ETA_INGEST** — audio-frame/patch projection through the packed arena ==
+  f32 reference projection, top-1-safe downstream.
+- **E_ETA_ROUNDTRIP** — the embedding-layer audio-recovery claim: the 640→E
+  ingest projection is overcomplete-injective, so layer-0 frame embeddings
+  cached as residue blocks invert exact-then-pseudoinverse (NTT⁻¹ is
+  bit-exact; least-squares against the projection matrix recovers the 640
+  floats up to quantization noise). Gate = round-trip SNR on real speech.
+  "The cache is the audio file" is claimed at the EMBEDDING layer only —
+  never the K layer (W_k is many-to-one; that direction needs a learned
+  decoder and is out of scope here).
+- **E_ETA_MTP** — compose the standalone Gemma-4 MTP drafter checkpoints with
+  the T8 bit-exact KV-reuse verify (the "needs a real draft source" gap,
+  CONTRACT-C4). NOTE: no 12B drafter published yet (drafters shipped May 5
+  for 31B/26B-A4B/E2B/E4B; the 12B released June 3).
+
+## 20. Phase OMICRON ο — the GNA small-o coprocessor (FILED 2026-06-04)
+
+Stage Omicron of the deployment taxonomy (STATE §5.07). Intel GNA 2.0 on the
+NUC11 die: an always-on, milliwatt, EXACT-integer affine engine (int16/int8
+MACs, int32 accumulators, 64-byte-aligned DMA — our ABI already). The name is
+the contract: little-o, the lower-order term that never dominates the
+asymptotics but never sleeps; Ptolemy's ο-as-zero, the placeholder that holds
+the cell while the big system idles.
+
+DISCIPLINE (per feedback-deprecated-silicon-is-a-feature): the upstream repo
+is archived (intel/gna, LGPL-2.1, frozen at v3.0.0) — that is a FEATURE (no
+vendor drift, we own the stack). Capability verdicts come from Stage-0 reads
+of the XNN kernel enums + HW descriptors + a die probe, NEVER from the
+"designed for speech" marketing sentence. LGPL hygiene: dynamic-link a thin C
+shim; MIT tree untouched.
+
+Ladder of ambition (each rung its own gated sub-phase):
+- **OMI.0 — Stage-0 read + die probe.** Op-set/precision/buffer ground truth
+  from source; minimal affine layer through the NUC11 driver; latency +
+  power + max-shape envelope measured. (The only rung that is pure cost.)
+- **OMI.1 — the wake gate.** Always-on VAD CNN; speech → wake the lattice.
+  Zero main-core cost.
+- **OMI.2 — the Gemma-4 audio embedder ON GNA.** The encoder-free ingest is
+  one affine layer — GNA's native op. The brainstem hands the cortex
+  finished embedding vectors at milliwatts. Gate = bit/SNR parity vs the
+  arena projection.
+- **OMI.3 — the router projection ON GNA.** The ±1 Rademacher matrix as an
+  int16 affine layer; SimHash signatures minted off-core before the system
+  wakes. Gate = sig parity vs sp_arm_project_sig.
+- **OMI.4 (speculative) — small-prime CRT-NTT in int16 lanes.** ~14-bit
+  primes keep products exact in int32 accumulators. Probably impractical;
+  probe before paragraph. Surface upstream if the math doesn't close.
