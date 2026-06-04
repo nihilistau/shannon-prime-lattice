@@ -263,7 +263,7 @@ C2.1 lived engine-side. C2.2 **promoted the architecture into the canonical math
 
 ## C2.3 — bit-packed popcount router (SimHash) FIDELITY-GATED (2026-06-04)
 
-The last full-P RAM resident was the r-float `projk` router sidecar (~940 MB @32k). `SP_RECALL_BITS=1` packs the SIGN of each Rademacher projection into ONE u64 per (pos,kvh) — **r=32: 128 B → 8 B (16×); r=64: 256 B → 8 B (32×); @32k the sidecar drops ~940 MB → ~29 MB** — and candidate scoring becomes hardware `popcount(qsig ^ ksig)` (Hamming = the SimHash angle estimator). math-core `92c07fe` (sp_arm_project_sig / sp_arm_select_sig + T_ARM_SIG), engine `3d2d2c3` (NIAH swivel harness).
+The last full-P RAM resident was the r-float `projk` router sidecar (~940 MB @32k at r=32). `SP_RECALL_BITS=1` packs the SIGN of each Rademacher projection into ONE u64 per (pos,kvh) — **r=32: 128 B → 8 B (16×); r=64: 256 B → 8 B (32×); @32k the u64 sidecar is ~59 MB** (28 × 32768 × 8 kv-heads × 8 B) **vs ~940 MB r=32-float / ~1.88 GB r=64-float** — and candidate scoring becomes hardware `popcount(qsig ^ ksig)` (Hamming = the SimHash angle estimator). *(CORRECTION 2026-06-04: an earlier revision of this section said "→ ~29 MB (32×)" — that conflated the r=64 ratio with the r=32 baseline; 940/16 = 58.7 MB. The decode banner prints the computed sizes; trust the banner.)* math-core `92c07fe` (sp_arm_project_sig / sp_arm_select_sig + T_ARM_SIG), engine `3d2d2c3` (NIAH swivel harness).
 
 **Fidelity gate (NIAH, N=512, W=64 sink=4, qwen3_rt OK_Q8 swivel, needle `837492` in wikitext):**
 
