@@ -143,6 +143,20 @@ The day the discrete object closed at every scale. Full record in **CONTRACT-C2 
 - **[PROVEN, regime-bounded] Bit-packed popcount router (C2.3, same day).** `SP_RECALL_BITS`: projk sidecar → one u64 of projection signs per (pos,kvh) (**~940 MB r=32-float → ~59 MB @32k, 16×; 32× vs the r=64-float equivalent** — an earlier revision said "~29 MB/32×", corrected: 940/16 = 58.7 MB; the decode banner prints actuals), scoring = popcount XOR. NIAH gate: **r=32 passes 2× all depths (d50 answer identical to f32) but MISSES 4×/d90 where f32 HITs — honest SimHash resolution loss; r=64 (same 8 bytes) restores full fidelity 6/6.** Production: `SP_RECALL_BITS=1 SP_RECALL_R=64`. Named remaining gate before default-on: PPL deflection at bits-r=64. CONTRACT-C2 §C2.3; math-core `92c07fe`, engine `3d2d2c3`.
 - **[PROVEN] q-transform SoA head-batch (same day).** `sp_ntt_fwd_batch` seam + AVX2 lanes=heads override: fusion **18.35 → 22.3 tok/s (gap to f32 16% → ~7%)**, fusion×rings×backend 16.08 → 20.14, sequences identical; T_PR_BATCH bit-exact. math-core `f7b9b6d`, engine `144d445`. The NTT compute-optimization arc is CLOSED — residual ~7% buys the whole discrete envelope.
 
+## 5.07 THE STAGE TAXONOMY (operator-minted 2026-06-04) — the heterogeneous deployment ladder
+
+Canonical names for the physical deployment tiers. Each stage is a strict optimization target for the compiler/router/orchestrator; a stage is claimed only when its composed run-gate exists (the Alpha discipline).
+
+| Stage | Substrate | Status |
+|---|---|---|
+| **Alpha** | CPU / RAM / Optane (Beast Canyon) | **PROVEN-in-parts; composed 32k finale IN FLIGHT** — context machinery cache-adjacent (~82 MB @32k), Optane = active memory tier, weights remain the DDR bandwidth budget |
+| **Beta** | RTX 2060 12GB (pure VRAM) | NEXT after Alpha closeout. SoA lanes→warps; model+context <6% of VRAM; **sm_75 constraints pinned**: no cp.async/ldmatrix/mbarrier, single INT32 ALU port (see reference-cuda-sm-feature-tiers), and **mul.wide/mad.wide.u32 are BANNED** (nvcc paired-register miscompile, reference-nvcc-paired-register-bug — decompose to mul.lo/mul.hi + add.cc, anchor ptx_ntt.cuh) |
+| **Gamma** | RTX 2060 + Optane | beyond-VRAM contexts/models: cold tail DMA'd across PCIe; Optane stays load-bearing for MUCH larger models even with the GPU present |
+| **Delta** | CPU + RAM + Optane + RTX 2060 as ONE engine | asymmetric split: CPU owns the O(N) popcount routing scan + Optane I/O; GPU owns the O(B) residue inner products; pinned-memory (cudaHostAlloc) DMA keeps the QUIC zero-serialization packet intact across PCIe |
+| **Epsilon** | Snapdragon DSP/SVM/ARM/ISP/NPU/UFS (S22U) | UMA frontier — groundwork live (Mode-D FastRPC, V69 HVX, QNN NPU Unsigned PD, Tricks #1-#10) |
+| **Zeta** | Alpha–Delta + Epsilon as one system | the QUIC mesh as nervous system: the byte on the Optane platter == the byte scored in VTCM, no translation anywhere |
+| **Holon ⬢⃝** | the bonded whole | the Universal Discrete Architecture, one Garner formula from L1 cache line to QUIC packet (Trick #8 closed the wire; #9 the ABI; #10 the receipts) |
+
 ## 5.1 FORWARD PRIORITY (re-ordered 2026-06-02 — differentiators ahead of context)
 
 C2's measurement phase is done and re-ranked the work (KV ~3.5× lossy; Ring-2 context ~hundreds× but largely disk-tiering). The unmeasured load-bearing differentiators now lead. Full rationale in **RFC-001 §11**:
