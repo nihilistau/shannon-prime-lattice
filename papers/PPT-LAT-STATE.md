@@ -140,6 +140,9 @@ The day the discrete object closed at every scale. Full record in **CONTRACT-C2 
 
 **Composed claim, now run-gated end-to-end: compute operand = cache line (Ring-1, 910× @32k) = disk block (Optane, 7.57 µs floor) = wire packet (QUIC loopback, 20.16 MB) — one dual-prime residue object, byte-exact at every boundary.**
 
+- **[PROVEN, regime-bounded] Bit-packed popcount router (C2.3, same day).** `SP_RECALL_BITS`: projk sidecar → one u64 of projection signs per (pos,kvh) (**~940 MB → ~29 MB @32k**), scoring = popcount XOR. NIAH gate: **r=32 passes 2× all depths (d50 answer identical to f32) but MISSES 4×/d90 where f32 HITs — honest SimHash resolution loss; r=64 (same 8 bytes) restores full fidelity 6/6.** Production: `SP_RECALL_BITS=1 SP_RECALL_R=64`. Named remaining gate before default-on: PPL deflection at bits-r=64. CONTRACT-C2 §C2.3; math-core `92c07fe`, engine `3d2d2c3`.
+- **[PROVEN] q-transform SoA head-batch (same day).** `sp_ntt_fwd_batch` seam + AVX2 lanes=heads override: fusion **18.35 → 22.3 tok/s (gap to f32 16% → ~7%)**, fusion×rings×backend 16.08 → 20.14, sequences identical; T_PR_BATCH bit-exact. math-core `f7b9b6d`, engine `144d445`. The NTT compute-optimization arc is CLOSED — residual ~7% buys the whole discrete envelope.
+
 ## 5.1 FORWARD PRIORITY (re-ordered 2026-06-02 — differentiators ahead of context)
 
 C2's measurement phase is done and re-ranked the work (KV ~3.5× lossy; Ring-2 context ~hundreds× but largely disk-tiering). The unmeasured load-bearing differentiators now lead. Full rationale in **RFC-001 §11**:

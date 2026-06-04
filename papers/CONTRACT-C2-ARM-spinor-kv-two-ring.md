@@ -258,3 +258,22 @@ C2.1 lived engine-side. C2.2 **promoted the architecture into the canonical math
 | RAM tier | Ring-1 910× shrink @32k (C2.1) + 6-slot forcing function here | `f8ea920`; showpiece | projk index still full-P (router-quant owned) |
 
 **The C2 thesis is now closed end-to-end: compute operand = cache line = disk block = wire packet — the same dual-prime residue object, byte-exact at every boundary, gated on real silicon and a real socket.** Remaining inside C2 scope: cross-host (non-loopback) run, projk router-index quant, q-transform amortization (CONTRACT-SPEED).
+
+---
+
+## C2.3 — bit-packed popcount router (SimHash) FIDELITY-GATED (2026-06-04)
+
+The last full-P RAM resident was the r-float `projk` router sidecar (~940 MB @32k). `SP_RECALL_BITS=1` packs the SIGN of each Rademacher projection into ONE u64 per (pos,kvh) — **r=32: 128 B → 8 B (16×); r=64: 256 B → 8 B (32×); @32k the sidecar drops ~940 MB → ~29 MB** — and candidate scoring becomes hardware `popcount(qsig ^ ksig)` (Hamming = the SimHash angle estimator). math-core `92c07fe` (sp_arm_project_sig / sp_arm_select_sig + T_ARM_SIG), engine `3d2d2c3` (NIAH swivel harness).
+
+**Fidelity gate (NIAH, N=512, W=64 sink=4, qwen3_rt OK_Q8 swivel, needle `837492` in wikitext):**
+
+| Cell | f32 router | bits u64 r=32 | bits u64 r=64 |
+|---|---|---|---|
+| B=256 (2×) d10 | — | HIT | — |
+| B=256 (2×) d50 | HIT | HIT (answer **identical** to f32) | — |
+| B=256 (2×) d90 | — | HIT | — |
+| B=128 (4×) d10 | — | HIT | — |
+| B=128 (4×) d50 | HIT | HIT | — |
+| **B=128 (4×) d90** | **HIT** | **MISS** (answered `839210`) | **HIT** |
+
+**Verdict (honest, both directions):** the r=32 signature retains full retrieval at 2× compression at every depth, but LOSES the 4×-budget deep needle (just outside the recall window, where the candidate pool is largest and the r+1-valued Hamming scores tie densely) — a real SimHash resolution failure, since the f32 router retrieves that same cell. **r=64 — the SAME 8-byte signature, double the rows — restores full fidelity.** Production guidance: `SP_RECALL_BITS=1` + `SP_RECALL_R=64`. Per the arm.h contract this stays an overlay knob, never a default; **named remaining gate before any default-on: PPL deflection at bits-r=64** (retrieval proven; distributional deflection not yet measured). The structural fix beyond r=64, if a future regime needs it: Hamming-prefilter → exact-rescore shortlist, surfaced upstream rather than tuned silently.
