@@ -231,3 +231,30 @@ The recall system now has three decode modes, all parity-exact when off, additiv
 Fusion = dense-exact prefill in a full-P RAM buffer, then ONE bulk spill of the cold tail to Optane at the prefill→decode boundary, copy sinks/window into the (sink+W) cache, and free the prefill buffer. **Verified N=512** (boundary fired, needle off disk) and **timed N=8192** (51.4 min wall, 1.88 GB buffer freed, HIT `837492`, 5.35 M reads @ 10.62 µs). Upgrades paper-01 §3.7 future-work → result.
 
 **Honest cost:** fusion prefill is exact O(N²) attention (recall off during ingest), so 32k dense-exact ≈ 18 h on one f16 core — the stock cost of exact attention, not a fusion defect, consistent with the ~1.34× throughput gap. The 32k **headline** therefore uses the streaming path (O(B·N), always-low-RAM); fusion's receipts are the 512 + 8k runs. R9 (streaming 32k) in flight; its retrieval/read-count/latency/wall-clock land in paper-01 §4 + abstract + EXPECTED + landing hero on completion.
+
+---
+
+## C2.2 COMPLETE — canonical math-core two-ring + dual-prime NTT fusion + the network tier (2026-06-04)
+
+C2.1 lived engine-side. C2.2 **promoted the architecture into the canonical math-core** and closed the discrete-object claim at every storage scale. One day, fully gated; math-core `9c26475→54ee28b`, engine `005473d→57c9a53`.
+
+**1. ARM into math-core (Stages A–D).** `core/arm/` fills the reserved L1 module slot: frozen ±1 Rademacher router (seed `SP_ARM_PROJ_SEED`), quickselect select, `sp_arm_r1slot`, and the **abstract Ring-2 backend in the L1 ABI** (`sp_arm_ring2_backend`: write/read/optional batched read/aligned-alloc hooks; portable stdio reference; `sp_arm_ring2_register` = the platform hook, registered backends are borrowed). The full two-ring (recall sidecar, Ring-1 sink+W ring, mock + backend Ring-2, dedupe staging, decode-only + compact-and-spill fusion modes) is wired into `qwen3_generate_kv`/`qwen3_ppl_decode` in their own TU (`core/forward/decode.c`) — **the only decode in the tree**: the engine's ~430-line duplicate was deleted, and engine binaries resolve the canonical decode at engine speed via the always-pulled-object dispatch seam (`cpu_overlay.c`: sp_matmul→OMP/AVX, AVX2 `sp_pr_resdot`). Run-gates `T_ARM_GENKV` (11 gates incl. registered-backend counting proof + identity-budget structural parity: B≥P ⇒ selection identity ⇒ **eviction is the poison — spill/fetch must be byte-exact or the sequence diverges**). Suite 21/21.
+
+**2. Dual-prime NTT keystore fusion (stages 1–3 + SIMD).** Under `SP_NTT_KV` the K stream is **residues end-to-end**: K cached write-once post-RoPE as a dual-prime residue block (NKV·2N u32); score = residue dot ⊕ N⁻¹ ⊕ scalar Garner = exact centered ⟨q,k⟩ — coefficient-0 of the negacyclic correlation, **no inverse butterflies, permutation-invariant**. Bluestein keystore covers every pow-2 HD ≤ 256 (weights for the coefficient-0 functional derived *empirically* at init through the public `ntt_inverse` — convention-proof — and folded into the stored key). V stays f32 (never scored — fp is plumbing). `sp_pr_resdot` in its own TU with **deferred reduction (15 products accumulate exactly in u64 → one mod per 15)**; engine AVX2 override. Bit-exact gates `T_PR_KSTORE`/`_BLUE`/`_RESDOT` + fixture-native fusion run-gates. **Measured (qwen3_rt, engine kernels): f32 baseline 22.6 / NTT overlay 5.98 / fusion 15.68 → 18.35 tok/s after Barrett-SIMD (+17%), sequences identical; residual −16% = the per-token q-transforms (448 fwd NTT pairs), not the dot.**
+
+**3. The storage/network tier — one discrete object at four scales.**
+- **Optane dual-size** (engine `a0d4e8e`): two independent NO_BUFFERING+IOCP stores (8192 B K-residue / 4096 B V-f32), routed by stream, registered through the L1 hook. **Live F: proof: 16.25 tok/s, sequence identical to baseline** — residue blocks physically on NVMe mid-decode, back exact.
+- **QUIC peer = Ring-2 backend** (Trick #8, engine `2aad7db`): 64-byte SPR2 header + the **raw untranslated u32 residue block** as the wire payload; one bi-stream per request (HoL-free); `read_batch` = concurrent streams (the IOCP analog). Gate `M_NET_RING2`: 8 KB K + 4 KB V byte-exact over a real loopback socket through the same fn-pointer surface the decode uses.
+- **Two-process showpiece** (engine `57c9a53`, `sp_ring2_showpiece` + `SP_RING2_SERVE` daemon switch): canonical decode, NTT fusion + 6-slot Ring-1, remote process as THE Ring-2 store. **MEASURED over 127.0.0.1: 840 block writes + 2520 reads (504 batched flights) = 20,160 KB of raw dual-prime residue payload crossing the socket mid-decode — zero serialization/deserialization/fp translation — SEQUENCE IDENTICAL to the knobs-off baseline (1.46 vs 1.48 tok/s on the daemon tier's reference kernels: transport absorbed by compute).**
+
+### C2.2 honest scoreboard
+
+| Claim | Number | Proof | Caveat |
+|---|---|---|---|
+| One decode, every tier | engine = math-core `decode.c` at 22.62 tok/s | symbol-resolution seam; T_ARM_GENKV | dispatch shims must live in an always-pulled object |
+| Fusion speed | 18.35 tok/s (84% of f32) | bit-identical sequences | residual = q-transform amortization (next lever) |
+| Optane tier | 16.25 tok/s live F:, identical sequence | dual-size registered backend | 7.57 µs/read floor inherited from C2.1 |
+| Network tier | 20.16 MB residues over QUIC, identical sequence | showpiece A/B logs | loopback; cross-host run pending |
+| RAM tier | Ring-1 910× shrink @32k (C2.1) + 6-slot forcing function here | `f8ea920`; showpiece | projk index still full-P (router-quant owned) |
+
+**The C2 thesis is now closed end-to-end: compute operand = cache line = disk block = wire packet — the same dual-prime residue object, byte-exact at every boundary, gated on real silicon and a real socket.** Remaining inside C2 scope: cross-host (non-loopback) run, projk router-index quant, q-transform amortization (CONTRACT-SPEED).

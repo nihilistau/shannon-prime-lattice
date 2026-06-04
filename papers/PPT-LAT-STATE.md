@@ -9,7 +9,7 @@
 > **READ FIRST, before any work: `papers/PPT-LAT-Theory.md`** — the canonical theory (the 13-step PPT substitution, O_K/Q(√−163), CRT primes, the frozen Spinor + KSTE formats, theorems T1–T8, production status). Skipping it caused real drift this session (a fresh agent inverted the PPT/Lattice hierarchy AND measured the wrong Spinor primitive — both because the theory wasn't read). It IS in the repo; read it.
 > Companion docs: **PPT-LAT-Theory.md** (the math/why — FIRST) · **RFC-001** (north-star preamble) · **PPT-LAT-Systems-v1.md** (the canonical systems narrative — supersedes v0 Systems + the two standalone v0 specs, which are now its Appendices A/B) · the **C1–C6 contracts** (forward work) · per-cell **SESSION-CLOSED-*.md** (closure detail) · the **roadmap** (sequence). This ledger is the *backward* record; the contracts are the *forward* plan; Systems v1 is the *current* synthesis.
 
-Last updated: 2026-06-02.
+Last updated: 2026-06-04.
 
 ---
 
@@ -127,6 +127,18 @@ Three decode modes now exist, all parity-exact when off, additive/gated (proven 
 **Honest cost note:** fusion prefill is exact O(N²) attention (recall off during ingest), so 32k dense-exact is ~18 h on one f16 core — the stock cost of exact attention, not a fusion defect, consistent with the ~1.34× throughput gap. The 32k *headline* therefore runs on the streaming path (always-low-RAM, O(B·N)); fusion's receipt is the 512 + 8k runs. **R9 (streaming 32k) in flight** — drop its retrieval/read-count/latency/wall-clock into paper-01 §4 + abstract + EXPECTED.md + landing hero on completion.
 
 **Release prep (publishing track):** paper-02 repro **green** — 6/6 E_FMT gates, L1 reducing (Qwen3-0.6B-f16 1,439.4 → 719.6 MB, 50.0%), L4 bit-faithful forward on gemma-3 + qwen3, captured in `EXPECTED.md`. **License = MIT** (wired through LICENSE / CITATION.cff / README / site). Release staging assembled in `comms/release/` (papers 01–02, site, ledger); **`shannon-prime-papers` repo set up** for the papers series. Public remote URL + first release tag deferred (operator deciding).
+
+## 5.06 C2.2 COMPLETE (2026-06-04) — canonical two-ring + NTT fusion + the network tier
+
+The day the discrete object closed at every scale. Full record in **CONTRACT-C2 §C2.2**; math-core `9c26475→54ee28b`, engine `005473d→57c9a53`, suite 21/21.
+
+- **[PROVEN] ARM in math-core.** `core/arm/` + the abstract Ring-2 backend **in the L1 ABI** (`sp_arm_ring2_register`; registered = borrowed). The full two-ring decode lives in `core/forward/decode.c` — **the only decode in the tree** (engine duplicate ~430 lines incinerated; engine resolves the canonical decode at engine speed via the `cpu_overlay.c` dispatch seam: 22.62 tok/s). Run-gates `T_ARM_GENKV` (11 gates incl. counting-backend registration proof). Reverify: `ctest -R T_ARM`.
+- **[PROVEN] Dual-prime NTT keystore fusion.** `SP_NTT_KV`: K cached write-once as the dual-prime residue block; score = residue dot + Garner = exact ⟨q,k⟩, **no inverse butterflies**. Bluestein keystore (empirical coefficient-0 weights folded into the key) covers every pow-2 HD ≤ 256 — the HD=8 fixture runs fusion natively in-tree. `sp_pr_resdot` deferred reduction (15 u64 products per mod) + engine **AVX2 Barrett-SIMD override: fusion 15.68 → 18.35 tok/s (84% of the 22.6 f32 baseline), sequences bit-identical.** Residual −16% = per-token q-transforms (448 fwd NTT pairs + 224 K-encodes) — the named next lever.
+- **[PROVEN] Optane tier, dual block size.** Two NO_BUFFERING+IOCP stores (8192 B K-residue / 4096 B V-f32) registered through the L1 hook. **Live F: run: 16.25 tok/s, sequence identical** — inherits the C2.1 7.57 µs/read queue-depth floor.
+- **[PROVEN] Network tier — Trick #8 closed.** QUIC peer as `sp_arm_ring2_backend` (`M_NET_RING2`), then the **two-process showpiece** (`sp_ring2_showpiece` + `SP_RING2_SERVE`): **20,160 KB of raw untranslated u32 residue payload (840 writes + 2520 reads, 504 batched flights) over 127.0.0.1 mid-decode, zero serialization/fp translation, SEQUENCE IDENTICAL to baseline (1.46 vs 1.48 tok/s — transport absorbed by compute).** Caveat: loopback; cross-host pending.
+- **[PROVEN, honest-negative corrected] MTP T8** (CONTRACT-C4-C5-C6): KV-reuse verify machinery bit-identical; the 1.76× was a degenerate-prompt artifact — real prose/code prompts 0.87× with prompt-lookup drafting; needs a real draft source. The rollback substrate stands.
+
+**Composed claim, now run-gated end-to-end: compute operand = cache line (Ring-1, 910× @32k) = disk block (Optane, 7.57 µs floor) = wire packet (QUIC loopback, 20.16 MB) — one dual-prime residue object, byte-exact at every boundary.**
 
 ## 5.1 FORWARD PRIORITY (re-ordered 2026-06-02 — differentiators ahead of context)
 
