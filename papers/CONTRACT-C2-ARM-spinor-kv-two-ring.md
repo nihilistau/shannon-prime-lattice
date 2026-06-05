@@ -303,3 +303,21 @@ same run. No partial number from this run may be quoted as the composed
 
 Ops lesson: multi-hour bakes are OWNED BY THE OS (schtasks ONCE), never by
 the agent process tree — v2 died with an app restart at 44.7%.
+
+**PPL DEFLECTION AT bits-r64 — THE NAMED GATE, MEASURED (2026-06-05, ppl_ar N=2048 warm=512 scored=1535, qwen3_rt OK_Q8 swivel, router-only by design — Ring-2 is byte-exact transport and cannot move PPL):**
+
+| Config | PPL | deflection | verdict |
+|---|---|---|---|
+| baseline (recall off) | 12.68574 | — | — |
+| bits-r64 B=1024 (2x) | 12.56238 | -0.97% | PASS (<2%) |
+| bits-r64 B=512 (4x)  | 12.66996 | -0.12% | PASS (<2%) |
+| bits-r64 B=256 (8x)  | 13.45711 | +6.08% | FAIL (<2% bar; f32 router was +0.69% here) |
+
+**REGIME VERDICT (final for C2.3):** `SP_RECALL_BITS=1 SP_RECALL_R=64` is
+production-admissible at budgets up to 4x — retrieval 6/6 (NIAH) AND
+distributionally transparent (PPL within noise, slightly negative). At 8x the
+1-bit resolution cost is real on BOTH gates' axis: the f32 router holds +0.69%
+where bits-r64 deflects +6.08%. Production guidance: bits-r64 for <=4x;
+f32 router (or a future Hamming-prefilter -> exact-rescore two-stage) for 8x+.
+The estimator is free until you starve it. Both named C2.3 gates now closed;
+the overlay remains a knob, never a default.
