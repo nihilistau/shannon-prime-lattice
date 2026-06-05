@@ -172,3 +172,8 @@ adjacent tokens (temporal overlap is high in streaming ingest), and Spinor-V
 CALIBRATION RULE (two bad ETAs in one bake): composed-run wall estimates must
 model READ AMPLIFICATION (union factor x block size x layers), not just op
 counts and per-term FLOPs.
+
+**KVSEL RE-GATE — BOTH GATES GREEN (2026-06-05, math-core `2441e0b` + engine `200c0ec`):**
+- NIAH bits-r64 B=128 (4x), group-centroid selection: d10 HIT / d50 HIT / **d90 HIT** (the r=32-killer boundary cell holds).
+- PPL N=2048 B=512: **12.56881 = −0.92% vs baseline 12.68574** — PASS (<2%), and slightly BETTER than per-Q-head bits at the same budget (12.66996). The centroid merge costs nothing distributionally at 4x; group members were structurally attending the same K anyway.
+**KVSEL verdict: admissible at ≤4x alongside bits-r64. Production trio: `SP_RECALL_BITS=1 SP_RECALL_R=64 SP_RECALL_KVSEL=1` for ≤4x budgets.** 8x remains unmeasured under KVSEL (inherits the bits-r64 8x FAIL conservatively until measured). Composed 32k finale v3 (KVSEL + split K→F:/V→E: devices) fired same day.
