@@ -133,3 +133,42 @@ Drove the dense-0.6B gap hard, measuring at the correct thread counts:
 - **Bandwidth probe (decisive):** Q4 (0.3 GB/tok) vs Q8 (0.6 GB/tok) at 5 threads = **5.82 vs 26.17 tok/s** — Q4 is *4.5× SLOWER*. If SP were memory-bandwidth-bound, halving the bytes would speed it up; it doesn't → **SP is NOT bandwidth-bound. It is compute / per-element-overhead bound** (the int8→f32 convert for Q8; the heavier nibble-unpack for Q4).
 
 **What this actually means (no false ceiling):** the dense GEMV gap is *not* a memory wall and *not* unbeatable. My `q8blk` int8×int8 tied AVX2 (26.3) **only because its per-block `hsum` + float-combine reduction ate the `dpbusd` ALU win** — not because int8×int8 can't help. llama's q8_0 vec-dot avoids that with a vectorized block-scale reduction. **The untried real lever = a properly-tuned int8×int8 GEMV** (defer/vectorize the block-scale combine, no per-block hsum) — achievable kernel engineering, the next thing to build. The shipped thread fix (~14 → ~26, 1.85×) stands; ~1.95× behind llama; gap is compute-overhead in the dot reduction, **open and attackable**. (Separately, `SPEED_NORTHSTAR` — the 35B-A3B MoE envelope — remains SP's *structural* speed edge, but the dense-0.6B kernel is NOT conceded.)
+
+## Read amplification via Q-head divergence — MEASURED MID-FLIGHT (2026-06-05, composed 32k finale v2)
+
+Discovered live, not modeled: at 32k streaming ingest (B=512, bits-r64 router,
+fusion blocks 8KB K / 4KB V, Optane F:), the per-(layer,token) Ring-2 fetch is
+the UNION of all 16 Q-heads' independent selections. Under SimHash the heads
+genuinely diverge, so the union balloons toward thousands of distinct
+positions per layer:
+
+    measured: ~1 GB of Optane reads PER TOKEN
+              1.86e9 read ops / 11.4 TB total at pos ~11k of 32768
+              drive sustained ~528 MB/s — the P1600X random-read ceiling
+              at this block size, held for 6+ hours, no deadlock, no leak
+
+Two readings, both true:
+- STABILITY PROOF: the Ring-2 C-ABI + IOCP path saturates the physical device
+  indefinitely. The architecture demands 1 GB/token and the hardware complies.
+- COST DISCOVERY: independent per-Q-head routing multiplies disk traffic by
+  the head-divergence factor (up to NH/dedupe-overlap). The 32k claim
+  survives intact; we just learned its true price.
+
+**PRIMARY STAGE-ALPHA FOLLOW-ON LEVER — GQA KV-head selection.** The 16
+Q-heads sit in 8 GQA groups; group members score against the SAME physical
+K/V. Selecting per KV-HEAD (8 selections, e.g. group-q signature or
+union-of-2) instead of per Q-head halves the union at the source; a per-layer
+joint top-k collapses it further. HONESTY CLAUSE: this CHANGES the recalled
+set (group members currently select with their own q projections), so it is a
+router-policy change requiring the full NIAH + PPL re-gate — it is NOT
+fidelity-free and must not ship as a silent default. Applies equally to the
+f32 and bits routers (both select per Q-head today).
+
+Secondary levers, same family: V-stream on E: (second device, independent
+queue — SP_RING2_OPTANE_DIR_V), staging-cache of hot union members across
+adjacent tokens (temporal overlap is high in streaming ingest), and Spinor-V
+(63B lossy) as an opt-in V-bandwidth diet (off the bit-exact path).
+
+CALIBRATION RULE (two bad ETAs in one bake): composed-run wall estimates must
+model READ AMPLIFICATION (union factor x block size x layers), not just op
+counts and per-term FLOPs.
