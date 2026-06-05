@@ -277,3 +277,29 @@ The last full-P RAM resident was the r-float `projk` router sidecar (~940 MB @32
 | **B=128 (4×) d90** | **HIT** | **MISS** (answered `839210`) | **HIT** |
 
 **Verdict (honest, both directions):** the r=32 signature retains full retrieval at 2× compression at every depth, but LOSES the 4×-budget deep needle (just outside the recall window, where the candidate pool is largest and the r+1-valued Hamming scores tie densely) — a real SimHash resolution failure, since the f32 router retrieves that same cell. **r=64 — the SAME 8-byte signature, double the rows — restores full fidelity.** Production guidance: `SP_RECALL_BITS=1` + `SP_RECALL_R=64`. Per the arm.h contract this stays an overlay knob, never a default; **named remaining gate before any default-on: PPL deflection at bits-r=64** (retrieval proven; distributional deflection not yet measured). The structural fix beyond r=64, if a future regime needs it: Hamming-prefilter → exact-rescore shortlist, surfaced upstream rather than tuned silently.
+
+## C2.4 — DISPOSITION OF THE COMPOSED 32k FINALE (2026-06-05): terminated at 44.7%, GATE REMAINS PENDING — NOT CLAIMED
+
+Run v2 (AVX512-scan binary) reached pos 14,645/32,768 over 8.6 h with all
+four axes live (NTT fusion + bits-r64 router + Optane dual-size + streaming
+NIAH), zero errors. Operator terminated: a host restart killed the process
+(it was owned by the agent shell tree), and the measured read-amplification
+tail (CONTRACT-SPEED) put completion ~30 h out.
+
+What the partial run PROVED:
+- 8.6 h of saturated dual-store NO_BUFFERING+IOCP operation at the device
+  ceiling (~528 MB/s, ~1 GB/token) — no deadlock, no leak, no drift.
+- The AVX512 scan collapsed the routing wall: v1 was compute-bound (1.0
+  core, ~70 h projected); v2 was I/O-bound — the CPU waiting on the drive,
+  exactly as the architecture intends.
+- The read-amplification physics now pinned in CONTRACT-SPEED.
+
+What it did NOT prove: the single-log 32k needle retrieval under full
+composition. That gate STAYS OPEN, deliberately sequenced AFTER the GQA
+kv-head selection lever — fix the amplification first and the identical
+gate costs ~2-3 h instead of ~30, while re-gating the lever's NIAH in the
+same run. No partial number from this run may be quoted as the composed
+32k result.
+
+Ops lesson: multi-hour bakes are OWNED BY THE OS (schtasks ONCE), never by
+the agent process tree — v2 died with an app restart at 44.7%.
