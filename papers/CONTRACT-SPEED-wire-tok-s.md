@@ -177,3 +177,35 @@ counts and per-term FLOPs.
 - NIAH bits-r64 B=128 (4x), group-centroid selection: d10 HIT / d50 HIT / **d90 HIT** (the r=32-killer boundary cell holds).
 - PPL N=2048 B=512: **12.56881 = −0.92% vs baseline 12.68574** — PASS (<2%), and slightly BETTER than per-Q-head bits at the same budget (12.66996). The centroid merge costs nothing distributionally at 4x; group members were structurally attending the same K anyway.
 **KVSEL verdict: admissible at ≤4x alongside bits-r64. Production trio: `SP_RECALL_BITS=1 SP_RECALL_R=64 SP_RECALL_KVSEL=1` for ≤4x budgets.** 8x remains unmeasured under KVSEL (inherits the bits-r64 8x FAIL conservatively until measured). Composed 32k finale v3 (KVSEL + split K→F:/V→E: devices) fired same day.
+
+## Temporal locality of attention routing — the LRU staging cache (FILED 2026-06-06, the first post-Alpha optimization)
+
+OBSERVATION (v4 composed run, indirect but consistent): the recall sets of
+adjacent decode steps drift slowly — token t and t+1 select nearly identical
+top-k positions, so the staged-union working set GLIDES across the cold
+store rather than thrashing. Consequence: the same hot blocks are re-fetched
+from Optane every token. The marginal-rate decay curve and the union-growth
+model both point at re-fetch volume, not unique-block volume, as the
+dominant I/O term (~20 TB physical reads for a 32k ingest whose unique
+block population is ~11 GB).
+
+HONESTY STATUS: temporal locality is at this point an INFERENCE from the
+drift argument + rate curves — the hit-rate is NOT yet measured. The first
+deliverable of the cache sprint is therefore the MEASUREMENT, not the cache:
+instrument the staging path with a shadow LRU counter (zero behavior change)
+and report hit-rate vs cache size on a real run. Claim nothing until then.
+
+THE LEVER (post-Alpha v5): a BOUNDED LRU cache over staged Ring-2 blocks
+(e.g. 256 MB) in front of read_batch2. Bounded => still O(1) RAM in context
+length; the window-sized-RAM claim survives with the honest amendment
+"+ bounded staging cache". Predicted effect if locality holds: 5-10x I/O
+collapse (20 TB -> low single-digit TB physical).
+
+GATES (daylight work, never midnight work): T_CACHE_EXACT — cached decode
+== uncached decode BIT-IDENTICAL sequences (a stale hit silently poisons
+attention; this gate is the whole game); T_CACHE_HITRATE — measured curve
+hit-rate(cache_bytes); plus the v4 run preserved as the UN-CACHED control
+baseline so the v5 delta is attributable. Concurrency note: the cache sits
+in the wrapper ABOVE the dual-device overlap — single-writer (the decode is
+serial), so no coherency protocol needed, but the v5 design must pin that
+assumption in writing before code.
