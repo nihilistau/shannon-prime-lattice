@@ -8471,7 +8471,15 @@ anchor-basis / Ring-2 effective-context-vs-RAM / sub-int8) - under investigation
 a measurement. C2 remaining: wire Spinor-KV into qwen36, Ring-2 offload (Optane tier), System-1/2 +
 oracle, fp16 swivel; gate each on its own metric (not system tok/s).
 
-## 19. Phase ETA — Gemma 4 Native Sensory Lattice (FILED 2026-06-04)
+## 19. Phase ETA — Gemma 4 Native Sensory Lattice (FILED 2026-06-04; CUDA PORT OPENED 2026-06-06)
+
+**OPENED 2026-06-06 (branch `stage-eta-gemma4-cuda`).** The Gemma4 CUDA forward+decode port — so the 6.6 GB Gemma-4-12B-Q4_K_M runs on the RTX 2060 with the BETA.3-proven ~7× Q4-dp4a bandwidth win. **The bit-exact oracle is `core/forward/gemma4.c`** (CPU f32, M_GEMMA4-graded; this is the Gemma-3n MatFormer E-series arch). Reference read line-by-line; the real deltas vs gemma3 (richer than a 4-point sketch): **attention scale = 1.0**; **per-layer head geometry** (global hd512/nh4/nkv1 + proportional `rope_freqs`; SWA hd256/nh8/nkv2 base1e4) so Q/K/V projection widths differ per layer; **weightless V-RMSNorm**; **shared-KV** (owners at kvfs-1/kvfs-2, sharers skip K/V proj); **elastic per-layer FFN** (MatFormer); **AltUp** precompute + per-layer injection + scalar `out_scale`; tied-head **softcap**. Gate target `gemma-4-E4B`. 6-stage gated plan banked in memory `project-stage-eta-gemma4-cuda`:
+- **ETA.1** — gemma4 tensors into the CUDA adapter + `build_weights` (model struct already carries `per_layer_*`/`rope_freqs`/`out_scale`); + weightless V-norm.
+- **ETA.2** — `gemma4_forward_cuda` prefill: per-layer geometry + ascale=1.0 + per-layer FFN + `k_softcap`. Gate vs CPU on E4B.
+- **ETA.3** — shared-KV + proportional RoPE (`rope_freqs`).
+- **ETA.4** — AltUp precompute + per-layer injection + out_scale (the big one).
+- **ETA.5** — gemma4 CUDA decode (per-layer-geometry KV cache, shared-KV-aware) + Q4 dp4a + CUDA graph; tok/s vs llama.cpp on the 12B.
+HAZARD: per-layer geometry breaks the fixed-shape graph capture (needs 2 layer-type shapes). HOUSE RULE: read the CPU reference before each kernel; gate every stage vs `gemma4_forward`. **Resume at ETA.1.**
 
 Stage Eta of the deployment taxonomy (STATE §5.07). The encoder-free Gemma 4
 family makes the modality boundary ONE linear projection — pixels (48×48
@@ -8553,3 +8561,15 @@ Stage Beta of the deployment taxonomy (STATE §5.07/§5.08; [[reference-stage-ta
 - **BETA.4 — discrete router on GPU:** warp-per-head NTT score + bits-r64 popcount, signatures staged in 64KB shared mem (Turing's L2-pin substitute). KVSEL group-centroid. KV in VRAM (Optane tier OBSOLETE at 0.6B/32k on a 12GB card).
 - **BETA.5 — llama.cpp-CUDA head-to-head:** the terminal Beta gate. Deep-context tok/s, same model + card.
 - **Then Stage GAMMA (GPU + Optane):** the >VRAM-model tier (8B/12B/27B). cudaHostAlloc pinned-mem bridge (consumer Turing has NO GPUDirect Storage); CPU issues the Optane→pinned→VRAM async copy. This is where the Optane tier returns and the architecture scales past VRAM.
+
+### Phase BETA — RESULTS (2026-06-06; full receipt in SESSION-CLOSED-stage-beta-speed.md, numbers in CONTRACT-SPEED)
+
+**BETA.2 — CUDA graphs: DONE, but the diagnosis above was WRONG and is corrected here (no spin).** The "~50-100 tok/s jump from collapsing launches" did NOT materialize. Position-indirect decode kernels (device-scalar `int *dpos`: `k_embed_at`/`k_rope_dyn`/`k_kv_store`/`k_attn_decode_dyn`/`k_argmax_at`/`k_incr_pos`) make the per-token launch sequence capturable; `SP_CUDA_DECODE_GRAPH=1`. The first commit claimed `7.24→91.55, 12.65×` — a COLD-START measurement artifact (per-step ran first cold = CUDA lazy-load + cuBLAS JIT; graph ran second warm). Anchored (warm + n_gen=256 + **both** clocks pinned): graphs are **~1.06×**. **Launch overhead was never the wall — COLD-START was** (~13× first-decode penalty; a persistent warm daemon captures it). At 0.6B/full-clock the decode is OVERHEAD-bound (~91 tok/s, f32==Q8==Q4 converge).
+
+**BETA.3 — the INT8/Q4 dp4a bandwidth ladder: DONE (the real win).** Reframed from "fused decode kernels": the lever is reading packed weights at 1 byte (Q8) / 0.5 byte (Q4) STRAIGHT from VRAM via `__dp4a`, no f32 scratch. Tuned `k_gemv_q8_dp4a_v2` / `k_gemv_q4_dp4a_v2` (warp-per-row, 128-bit `int4` loads, `__shfl_down_sync`); Q4 unpacks nibbles→int8 in the ALU (free under memory-bound). **Per-tensor precision dispatch** (`DevTensor.prec`) handles K-quant mixes (Q4_K_M: Q8 head + Q4 body). **Isolated GEMV sweep** (`tests/bench_gemv_int8.cu`, both clocks pinned): **f32 1× (~290 GB/s = 86% of the 2060's 336 peak, bus-saturated) → int8 ~3.8× → Q4 ~7.06×** at 12B-scale, hugging the 4:1/8:1 byte ratios. Crossover ≈ N=2K — the 0.6B matmuls sit below it (masked by decode overhead), a 12B sits firmly above. Wired into `qwen3_decode_cuda`; gate `M_QWEN3_DECODE_CUDA` **28/28** top-1 lossless across f32/Q8/Q4/.sp-model. Q4 correctness vs host ref 1.34e-7.
+
+**BETA.4 / BETA.5 / GAMMA — still pending** (discrete router on GPU, llama.cpp head-to-head, Optane→VRAM bridge). The Q4 bandwidth win + per-tensor-precision dispatch + `.sp-model` adapter growth-min-copy fix (`2138f89`) are the hardened foundation Stage Eta (§19) now builds on.
+
+**METHODOLOGY (now standing discipline, banked in `feedback-gpu-microbench-methodology`):** no GPU tok/s without warmup + long window (n_gen≥256) + **both clocks pinned** (`-lgc` locks SM only; a weight-GEMV is memory-bound → GDDR6 must be at full speed; GeForce `-lmc` flaky); confirm the kernel is on the binding bottleneck (Amdahl); trust within-run ratios over absolutes; isolated benches validate kernel MATH, production gates validate the DATA-STRUCTURE handoff (the K-quant-mix bug — Q8 head read as Q4 → 0/256 — was caught only by the production gate).
+
+**→ NEXT: Phase ETA (§19) OPENED 2026-06-06** (branch `stage-eta-gemma4-cuda`) — the Gemma4-CUDA forward+decode where the ~7× Q4 win drives a real tok/s number on the 6.6 GB Gemma-4-12B-Q4_K_M. CPU `core/forward/gemma4.c` is the bit-exact oracle; gate target `gemma-4-E4B`; 6-stage gated plan (ETA.1–5) banked in `project-stage-eta-gemma4-cuda`. Resume at ETA.1 (adapter + weightless V-norm).
