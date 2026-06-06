@@ -407,3 +407,17 @@ disk -- at Stage-Eta (12B+) dimensions they are ~7x faster to COMPUTE on consume
 silicon, bit-exact-correct, because the GDDR6 bus is the wall and Q4 carries 8x
 less traffic across it. This is the quantitative case for the Q4-dp4a decode path
 + Gemma4-CUDA port (Stage Eta), where the 6.6 GB Q4 12B fits the 12 GB VRAM.
+
+## BETA.3a-v4 wired into the production decode (2026-06-06, engine a6c9d9f)
+
+Promoted k_gemv_q4_dp4a_v2 from the bench into cuda_forward.cu; qwen3_decode_cuda
+routes every matmul through gemv_w_packed (Q8/Q4 dp4a, no f32 scratch) under
+SP_CUDA_DECODE_INT8. The PRODUCTION gate caught a bug the isolated bench could not
+(it used uniform synthetic Q4): the SP_ARENA=q4 arena is MIXED PRECISION (head
+kept Q8, body Q4); dispatching on the GLOBAL arena precision read the Q8 head as
+Q4 -> Q4 top-1 0/256. Fix: DevTensor carries a per-TENSOR precision (from
+row_prec[0] + uniformity scan -> dequant fallback for mixed rows); gemv_w_packed
+dispatches on W->prec. Gate M_QWEN3_DECODE_CUDA now 28/28: f32/Q8/Q4/.sp-model all
+256/256 top-1 lossless. LESSON: isolated benches validate kernel MATH; production
+gates validate the DATA-STRUCTURE handoff. The 4-bit arena ingest+compute path is
+now battle-tested for Stage Eta to drop into.
