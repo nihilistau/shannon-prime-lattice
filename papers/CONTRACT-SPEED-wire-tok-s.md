@@ -217,49 +217,67 @@ VRAM, single-query attention, device argmax (zero per-step host sync at
 eos=-1). qwen3_rt 0.6B, prompt {1,2,3,4}, n_gen=24, gate M_QWEN3_DECODE_CUDA
 PASS (GPU decode == GPU prefill teacher-forced).
 
+These Speed-Pass-1 numbers (6.93 / 7.04 / 11.97) were COLD-START dominated —
+see the BETA.2 correction below. They are retained only as a record of the
+mismeasurement, not as valid steady-state figures.
+
 | Config                  | tok/s | note                                    |
 | ----------------------- | ----- | --------------------------------------- |
-| f32 + host argmax       | 6.93  | correctness baseline                    |
-| f32 + device argmax     | 7.04  | sync was NOT the wall (barely moved)    |
-| Q8 arena + device argmax| 11.97 | 1.7x — memory-traffic halving           |
-| **f32 + CUDA graph**    | **91.55** | **12.65x over per-step f32 (BETA.2)** |
+| f32 + host argmax       | 6.93  | COLD-START artifact (first decode/proc) |
+| f32 + device argmax     | 7.04  | COLD-START artifact                     |
+| Q8 arena + device argmax| 11.97 | COLD-START artifact                     |
 
-HONEST BOTTLENECK (confirmed): the device-argmax barely helped f32 => the
-per-step host sync is not the wall. The wall is KERNEL LAUNCH OVERHEAD —
-~250 tiny kernels per token (28 layers x ~9 ops) at 0.6B/short-ctx, each
-paying launch latency on a serialized dependency chain. Q8's 1.7x is pure
-weight-byte halving through the cuBLAS GEMMs (the 2060's 336 GB/s bus is the
-constraint, not ALU).
+## BETA.2 — CUDA graphs + the measurement correction (2026-06-06, engine ebcbedb->664fae1->2138f89)
 
-## BETA.2 — CUDA graphs land the diagnosis (2026-06-06, engine ebcbedb)
+**No spin: the first BETA.2 commit claimed "7.24 -> 91.55, 12.65x". That was
+THREE stacked measurement artifacts.** Corrected after KnackAU pushed to
+measure the real .sp-model + longer windows.
 
-7.24 -> 91.55 tok/s, **12.65x**, BYTE-EXACT, on the SAME f32 precision —
-a pure launch-overhead win, no precision trick. Collapsing the ~250
-launches/token into ONE captured graph replayed per token converts a
-serialized launch-latency chain into a single submit. This proves the BETA.2
-diagnosis was correct: launch overhead was the entire wall, not compute.
+The confounds (each dwarfs the real effect at 0.6B single-token decode):
+1. COLD-START (~13x): CUDA lazy module load + cuBLAS JIT happen on the FIRST
+   kernel launch of a process. The 12.65x timed per-step COLD (ran first) vs
+   graph WARM (ran second).
+2. SHORT-WINDOW JITTER: n_gen=24 ~ 0.3s; readings swung 32/88/92 for one path.
+3. GPU CLOCK STATE (~5x): the RTX 2060 idles at 405 MHz vs 2100 max; a
+   single-token 0.6B decode is too light to ramp boost clocks, so absolute
+   tok/s sampled whatever P-state the card was in (31<->92 across runs).
 
-MECHANISM: a captured graph freezes every node's args + launch config, but the
-per-step loop changes them each step (embed reads dseq+pos, KV-store offset =
-pos*KVD, attn ctx/shared-mem grow with pos, argmax writes dseq+pos+1). Fix =
-position-indirection: hold pos in a device scalar int*dpos; new kernels
-(k_embed_at, k_rope_dyn, k_kv_store, k_attn_decode_dyn, k_argmax_at,
-k_incr_pos) DEREFERENCE dpos instead of taking it as a host launch arg, so
-topology + node params stay constant -> capture once, replay per token. cuBLAS
-SGEMM + arena-dequant kernels are capture-safe. Prompt ingest stays per-step
-(one-time, fills KV); only the generate hot loop is graphed. Fixed attn
-shared-mem = P floats with a 48KB/block sm_75 guard (ctx ceiling ~12k, inherits
-the existing k_attn_decode limit). GATE M_QWEN3_DECODE_CUDA = 7/7: decode
-graph-off == graph-on byte-exact AND both == GPU prefill teacher-forced.
+ANCHORED RESULT (warmup + n_gen=256 + clocks LOCKED at 2100 MHz via
+`nvidia-smi -lgc 2100,2100`, then reset):
 
-This already BEATS the llama.cpp-CUDA ~80-120 tok/s @0.6B band on f32 alone;
-Q8+graph not yet measured (expected higher).
+| precision            | per-step | graph | graph win |
+| -------------------- | -------- | ----- | --------- |
+| f32 (f16 gguf)       | 92.3     | 97.7  | 1.06x     |
+| Q8 (gguf transcode)  | 92.4     | 97.6  | 1.06x     |
+| Q8 (.sp-model disk)  | 92.2     | 97.5  | 1.06x     |
 
-LEVER LADDER (BETA.3+): fused decode kernels (collapse the ~9 elementwise/norm
-kernels per layer, shrink graph node count) -> discrete router on GPU
-(warp-per-head NTT + shared-mem-staged bits-r64 popcount; NO L2 pin on Turing,
-MaxPersistingL2=0 measured) -> llama.cpp-CUDA head-to-head (terminal gate,
-formal). device-argmax KEPT (correct at large V/large model).
+FINDINGS (the reliable, within-run signals):
+- CUDA graphs = ~6%, NOT 12.65x. Launch overhead was never the wall;
+  COLD-START was. A persistent warm daemon captures that for free.
+- Decode is PRECISION-INDEPENDENT (f32 == Q8 == .sp-model, within 0.3 tok/s):
+  every path dequants packed weights to an f32 scratch BEFORE the SGEMM, so the
+  GEMM never sees packed bytes -> no bandwidth delta. Q8 is a VRAM-CAPACITY
+  play, not decode speed. The bandwidth win needs a true INT8 tensor-core GEMM
+  consuming packed codes directly (BETA.3; sm_75 has INT8 mma).
+- The .sp-model SHIP ARTIFACT now ingests + decodes identically to the
+  transcode (adapter min-copy fix, engine 2138f89), gated 21/21.
+
+MECHANISM (graph path, unchanged + correct): position-indirection — hold pos in
+a device scalar int*dpos; kernels (k_embed_at, k_rope_dyn, k_kv_store,
+k_attn_decode_dyn, k_argmax_at, k_incr_pos) DEREFERENCE dpos so graph topology +
+node params stay constant -> cudaStreamBeginCapture once, cudaGraphLaunch
+x n_gen. cuBLAS SGEMM + dequant capture-safe; prompt ingest stays per-step;
+fixed attn shm = P floats, 48KB sm_75 guard. GATE 21/21: graph==per-step
+byte-exact AND decode==prefill, per precision.
+
+METHODOLOGY RULE (now standing): no GPU tok/s number without warmup + long
+window + LOCKED clocks; trust within-run ratios over absolutes.
+
+LEVER LADDER (BETA.3+): INT8-TC GEMM consuming packed Q8 codes directly (the
+real bandwidth lever) + fused decode kernels (shrink the ~250-kernel graph) ->
+BETA.4 discrete router on GPU (warp-per-head NTT + bits-r64 popcount; NO L2 pin
+on Turing, MaxPersistingL2=0 measured, use 64KB shared) -> BETA.5 llama.cpp-CUDA
+head-to-head (terminal gate, formal — same clock-lock + prompt).
 
 WEIGHT-COMPRESSION HONESTY (corrected this session): the ".sp-model 50%" is
 f16->OK_Q8 (quantization, top-1/output-lossless, NOT lossless). A model
