@@ -315,3 +315,34 @@ reliable signal; absolute tok/s drifts with clock/thermal even when locked.
 
 NEXT: tuned dp4a GEMV -> BETA.3b prefill mma m8n8k16 (ptx_mma.cuh, M=n_tok fills
 the tile) -> BETA.4 GPU router -> BETA.5 llama.cpp-CUDA head-to-head.
+
+## BETA.3a-v2 — tuned GEMV + the regime correction (2026-06-06, engine 3d43705)
+
+Built the tuned k_gemv_q8_dp4a_v2 (warp-per-row, 128-bit int4 loads,
+__shfl_down_sync reduction, 8 rows/block) — top-1 LOSSLESS 256/256. But it
+exposed that the BETA.3a 2.81x/5.82x int8 'wins' were a THROTTLED-MEMORY-CLOCK
+ARTIFACT. nvidia-smi -lgc locks only the SM clock; a weight-GEMV is MEMORY-bound,
+so its tok/s tracked the free-running GDDR6 clock. With BOTH clocks at full speed
+(mem 7001 + sm 1500, reproducible x3):
+
+| path                       | tok/s |
+| -------------------------- | ----- |
+| f32 cuBLAS SGEMM           | 91.5  |
+| Q8 dequant -> f32 -> SGEMM | 91.4  |
+| Q8 dp4a INT8 GEMV (tuned)  | 91.5  |
+
+ALL CONVERGE. At 0.6B/full-clock the decode is OVERHEAD-bound (~250 launches +
+attention + argmax over 151936 vocab), NOT weight-bandwidth-bound, so a cheaper
+weight-GEMV TIES f32 (Amdahl: weight matmuls aren't the dominant cost). The
+dequant path's earlier 3x-slowness was likewise a low-memory-clock artifact
+(30 -> 91 once mem pinned).
+
+HONEST CONCLUSION: the int8 dp4a kernel is correct + top-1 lossless, but the
+bandwidth win only BINDS in a memory-bound regime — a much larger model (12B
+weight matrices ~20x bigger -> genuinely memory-bound at full clock), NOT 0.6B.
+The kernel is kept as the right tool for that regime; it's a no-op tie here.
+Methodology rule updated: lock BOTH clocks (SM + memory) and confirm the kernel
+sits on the binding bottleneck before claiming a win.
+
+NEXT: profile the real 0.6B decode ceiling (argmax-over-152k / attention /
+launch count) OR validate int8 on the 12B Gemma where weight bandwidth binds.
