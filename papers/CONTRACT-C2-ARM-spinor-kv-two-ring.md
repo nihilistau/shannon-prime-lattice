@@ -1,6 +1,6 @@
 # CONTRACT C2 — ARM memory: Spinor-KV inline compression + the two rings
 
-**Parent:** RFC-001 §2. **Builds on:** C1 (the reducing `.sp-model` + arena swivel). **Status:** C2.1 COMPLETE (2026-06-03) — two-ring recall wired live + all three walls down (router/sinks/Optane-IOCP/quickselect/Ring-1-shrink); see §C2.1. 32k finale in progress.
+**Parent:** RFC-001 §2. **Builds on:** C1 (the reducing `.sp-model` + arena swivel). **Status:** C2.1 COMPLETE (2026-06-03) — two-ring recall wired live + all three walls down (router/sinks/Optane-IOCP/quickselect/Ring-1-shrink); see §C2.1. **C2.4 CLOSED (2026-06-06): the v5 composed 32k finale COMPLETED (16.3 h, zero errors) and the NIAH verdict is MISS** — infrastructure proven at scale, retrieval quality at 64× selection budget not; see §C2.4-CLOSURE for the verdict, the config regression it exposed, and the diagnostic plan.
 **One line:** make the KV/memory path the PPT-ARM envelope — inline Spinor-block KV compression (Ring 1), Ring-2 offload/disk-recall with residual/CRT bandwidth bypass, a System-1/System-2 regime split with a crossover oracle — and **measure the real numbers** (the headline ~120× is `[TARGET]`, not assumed).
 
 > Discipline: gate each piece on ITS OWN metric (compression ratio, recall cost), never on assembled-system tok/s (PPT-LAT-STATE §0). The headline numbers are the point AND are unmeasured — measure before believing.
@@ -216,7 +216,7 @@ C2.1 took the C2 measurements (±1 router proven in harness, Ring-2 recall byte-
 | **Intelligence** | Möbius sinks + ±1 router | 8× = +0.69% PPL deflection (N=2k) | confirmed @2k; 8k/32k pending |
 | **Memory** | Ring-1 window + Optane two-ring | 910× cache shrink @32k, NIAH HIT @7.66 µs/read off Optane | **`projk` router index still full-P ≈ 940 MB @32k → net 32k RAM 7.5 GB → ~950 MB (~8×), projk-dominated; int8/int4 router quant is next** |
 
-**FINALE (in progress):** NIAH N=32768, B=512 (4×), depth-50, disk on F: via IOCP, sinks=4 — now ~1–2 h (not ~10 h). Retrieval at 32k off physical NVMe at queue-depth latency with a 910× KV-RAM shrink — all three walls in one run.
+**FINALE (in progress):** NIAH N=32768, B=512 (4×), depth-50, disk on F: via IOCP, sinks=4 — now ~1–2 h (not ~10 h). Retrieval at 32k off physical NVMe at queue-depth latency with a 910× KV-RAM shrink — all three walls in one run. *(Outcome 2026-06-06: completed as v5; verdict MISS — see §C2.4-CLOSURE. Note the "4×" label here was the N=2048 sparsification frame; at N=32768, B=512 is a 64× selection budget — a regime no quality gate ever covered.)*
 
 ### C2.1 prefill/decode modes + compact-and-spill fusion (2026-06-03)
 
@@ -345,3 +345,66 @@ with no banked result. STOP.
   68% partial already proved indestructibility (8h, zero leak, RAM flat).
 
 NEXT = the rest of the project (Stage Beta / Eta / Omicron), not more 32k.
+
+## C2.4-CLOSURE (2026-06-06): v5 COMPLETED — NIAH verdict **MISS**. Gate closed on an honest negative.
+
+**The receipt** (`D:\F\shannon-prime-repos\_finale32k.log`, `FINALEDONE`, `WALL_SECONDS=58674` = 16.30 h, exit 3):
+
+```
+[niah] MISS N=32768(actual=32768) depth=50% inj_tok=16366  B=512 W=- R=- RING2=1
+       answer=" 1234567890.   = = = Optane = = =   Optane"
+[ring2-optane] K-stream: 1353081713 reads, 26458.285 s, 19.55 us/read avg
+[ring2-cache]  K-stream: 2741903500 hits / 1353081713 misses = 67.0% hit-rate
+[ring2-optane] V-stream: 1353081713 reads, 26495.314 s, 19.58 us/read avg
+[ring2-cache]  V-stream: 2741903500 hits / 1353081713 misses = 67.0% hit-rate
+```
+
+Secret was the default `837492` (scorer = `strstr`); the answer contains the
+needle's *context* ("Optane", twice) but not the digits. Genuine retrieval MISS.
+
+**What the run PROVED (the infrastructure thesis, at full scale):**
+- 16.3 h of saturated dual-store NO_BUFFERING+IOCP with **zero errors, no
+  deadlock, no leak**, clean teardown — completion of what v2 only sampled.
+- **1.353 × 10⁹ device reads per stream** (K: 11.1 TB off F:, V: 5.5 TB off
+  E:) at **19.55/19.58 µs/read** at queue depth (vs 7.57 µs single-stream
+  best — the QD tax, now measured).
+- The 2 GB LRU temporal cache absorbed **67.0% on both streams** (2.74 × 10⁹
+  device reads avoided each) — consistent with the measured 86/69/50/42%
+  absorption-vs-depth curve at full 32k depth mix.
+- Ring-1 shrunk 482× (15.6 MB vs 7.5 GB); NTT-KV fusion ran exact-score
+  (residue dot + Garner) for the entire run at 32k.
+
+**What it DISPROVED, and the config regression it exposed (no spin):**
+1. **v5 did not run the declared composition.** The script header says
+   "KVSEL + bits-r64" but that line is hand-written prose. The env receipts:
+   `_finale32k.ps1` (v2) set `SP_RECALL_BITS=1 SP_RECALL_R=64`; those lines
+   were **dropped at v4 and never restored** — v5's env block has neither.
+   `SP_RECALL_KVSEL` defaults OFF (`core/forward/decode.c:89`) and was never
+   set in ANY finale script. niah's own knob-echo proves the as-run config:
+   `[recall] sidecar ON: r=16 B=512` — the **f32 r=16 router**, our
+   lowest-resolution selector. This is also why the wall was 16.3 h, not the
+   predicted ~2–3 h: the read-amplification lever was never engaged.
+2. **The budget regime was never gated.** B=512 at N=32768 is a **64×
+   selection ratio**. Every retrieval/quality gate on record (NIAH 6/6, PPL
+   +0.69%) was at N=2048, i.e. 2×–8×; §C2.3's own verdict bounds bits-r64 at
+   ≤4× and puts the f32 router at its +0.69% boundary at 8×. 64× is an
+   extrapolation no gate covered.
+3. **No model-ceiling control exists.** There is no full-attention 32k NIAH
+   baseline for Qwen3-0.6B; "the router diluted at 64×" and "a 0.6B model
+   cannot do 32k NIAH at all" are not yet separable. (The answer shape —
+   correct format, generic digits, needle-context words present — is
+   consistent with either.)
+
+**Lesson (banked):** a runner's banner must echo `getenv`, never aspiration.
+niah's knob-echo line (`B=%s W=%s R=%s`) is what caught the regression; the
+script header is what hid it for three revisions.
+
+**Disposition (operator call, 2026-06-06):** C2.4 closes AS A MISS per the
+standing decision ("whatever the teardown prints"). NO Optane relaunch. A
+**RAM-only diagnostic ladder** (N=2k/4k/8k/16k, B=512, `SP_RING2=1` mock RAM
+store — minutes per rung, zero device cost) localizes where retrieval breaks
+on the budget-ratio axis before any further finale spend. Paper 01 releases
+on the **512-position-proven** Optane HIT + 910× shrink + PPL numbers; the
+32k needle is an open diagnostic, not a claim. Public README corrected the
+same day (it had pre-claimed the 32k HIT ahead of the ledger — that violates
+the series' own rule and is now fixed).
