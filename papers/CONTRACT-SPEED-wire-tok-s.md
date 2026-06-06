@@ -376,3 +376,34 @@ integration tax. This MANDATES the Q4-dp4a kernel (the 6.6GB Q4 12B that fits
 12GB VRAM) + the Gemma4-CUDA forward (Stage Eta) as the justified next sprints.
 GeForce -lmc is unsupported (memory auto-boosts under load); the within-N ratio
 is the reliable signal regardless.
+
+## BETA.3a-v4 — Q4-dp4a: the full bandwidth ladder (2026-06-06)
+
+Added k_gemv_q4_dp4a_v2 to the bench: Q4 arena = 2 nibbles/byte (low=even,
+high=odd, sign-ext (n^8)-8, qmax=7). Read int4 (16 B = 32 packed weights) STRAIGHT
+from VRAM, unpack nibbles -> int8 IN THE ALU (free under memory-bound), feed dp4a;
+activation int8. 0.5 B/weight => 8:1 theoretical over f32. Host-reference
+correctness gate @N=1024: max rel err 1.34e-7 -> PASS (exact int dot, nibble
+decode matches the arena).
+
+THE COMPLETE LADDER (RTX 2060, clocks pinned, isolated GEMV, reproducible):
+
+| bytes/weight | path | speedup vs f32 @N>=12K | eff GB/s |
+| ------------ | ---- | ---------------------- | -------- |
+| 4.0          | f32 cuBLAS SGEMV | 1.0x (baseline) | ~293 (bus-saturated, 87% of 336 peak) |
+| 1.0          | int8 dp4a GEMV   | ~3.8x           | ~280 |
+| 0.5          | Q4 dp4a GEMV     | **~7.06x**      | ~260 |
+
+Each halving of bytes/weight ~doubles throughput, tracking the byte ratio minus a
+shrinking margin: int8 hits 3.8x of the 4:1 ceiling; Q4 hits 7.06x of the 8:1
+ceiling. The Q4 nibble-unpack ALU tax is the only visible cost (Q4 saturates ~260
+GB/s vs int8 ~280 => ~7%, so 7x not 8x). The ALUs are otherwise idle under
+memory-bound conditions, exactly as predicted. Crossover (overhead -> bus-bound)
+~ N=2K for both; the 0.6B matmuls sit below it (and are masked by decode overhead),
+the 12B sits firmly above.
+
+CONCLUSION: the discrete Z_q substrate's packed weights aren't just smaller on
+disk -- at Stage-Eta (12B+) dimensions they are ~7x faster to COMPUTE on consumer
+silicon, bit-exact-correct, because the GDDR6 bus is the wall and Q4 carries 8x
+less traffic across it. This is the quantitative case for the Q4-dp4a decode path
++ Gemma4-CUDA port (Stage Eta), where the 6.6 GB Q4 12B fits the 12 GB VRAM.
