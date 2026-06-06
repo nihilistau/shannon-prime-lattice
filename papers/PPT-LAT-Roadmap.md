@@ -8481,6 +8481,16 @@ oracle, fp16 swivel; gate each on its own metric (not system tok/s).
 - **ETA.5** — gemma4 CUDA decode (per-layer-geometry KV cache, shared-KV-aware) + Q4 dp4a + CUDA graph; tok/s vs llama.cpp on the 12B.
 HAZARD: per-layer geometry breaks the fixed-shape graph capture (needs 2 layer-type shapes). HOUSE RULE: read the CPU reference before each kernel; gate every stage vs `gemma4_forward`. **Resume at ETA.1.**
 
+### Phase ETA — PHASE 1 RESULTS (2026-06-06, ONE session ETA.0→5a; receipt = SESSION-CLOSED-stage-eta-phase1.md; engine main `559435c`)
+
+**ALL FIVE STAGES GATED GREEN, 38/38 cumulative; both live runs (full forward + decode) lit FIRST TRY.**
+- ETA.1 ✅ (8/8): weight ingest — per-layer Q-KV widths, shared-KV owner-only uploads, elastic FFN, AltUp tensors. The cross-seam link (core lane + sp_engine_cuda in one binary) = ONE `as_f32→sp_as_f32` shim; the fork-tax wall didn't exist.
+- ETA.2 ✅: L0 math lock via the truncated-parity bisection harness. Finding: the oracle arithmetic is the INLINE Frobenius lift → `gemm_w_lift` (raw codes into SGEMM, one row-scale after); per-weight dequant injects 2.8e-3. Finding: post-norm ×25 amplification of the f32 floor — gate ABS at floors, never rel at norm outputs.
+- ETA.3 ✅ (29/29 cum): L4 geometry-shift breach (rope_freqs `base^(-2i/d)/ff[i]` handoff at 1.15e-5 abs; SWA→full-causal switch; dynamic launch dims across hd 256→512) + L15 sharer seam (attention over the owner's stored VRAM at 1.11e-5 — off-by-one would read the wrong-width cache). Depth: RMSNorm re-condenses amplified noise each layer (self-healing, stable to 16 layers).
+- ETA.4 ✅ (34/34 cum): **`gemma4_forward_cuda` FULL 35-layer — argmax 12/12, max KL 2.663e-10 vs the oracle.** AltUp per the oracle (precompute once pre-layer-0, persistent; injection its own sandwich block AFTER the FFN residual; scalar out_scale; tied head + softcap).
+- ETA.5a ✅ (38/38 cum): **`gemma4_decode_cuda` — autoregressive greedy over the JAGGED shared-KV cache; the oracle teacher-forced-predicts EVERY generated token.** Per-step AltUp (PLE host-gathered/token — the correctness tax), `k_attn_decode_win`, `k_rope_freqs_at`.
+- **ETA.5b PENDING (the velocity pass; everything left is physics; gated top-1 like Beta):** device PLE gather (zero-sync steps) → CUDA-graph capture of the jagged topology → Q4-dp4a routing (~7× proven) → **12B-Q4_K_M transcode + VRAM fit + load → tok/s vs llama.cpp** (the convergence shootout).
+
 Stage Eta of the deployment taxonomy (STATE §5.07). The encoder-free Gemma 4
 family makes the modality boundary ONE linear projection — pixels (48×48
 patches → 35M matmul) and raw audio (16 kHz, 40 ms / 640-float frames →

@@ -187,6 +187,16 @@ Canonical names for the physical deployment tiers. Each stage is a strict optimi
 
 **STAGE ETA OPENED (2026-06-06, branch `stage-eta-gemma4-cuda`).** Gemma4 (MatFormer/Gemma-3n E-series: AltUp + shared-KV + per-layer geometry + softcap) CUDA forward+decode, so the 6.6 GB Gemma-4-12B-Q4_K_M runs on the 2060 with the ~7× Q4 win. CPU `core/forward/gemma4.c` is the bit-exact oracle; gate target = `gemma-4-E4B`. Reference read + 6-stage gated plan (ETA.1–5) banked. **Do not rush the variable-geometry port; resume at ETA.1 (adapter + weightless V-norm).** Detail in Roadmap §21/§19 + memory `project-stage-eta-gemma4-cuda`.
 
+## 5.10 STAGE ETA PHASE 1 CLOSED — THE GEMMA4 CUDA ENGINE (2026-06-06)
+
+**The full Gemma 4 (MatFormer E-series) architecture runs on the RTX 2060 — forward AND autoregressive decode — gated 38/38 against the CPU oracle, both live runs green FIRST TRY.** Full receipt in SESSION-CLOSED-stage-eta-phase1.md; engine merged to main at `559435c`; Roadmap §19.
+
+- **`gemma4_forward_cuda`**: 35 layers of per-layer GLOBAL/SWA geometry + shared-KV (15 owners/20 sharers) + proportional rope_freqs + weightless V-norm + elastic FFN + AltUp + out_scale + tied head + softcap → **argmax 12/12, max KL 2.663e-10** vs `gemma4_forward`. Distributional identity at machine-noise level.
+- **`gemma4_decode_cuda`**: autoregressive greedy over a **JAGGED shared-KV cache** (per-owner [P×kvd_L]; sharers allocate nothing), per-step AltUp, windowed single-query attention → **the oracle teacher-forced-predicts every generated token.**
+- **Why first-try:** the bisection bulkheads. Weight-ingest gate (8/8, incl. the cross-seam link — the fork tax collapsed to ONE `as_f32→sp_as_f32` shim), L0 math lock (+ the inline-Frobenius-lift finding: `gemm_w_lift` enforces the oracle's exact-integer-accumulate arithmetic on cuBLAS; + the ×25 norm-amplification analysis), L4 geometry-shift breach (rope_freqs handoff at the floor), L15 sharer-seam proof (cross-layer VRAM addressing exact at 1.1e-5). The monolith had nowhere left to fail.
+- **Numerical findings banked:** the RMSNorm re-condenses amplified noise at each layer entry (self-healing over depth, no explosion through 16 layers); sharer attention is CLEANER than native (inherited normalized K/V + softmax squashing); ABS error is the gate currency at norm boundaries (rel inflates on near-zeros).
+- **NEXT — ETA.5b, the velocity pass (pure physics, gated top-1):** device-side PLE gather (sever the per-step host sync) → CUDA-graph capture of the jagged topology → Q4-dp4a routing (the proven ~7× byte diet) → **12B-Q4_K_M transcode + load + tok/s vs llama.cpp.** The architecture is proven; what remains is the speedometer.
+
 ## 5.1 FORWARD PRIORITY (re-ordered 2026-06-02 — differentiators ahead of context)
 
 C2's measurement phase is done and re-ranked the work (KV ~3.5× lossy; Ring-2 context ~hundreds× but largely disk-tiering). The unmeasured load-bearing differentiators now lead. Full rationale in **RFC-001 §11**:
