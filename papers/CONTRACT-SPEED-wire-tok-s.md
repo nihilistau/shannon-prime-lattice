@@ -496,3 +496,45 @@ qwen3 regates green on the new kernels.
 3. Q8-head/Q4-body transcode option for the 12B (keep Q6_K-source tensors at
    Q8): trades ~0.7 GB of reads for weight-quant fidelity — measure BOTH axes
    if the PPL gate shows a squeeze cost.
+
+### ADDENDUM 2026-06-07 — THE GOLD INSTRUMENT: the reference frame itself was broken
+
+The PPL-gate campaign ran to a reference-shattering conclusion. All runs on the
+SAME llama-dumped token fixture (`_g4_12b_wiki_tokens.txt`, verified == HF
+tokenizer.json 5431/5431):
+
+| run | weights | engine | protocol | PPL |
+|---|---|---|---|---|
+| llama ladder | Q4_K_M GGUF | llama.cpp-CUDA | c512×8 | 505.91 |
+| llama ladder | QAT-Q4_0 GGUF | llama.cpp-CUDA | c512×8 | 397.49 |
+| SP per-row | QAT→OK_Q4 per-row | SP CUDA | c512 chunk-0 | 37,596 |
+| **T2 GOLD** | **official bf16 safetensors** | **hand-written torch forward** | **c512 chunk-0, targets [256,512)** | **4.6776** |
+
+The gold instrument (`_t2_manual_forward.py`, receipt `_t2_gold.log`) is a
+from-scratch forward off the checkpoint + config alone: plain-multiplier
+RMSNorm (NOT gemma-classic 1+w — read from the stored weights), V-less globals
+(V = raw K projection, weightless-normed, never roped), partial rotary 0.25 via
+the proportional factor table over θ=1e6 / SWA full-rot θ=1e4, attention scale
+1.0, GeGLU tanh, sandwich norms, per-layer layer_scalar, tied head, softcap 30.
+Scored targets sit AT max-logit (nll ≈ 0.001) — the model is healthy and
+supremely confident on raw wikitext. **llama.cpp's gemma4 stack is ~100× off on
+this model; every number above it in the table was measured against a broken
+reference.** The "IT-on-raw-wikitext is honestly ~400-500" calibration claim in
+§ETA.5b is OVERTURNED (left in place per no-silent-revision; this addendum is
+the formal amendment).
+
+Forensics so far (`_t2b_gguf_forensics.py`): the +1-norm converter theory is
+DEAD (q/k_norm byte-identical GGUF↔safetensors); GGUF metadata sane; the three
+weight sources carry three different layer_scalar sets (QAT retrain drift, not
+corruption). The remaining fork — llama.cpp FORWARD vs GGUF CONVERSION — is
+isolated by `_t2c_gold_on_gguf.py`: the gold arithmetic over the QAT GGUF's own
+dequantized tensors (single-digit condemns the forward; ~400 condemns the
+conversion). T2c is BLOCKED on a host memory wedge (Available=0 with ~9GB in
+processes after the bake ladder; reboot required) and runs first next session.
+
+Consequences for this contract: (a) the 34.2 tok/s shootout number stays
+NON-CITABLE until SP passes a PPL gate measured against **4.68**, not 505;
+(b) the per-row OK_Q4 verdict (37,596) remains directionally valid — ~95×
+worse than its own source's llama number on the same frame — but its absolute
+magnitude re-bases; (c) llama.cpp is DEMOTED from oracle to cross-check for
+the gemma4 12B; the gold instrument is the reference until the fork resolves.

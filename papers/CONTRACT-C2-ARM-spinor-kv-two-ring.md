@@ -408,3 +408,15 @@ on the **512-position-proven** Optane HIT + 910× shrink + PPL numbers; the
 32k needle is an open diagnostic, not a claim. Public README corrected the
 same day (it had pre-claimed the 32k HIT ahead of the ledger — that violates
 the series' own rule and is now fixed).
+
+**Ladder results (2026-06-07, `_diag_ladder.log`, B=512 RAM Ring-2,
+depth-50):** 2k **HIT** · 4k **MISS-by-one-digit** (correct format, one digit
+off) · 8k **HIT** · 16k **MISS** (model emitted the cliché "123456" guess —
+a clean retrieval failure, not a formatting one). Read: the budget-ratio axis
+is a NOISY MARGIN through 8k (4× → 16× selection budget) and a real break by
+32× (16k). The 64× budget at the 32k finale was past the cliff edge before the
+config regression even entered. Quality work therefore targets the selection
+budget (B vs N scaling, e.g. B∝N or two-stage re-rank), not more finale spend
+at fixed B=512. Host note: the ladder + finale left the box in an
+Available=0 memory wedge (driver-pinned pages; reboot) — budget a reboot into
+any post-bake session plan.
