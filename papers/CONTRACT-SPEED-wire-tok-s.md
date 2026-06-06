@@ -346,3 +346,33 @@ sits on the binding bottleneck before claiming a win.
 
 NEXT: profile the real 0.6B decode ceiling (argmax-over-152k / attention /
 launch count) OR validate int8 on the 12B Gemma where weight bandwidth binds.
+
+## BETA.3a-v3 — isolated GEMV crossover: bandwidth thesis PROVEN (2026-06-06)
+
+tests/bench_gemv_int8.cu: standalone nvcc microbench, f32 cuBLAS SGEMV vs int8
+dp4a-v2 GEMV (single-token M=1), sweeping weight-matrix N=1K..16K with clocks
+pinned. Strips attention/argmax/launch overhead to isolate the matmul — the one
+thing the dp4a kernel optimizes. Within-N back-to-back ratio (reliable signal).
+
+| N      | f32 us | int8 us | speedup | f32 GB/s |
+| ------ | ------ | ------- | ------- | -------- |
+| 1024   | 19     | 17      | 1.1x    | 218      |
+| 2048   | 57-82  | 25      | 2.3-3.2x| ~290     |
+| 4096   | 242    | 72      | 3.4x    | 277      |
+| 8192   | 928    | 257     | 3.6x    | 290      |
+| 12288  | 2068   | 542     | 3.7-3.95x | 292    |
+| 16384  | 3642   | 961     | 3.79x   | 295      |
+
+f32 SGEMV pins at ~290 GB/s = 86% of the 2060's 336 GB/s peak across all large
+N -> genuinely bus-saturated. int8 saturates the SAME bus but moves 4x fewer
+bytes -> converges to ~3.7-3.8x, hugging the 4:1 byte ratio. Crossover
+(overhead -> memory-bound) ~ N=1024-2048. The 0.6B matmuls (N~1K-3K) sit at the
+low edge AND are masked by decode overhead -> why int8 tied there. A 12B
+(hidden ~3840, FF ~15360) sits firmly in the 3.7-3.8x regime.
+
+CONCLUSION: the dp4a INT8 GEMV is mathematically sound (top-1 lossless) AND
+physically dominant when the GDDR6 bus binds — proven in isolation, no 12B
+integration tax. This MANDATES the Q4-dp4a kernel (the 6.6GB Q4 12B that fits
+12GB VRAM) + the Gemma4-CUDA forward (Stage Eta) as the justified next sprints.
+GeForce -lmc is unsupported (memory auto-boosts under load); the within-N ratio
+is the reliable signal regardless.
