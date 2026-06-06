@@ -538,3 +538,36 @@ NON-CITABLE until SP passes a PPL gate measured against **4.68**, not 505;
 worse than its own source's llama number on the same frame — but its absolute
 magnitude re-bases; (c) llama.cpp is DEMOTED from oracle to cross-check for
 the gemma4 12B; the gold instrument is the reference until the fork resolves.
+
+### RESOLUTION 2026-06-07 (post-reboot): THE GGUF ARTIFACTS ARE CONVICTED
+
+The discriminator ran. Gold arithmetic, identical fixture and window:
+
+| weights | gold forward | llama.cpp |
+|---|---|---|
+| safetensors (base) | **4.68** | — |
+| Q4_K_M GGUF (same checkpoint as gold) | **271.18** | 505.91 |
+| QAT-Q4_0 GGUF | **364.33** | 397.49 |
+
+K-quant noise costs percents, not 58×. **Both GGUF artifacts are broken at
+the weight level; llama.cpp's forward is exonerated** (the two engines agree
+on every artifact). Hybrid class-isolation: GGUF + safetensors layer_scalars
+= 97.07 (the GGUF scalar set alone carries a 3.75× damage factor); + norms =
+113.6 (WORSE — norms are coherent with the GGUF weights, innocent); + embed =
+113.7 (innocent). Mechanism: NO layer permutation (blk.L↔layers.L diagonal
+exact, cross-layer cos ≈ 0); the damage is IN-PLACE with period-6 severity —
+layers ≡ 0,1 (mod 6) at cos 0.93-0.97 vs safetensors, the other four at
+0.24-0.70. Receipts: `%TEMP%\_t2c_{self,B,C,D,E2}.log`, `_t2e.log`, `_t2g.log`.
+
+The ecosystem record corroborates: llama.cpp PR #24118 "Fix Gemma 4 Unified
+conversion" (merged 2026-06-04), issue #22407 (extreme gemma4 quant PPLs),
+and Unsloth's June-5 GGUF rebuild with "re-download mandatory" + "the bugs
+were universal, affected all training packages." Our artifacts predate or
+missed the rebuilt wave.
+
+**Standing doctrine from this resolution:** the safetensors bucket
+(4.68-proven) is the ONLY trusted gemma4-12B weight source. The 12B path
+becomes sp_transcode-from-safetensors (bf16 front-end → OK_Q8 / OK_Q4B),
+bypassing GGUF entirely; rebuilt-GGUF re-download is an optional cross-check.
+The SP PPL gate target for the 12B is **single-digit vs 4.68**, with the
+gold instrument (lattice `tests/gemma4_gold/`) as the reference engine.

@@ -1,0 +1,82 @@
+gguf: D:\Files\Models\Gemma4\gemma-4-12b-it-Q4_K_M\gemma-4-12b-it-Q4_K_M.gguf
+blk.0.attn_q.weight: direct cos mean 0.96900 min 0.85871 | perm(g) cos 0.00674
+blk.0.attn_k.weight: direct cos mean 0.96596 min 0.79302 | perm(g) cos 0.00939
+blk.5.attn_q.weight: direct cos mean 0.51427 min 0.11107 | perm(g) cos 0.00278
+blk.5.attn_k.weight: direct cos mean 0.68330 min 0.17268 | perm(g) cos 0.00366
+blk.0.attn_output.weight: direct cos mean 0.96345 min 0.77044
+blk.0.ffn_gate.weight: direct cos mean 0.97331 min 0.74571
+blk.0.ffn_down.weight: direct cos mean 0.93090 min 0.64118
+blk.5.ffn_down.weight: direct cos mean 0.66660 min 0.28002
+embed rows 1000-1004 cos: [0.96885, 0.98382, 0.96579, 0.9873, 0.95649]
+K_M scalars[0:8]: [0.053, 0.166, 0.2559, 0.5156, 0.377, 0.3555, 0.3457, 0.2969]
+ST  scalars[0:8]: [0.0542, 0.1729, 0.2891, 0.5234, 0.416, 0.377, 0.3398, 0.3008]
+  kv general.architecture = gemma4
+  kv general.base_model.0.name = Gemma 4 12b It
+  kv general.base_model.0.organization = Google
+  kv general.base_model.0.repo_url = https://huggingface.co/google/gemma-4-12b-it
+  kv general.base_model.count = 1
+  kv general.basename = Gemma-4-12B-It
+  kv general.file_type = 15
+  kv general.finetune = it
+  kv general.license = apache-2.0
+  kv general.license.link = https://ai.google.dev/gemma/docs/gemma_4_license
+  kv general.name = Gemma-4-12B-It
+  kv general.quantization_version = 2
+  kv general.quantized_by = Unsloth
+  kv general.repo_url = https://huggingface.co/unsloth
+  kv general.sampling.temp = 1.0
+  kv general.sampling.top_k = 64
+  kv general.sampling.top_p = 0.949999988079071
+  kv general.size_label = 12B
+  kv general.type = model
+
+per-layer cos(GGUF,ST) attn_q | ffn_down  (* = global layer):
+  L 0  q 0.9690  down 0.9309
+  L 1  q 0.9613  down 0.9405
+  L 2  q 0.6263  down 0.6997
+  L 3  q 0.5638  down 0.6644
+  L 4  q 0.5458  down 0.5932
+  L 5* q 0.5143  down 0.6666
+  L 6  q 0.9475  down 0.9114
+  L 7  q 0.9437  down 0.9164
+  L 8  q 0.6244  down 0.5959
+  L 9  q 0.5586  down 0.4281
+  L10  q 0.4313  down 0.2360
+  L11* q 0.3005  down 0.6941
+  L12  q 0.9638  down 0.9341
+  L13  q 0.9574  down 0.9381
+  L14  q 0.6195  down 0.6500
+  L15  q 0.5996  down 0.6510
+  L16  q 0.5968  down 0.6519
+  L17* q 0.5941  down 0.7039
+  L18  q 0.9496  down 0.9332
+  L19  q 0.9442  down 0.9345
+  L20  q 0.6359  down 0.6613
+  L21  q 0.5899  down 0.6481
+  L22  q 0.5788  down 0.6218
+  L23* q 0.6416  down 0.6573
+  L24  q 0.9180  down 0.8913
+  L25  q 0.9220  down 0.8916
+  L26  q 0.6443  down 0.6271
+  L27  q 0.6197  down 0.6029
+  L28  q 0.5634  down 0.6020
+  L29* q 0.5940  down 0.6507
+  L30  q 0.9077  down 0.8896
+  L31  q 0.9012  down 0.9023
+  L32  q 0.5967  down 0.5961
+  L33  q 0.5365  down 0.6828
+  L34  q 0.5234  down 0.6466
+  L35* q 0.4958  down 0.6663
+  L36  q 0.9132  down 0.9145
+  L37  q 0.9047  down 0.9125
+  L38  q 0.4690  down 0.6193
+  L39  q 0.4797  down 0.6236
+  L40  q 0.4791  down 0.6333
+  L41* q 0.5428  down 0.6316
+  L42  q 0.9243  down 0.9049
+  L43  q 0.9440  down 0.9027
+  L44  q 0.5466  down 0.6043
+  L45  q 0.4825  down 0.5854
+  L46  q 0.5008  down 0.6167
+  L47* q 0.4632  down 0.6379
+DONE

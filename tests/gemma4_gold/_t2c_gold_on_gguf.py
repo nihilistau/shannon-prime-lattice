@@ -3,13 +3,36 @@
 # Same fixture, same window. Single-digit => llama.cpp's gemma4 forward is broken.
 # ~400 => the GGUF conversion damaged the content.
 import json, struct, sys, time, glob
+# Self-owned log: the detached-powershell pipe dies ~45-90s in (writes block,
+# OMP spin-waits burn CPU). Bypass the pipe entirely.
+_log = open(r"D:\F\shannon-prime-repos\_t2c_self.log", "a", buffering=1, encoding="utf-8")
+sys.stdout = _log; sys.stderr = _log
+import os
+# OMP/oneDNN livelock at ~45s under per-layer alloc churn (3 runs reproduced,
+# wedge layer varies, wall-clock constant). Kill threading entirely: reliable > fast.
+os.environ["OMP_NUM_THREADS"] = "1"
+os.environ["MKL_NUM_THREADS"] = "1"
+import faulthandler; faulthandler.enable(file=_log)
 import numpy as np
 import torch
-sys.stdout.reconfigure(encoding="utf-8", errors="replace")
-torch.set_num_threads(8)
+torch.set_num_threads(1)
 
-GG = glob.glob(r"D:\Files\Models\Gemma4\gemma-4-12B-it-QAT-Q4_0\*.gguf")[0]
+GG = glob.glob(sys.argv[3] if len(sys.argv) > 3 else r"D:\Files\Models\Gemma4\gemma-4-12B-it-QAT-Q4_0\*.gguf")[0]
 TOKENS = r"D:\F\shannon-prime-repos\_g4_12b_wiki_tokens.txt"
+SWAP = sys.argv[2] if len(sys.argv) > 2 else ""     # "", "sc", "sc+norms", "sc+norms+embed"
+
+# ---- safetensors reader (for hybrid tensor-class swaps) ----
+BUCKET = r"D:\Files\Models\Gemma4\gemma-4-12b-bucket"
+sf = open(BUCKET + r"\model.safetensors", "rb")
+shn = struct.unpack("<Q", sf.read(8))[0]
+shdr = json.loads(sf.read(shn)); sbase = 8 + shn
+def st(nm):                                          # bf16 -> f32 torch
+    e = shdr["model.language_model." + nm]; o, en = e["data_offsets"]
+    sf.seek(sbase + o)
+    raw = np.frombuffer(sf.read(en - o), dtype="<u2")
+    x = (raw.astype(np.uint32) << 16).view(np.float32).copy()
+    return torch.from_numpy(x.reshape(e["shape"]) if len(e["shape"]) > 1 else x)
+print(f"SWAP mode: '{SWAP}'", flush=True)
 
 # ---- GGUF reader ----
 f = open(GG, "rb")
@@ -82,6 +105,25 @@ def deq(nm):
         d = raw[:, :2].copy().view("<f2").astype(np.float32)
         q = raw[:, 2:].view(np.int8).astype(np.float32)
         x = (q * d).reshape(-1)
+    elif ty == 12:                                  # Q4_K: 144B/256 (d,dmin f16 + scales[12] + qs[128])
+        nb = n // 256
+        raw = np.frombuffer(f.read(144 * nb), np.uint8).reshape(nb, 144)
+        d = raw[:, 0:2].copy().view("<f2").astype(np.float32)       # [nb,1]
+        dmin = raw[:, 2:4].copy().view("<f2").astype(np.float32)
+        scl = raw[:, 4:16]                                          # packed 6-bit scales/mins
+        q = raw[:, 16:144]
+        y = np.empty((nb, 256), np.float32)
+        for j in range(8):                          # 8 sub-blocks of 32
+            if j < 4:
+                sc = (scl[:, j] & 63).astype(np.float32)
+                mn = (scl[:, j + 4] & 63).astype(np.float32)
+            else:
+                sc = ((scl[:, j + 4] & 0xF) | ((scl[:, j - 4] >> 6) << 4)).astype(np.float32)
+                mn = ((scl[:, j + 4] >> 4) | ((scl[:, j] >> 6) << 4)).astype(np.float32)
+            qcol = q[:, (j // 2) * 32:(j // 2) * 32 + 32]
+            nib = (qcol & 0xF) if j % 2 == 0 else (qcol >> 4)
+            y[:, j * 32:(j + 1) * 32] = (d * sc[:, None]) * nib - (dmin * mn[:, None])
+        x = y.reshape(-1)
     elif ty == 14:                                  # Q6_K: 210B/256
         nb = n // 256
         raw = np.frombuffer(f.read(210 * nb), np.uint8).reshape(nb, 210)
@@ -122,9 +164,37 @@ print("streaming mode: row-gather embed + per-layer load/compute/free", flush=Tr
 t0 = time.time()
 torch.set_num_threads(4)
 
+def st_rows(r0, r1):                                # safetensors embed rows [r0,r1) bf16->f32
+    e = shdr["model.language_model.embed_tokens.weight"]
+    o = e["data_offsets"][0]
+    sf.seek(sbase + o + r0 * 3840 * 2)
+    raw = np.frombuffer(sf.read((r1 - r0) * 3840 * 2), dtype="<u2")
+    return torch.from_numpy(((raw.astype(np.uint32) << 16).view(np.float32)).reshape(r1 - r0, 3840).copy())
+
 def deq_rows(nm, r0, r1):                           # dequant rows [r0,r1) of a 2D tensor
+    if "embed" in SWAP: return st_rows(r0, r1)
     ty, dims, off = tens[nm]
     n_in = int(dims[0])
+    if ty == 12:                                    # Q4_K rows (144B/256)
+        rb = n_in // 256 * 144
+        f.seek(data0 + off + r0 * rb)
+        nb = (r1 - r0) * (n_in // 256)
+        raw = np.frombuffer(f.read(rb * (r1 - r0)), np.uint8).reshape(nb, 144)
+        d = raw[:, 0:2].copy().view("<f2").astype(np.float32)
+        dmin = raw[:, 2:4].copy().view("<f2").astype(np.float32)
+        scl = raw[:, 4:16]; q = raw[:, 16:144]
+        y = np.empty((nb, 256), np.float32)
+        for j in range(8):
+            if j < 4:
+                sc = (scl[:, j] & 63).astype(np.float32)
+                mn = (scl[:, j + 4] & 63).astype(np.float32)
+            else:
+                sc = ((scl[:, j + 4] & 0xF) | ((scl[:, j - 4] >> 6) << 4)).astype(np.float32)
+                mn = ((scl[:, j + 4] >> 4) | ((scl[:, j] >> 6) << 4)).astype(np.float32)
+            qcol = q[:, (j // 2) * 32:(j // 2) * 32 + 32]
+            nib = (qcol & 0xF) if j % 2 == 0 else (qcol >> 4)
+            y[:, j * 32:(j + 1) * 32] = (d * sc[:, None]) * nib - (dmin * mn[:, None])
+        return torch.from_numpy(y.reshape(r1 - r0, n_in))
     if ty == 14:                                    # Q6_K rows
         rb = n_in // 256 * 210
         f.seek(data0 + off + r0 * rb)
@@ -156,18 +226,26 @@ if "rope_freqs.weight" in tens:
     rf = rope_tab[True]
     print(f"  rope_freqs[{rf.numel()}]: [0..3]={rf[:4].tolist()} [63..66]={rf[63:67].tolist()}")
 
-def load_layer(L):
+NORMMAP = [("an", "attn_norm", "input_layernorm"), ("qn", "attn_q_norm", "self_attn.q_norm"),
+           ("kn", "attn_k_norm", "self_attn.k_norm"),
+           ("pan", "post_attention_norm", "post_attention_layernorm"),
+           ("fn", "ffn_norm", "pre_feedforward_layernorm"),
+           ("pfn", "post_ffw_norm", "post_feedforward_layernorm")]
+
+def load_layer(L, verbose=False):
     g = L in GLOBALS
     p = f"blk.{L}."
+    sp = f"layers.{L}."
     W = {}
-    for short, gn in [("an", "attn_norm"), ("qn", "attn_q_norm"), ("kn", "attn_k_norm"),
-                      ("pan", "post_attention_norm"), ("fn", "ffn_norm"), ("pfn", "post_ffw_norm")]:
-        W[short] = deq(p + gn + ".weight").float()
+    for short, gn, sn in NORMMAP:
+        if "norms" in SWAP: W[short] = st(sp + sn + ".weight").float()
+        else:               W[short] = deq(p + gn + ".weight").float()
     for short, gn in [("q", "attn_q"), ("k", "attn_k"), ("o", "attn_output"),
                       ("g", "ffn_gate"), ("u", "ffn_up"), ("d", "ffn_down")]:
         W[short] = deq(p + gn + ".weight")
     if not g: W["v"] = deq(p + "attn_v.weight")
-    W["sc"] = float(deq(p + "layer_output_scale.weight")[0])
+    if "sc" in SWAP: W["sc"] = float(st(sp + "layer_scalar")[0])
+    else:            W["sc"] = float(deq(p + "layer_output_scale.weight")[0])
     return W
 print(f"  embed ready {time.time()-t0:.0f}s; layer_output_scale[0:8] = "
       f"{[round(float(deq(f'blk.{L}.layer_output_scale.weight')[0]),4) for L in range(8)]}", flush=True)
@@ -228,9 +306,9 @@ for L in range(NL):
     x = x + rms(dn, W["pfn"])
     x = x * W["sc"]
     del W, h, q, k_raw, v, k, kx, vx, att, out, ao, gate, up, act, dn
-    if L % 8 == 0: print(f"  L{L} |x| {x.norm():.3e} ({time.time()-t0:.0f}s)", flush=True)
+    print(f"  L{L} |x| {x.norm():.3e} ({time.time()-t0:.0f}s)", flush=True)
 
-x = rms(x, deq("output_norm.weight").float())
+x = rms(x, st("norm.weight").float() if "norms" in SWAP else deq("output_norm.weight").float())
 xb = x.to(torch.bfloat16)
 V = int(np.prod(tens["token_embd.weight"][1][1:]))
 logits = torch.empty(N_CTX, V, dtype=torch.float32)
