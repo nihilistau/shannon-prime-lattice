@@ -284,3 +284,34 @@ f16->OK_Q8 (quantization, top-1/output-lossless, NOT lossless). A model
 already at 4-bit (Q4_K_M) has no 50% to take; OK_Q4 gives ~17% structural,
 sub-Q4 is an open follow-up. Beta TIES llama.cpp on weight size; the win is
 bandwidth-efficient O(1) deep-context attention, NOT smaller weights.
+
+## BETA.3a — dp4a INT8 GEMV: the bandwidth thesis, validated (2026-06-06, engine bd87e99)
+
+The anchored f32==Q8 result hid that the Q8 decode path was PATHOLOGICAL:
+gemm_w dequants packed codes -> f32 scratch -> SGEMM EVERY step (~9 B/weight:
+read code + write f32 + reread), so Q8 ran 3x SLOWER than f32. The packed
+bytes never reached the GEMM.
+
+Fix: decode is M=1, so the tensor-core mma m8n8k16 tile can't help (1 row fills
+1/8 of MMA_M). The Turing GEMV lever is __dp4a (4-wide INT8 dot -> INT32, native
+sm_75). k_quant_act_int8 (dynamic per-vector activation quant) + k_gemv_q8_dp4a
+(one block/row, dp4a over codes read 1 B/weight STRAIGHT from VRAM, no scratch).
+
+RESULT (RTX 2060, 0.6B, n_gen=256, clocks LOCKED 1500 MHz sustainable):
+
+| path                       | tok/s | bytes/weight |
+| -------------------------- | ----- | ------------ |
+| Q8 dequant -> f32 -> SGEMM | 29.98 | ~9           |
+| f32 cuBLAS SGEMM           | 91.77 | 4            |
+| **Q8 dp4a INT8 GEMV**      | **84.27** | **1**    |
+
+dp4a = **2.81x** the dequant path (3.01x at 2100 MHz), **top-1 LOSSLESS 256/256**
+(activation int8 quant changes zero argmaxes). The bandwidth thesis holds:
+keeping weights 1-byte to the ALU recovers the ~3x the dequant path threw away.
+int8 (84) ~ f32 cuBLAS (92): the naive 1-block/row GEMV nearly matches SGEMM on
+4x less data — a TUNED warp-per-row vectorized GEMV pushes past f32 (next).
+NOTE (per methodology rule): the within-precision back-to-back ratio is the
+reliable signal; absolute tok/s drifts with clock/thermal even when locked.
+
+NEXT: tuned dp4a GEMV -> BETA.3b prefill mma m8n8k16 (ptx_mma.cuh, M=n_tok fills
+the tile) -> BETA.4 GPU router -> BETA.5 llama.cpp-CUDA head-to-head.
