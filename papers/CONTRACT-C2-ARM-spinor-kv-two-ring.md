@@ -321,3 +321,27 @@ where bits-r64 deflects +6.08%. Production guidance: bits-r64 for <=4x;
 f32 router (or a future Hamming-prefilter -> exact-rescore two-stage) for 8x+.
 The estimator is free until you starve it. Both named C2.3 gates now closed;
 the overlay remains a knob, never a default.
+
+## DECISION (2026-06-06): v5 is the TERMINAL finale run; 4 GB slab DOCUMENTED-NOT-RUN
+
+Operator call, economic discipline: the composed 32k finale has been killed
++ relaunched 4x chasing levers (v2 scan / v3 split / v4 overlap / v5 cache).
+Each lever was real and is now SHIPPED + gated. But the C2.4 gate has stayed
+PENDING for ~a week and the optimization treadmill costs operator time/money
+with no banked result. STOP.
+
+- v5 (KVSEL + bits-r64 + fusion + split-Optane + overlap + 2 GB LRU cache)
+  RIDES TO COMPLETION untouched (schtasks SP_FinaleV5, self-owned). On
+  FINALEDONE it CLOSES C2.4 with whatever hit-rate the teardown prints.
+- The 4 GB / 8 GB slab is a KNOWN, CONFIGURABLE lever (SP_RING2_CACHE_MB).
+  The absorption-vs-depth curve is already MEASURED at 2 GB (86/69/50/42%);
+  scaling the slab widens the reuse horizon predictably. NOT re-run — the
+  answer is known; paying to confirm it is the treadmill. Filed as the
+  first config knob anyone tunes for production, gate-free (it's a cache
+  size, parity is unaffected — T_CACHE_EXACT already proved that).
+- NO MORE finale relaunches. NO agent poll-watching of bakes (that, not the
+  machine, was the real cost — the run is free, the babysitting is not).
+- The 2 GB measured run + its completed log IS the C2.4 evidence; the
+  68% partial already proved indestructibility (8h, zero leak, RAM flat).
+
+NEXT = the rest of the project (Stage Beta / Eta / Omicron), not more 32k.
