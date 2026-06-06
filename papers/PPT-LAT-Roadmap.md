@@ -8536,3 +8536,20 @@ Ladder of ambition (each rung its own gated sub-phase):
 - **OMI.4 (speculative) — small-prime CRT-NTT in int16 lanes.** ~14-bit
   primes keep products exact in int32 accumulators. Probably impractical;
   probe before paragraph. Surface upstream if the math doesn't close.
+
+## 21. Phase BETA — the discrete lattice on the RTX 2060 (FILED + OPENED 2026-06-06)
+
+Stage Beta of the deployment taxonomy (STATE §5.07/§5.08; [[reference-stage-taxonomy]]). The CPU/Optane Stage Alpha proved the discrete envelope; Beta ports it to Turing CUDA. Hardware VERIFIED on the actual card: RTX 2060 12GB sm_75, CUDA 13.2 (nvcc still targets compute_75), VS18 host. sm_75 guards pinned: [[reference-cuda-sm-feature-tiers]] (no cp.async/ldmatrix/mbarrier; **no L2 persistence — MaxPersistingL2=0 measured**, use 64KB shared mem as the explicit non-evictable scratchpad), [[reference-nvcc-paired-register-bug]] (mad.wide.u32 BANNED).
+
+**Stage 0 — foundation verified (CLOSED):** build-cuda clean 48/48; CUDA_SMOKE + E_CU_5 NTT-attn (int64 dot == sp_pr_inner 192/192, KL 2.4e-10) + E_CU_6 KSTE all PASS. Prefill forward gated: M_QWEN3_CUDA f32+Q8 argmax 31/31 (fp16 sub-gate = precision floor, decision owed); M_GEMMA3_CUDA PASS.
+
+**Stage 1 — GPU autoregressive decode (DONE):** `qwen3_decode_cuda` (cuda_forward.cu) — KV resident in VRAM, position-aware RoPE (k_rope_at), single-query attention (k_attn_decode), device argmax into a VRAM-resident dseq[] (k_argmax) so eos=-1 has zero per-step host sync. Gate M_QWEN3_DECODE_CUDA: GPU decode == GPU prefill teacher-forced, 5/5. Speed pass 1: f32 6.93 → Q8 11.97 tok/s.
+
+**THE BETA THESIS (honest, corrected this session):** the win is NOT smaller weights — we tie llama.cpp on weight size (Shannon floor; a 4-bit GGUF has no 50% left to take; our OK_Q4 gives ~17% structural, sub-Q4 unproven). int4 is a STORAGE target (mandatory for 12B-in-12GB; k_dequant_arena already does Q4), NOT a compute precision (int4-activation MMA fails top-1, measured on CPU VNNI; NTT residues are exact u32, router is 1-bit — neither needs INT4 TC). The win is **O(1) routed deep-context attention** (popcount router + NTT fusion) vs dense O(N) that starves the 2060's 336 GB/s bus at 32k.
+
+**Sub-phases (next sprint):**
+- **BETA.2 — CUDA graphs:** the measured wall is KERNEL LAUNCH OVERHEAD (~250 tiny kernels/token at 0.6B). Capture+replay the per-step launch sequence (handle the changing ctx shared-mem size) → collapse 250 launch latencies to 1. The ~50-100 tok/s jump lives here.
+- **BETA.3 — fused decode kernels:** rmsnorm+rope, attention+output, reduce the kernel count itself.
+- **BETA.4 — discrete router on GPU:** warp-per-head NTT score + bits-r64 popcount, signatures staged in 64KB shared mem (Turing's L2-pin substitute). KVSEL group-centroid. KV in VRAM (Optane tier OBSOLETE at 0.6B/32k on a 12GB card).
+- **BETA.5 — llama.cpp-CUDA head-to-head:** the terminal Beta gate. Deep-context tok/s, same model + card.
+- **Then Stage GAMMA (GPU + Optane):** the >VRAM-model tier (8B/12B/27B). cudaHostAlloc pinned-mem bridge (consumer Turing has NO GPUDirect Storage); CPU issues the Optane→pinned→VRAM async copy. This is where the Optane tier returns and the architecture scales past VRAM.

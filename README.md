@@ -93,7 +93,13 @@ note under `papers/SESSION-CLOSED-*.md` or
 
 ## 2. Current status
 
-Honest snapshot, 2026-06-03.
+**Update 2026-06-06 — Stage Alpha (CPU/Optane) C2 envelope closed-in-parts; Stage Beta (RTX 2060) opened with GPU generation live.** Highlights (detail in `papers/PPT-LAT-STATE.md` §5.06/§5.08, the `CONTRACT-C2`/`CONTRACT-SPEED` papers, and `SESSION-CLOSED-stage-alpha-amplification.md` / `SESSION-CLOSED-stage-beta-s0.md`):
+- **Dual-prime NTT keystore fusion** in the canonical math-core decode — 22.3 tok/s (93% of f32), bit-identical sequences; the NTT compute-optimization arc is closed (SoA head-batch + AVX512).
+- **Bit-packed popcount router (SimHash, `bits-r64`)** — projk router index crushed 16×; both fidelity gates green at ≤4× compression (NIAH 6/6 + PPL transparent), fails honestly at 8×.
+- **Temporal-locality finding** — adjacent decode steps' recall sets drift slowly; a bounded LRU staging cache turns the Ring-2 re-fetch storm into mostly RAM hits (240× less Optane I/O at matched depth). The composed 32k finale is gated-in-parts; the single composed log is deferred behind the amplification fix (deliberate, documented).
+- **Stage Beta**: the discrete dual-prime poly-ring attention runs on the RTX 2060 (sm_75) reproducing the math-core scalar reference to floating-point noise (KL 2.4e-10); GPU autoregressive KV-cache decode built + gated; first generation numbers 6.93→11.97 tok/s (Q8), bottleneck identified (kernel-launch overhead → CUDA graphs next).
+
+Honest snapshot, 2026-06-03 (below; superseded in part by the 2026-06-06 update above).
 
 | Component | Status | Evidence |
 |-----------|--------|----------|

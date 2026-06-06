@@ -209,3 +209,35 @@ baseline so the v5 delta is attributable. Concurrency note: the cache sits
 in the wrapper ABOVE the dual-device overlap — single-writer (the decode is
 serial), so no coherency protocol needed, but the v5 design must pin that
 assumption in writing before code.
+
+## Stage Beta GPU decode — tok/s on the RTX 2060 (2026-06-06, engine 3b6831c/1af7c9a)
+
+First token-generation numbers on Turing. qwen3_decode_cuda: KV resident in
+VRAM, single-query attention, device argmax (zero per-step host sync at
+eos=-1). qwen3_rt 0.6B, prompt {1,2,3,4}, n_gen=24, gate M_QWEN3_DECODE_CUDA
+PASS (GPU decode == GPU prefill teacher-forced).
+
+| Config                  | tok/s | note                                    |
+| ----------------------- | ----- | --------------------------------------- |
+| f32 + host argmax       | 6.93  | correctness baseline                    |
+| f32 + device argmax     | 7.04  | sync was NOT the wall (barely moved)    |
+| Q8 arena + device argmax| 11.97 | 1.7x — memory-traffic halving; SHIP path|
+
+HONEST BOTTLENECK: the device-argmax barely helped f32 => the per-step host
+sync is not the wall. The wall is KERNEL LAUNCH OVERHEAD — ~250 tiny kernels
+per token (28 layers x ~9 ops) at 0.6B/short-ctx, each paying launch latency
+on a serialized dependency chain. Q8's 1.7x is pure weight-byte halving
+through the cuBLAS GEMMs (the 2060's 336 GB/s bus is the constraint, not ALU).
+
+LEVER LADDER (BETA.2+): CUDA graphs (capture+replay the launch sequence,
+collapse 250 launches -> 1; the 50-100 tok/s jump) -> fused decode kernels
+-> discrete router on GPU (warp-per-head NTT + shared-mem-staged bits-r64
+popcount; NO L2 pin on Turing, MaxPersistingL2=0 measured) -> llama.cpp-CUDA
+head-to-head (terminal gate; ref ~80-120 tok/s @0.6B). device-argmax KEPT
+(correct at large V/large model, just not this scale's bottleneck).
+
+WEIGHT-COMPRESSION HONESTY (corrected this session): the ".sp-model 50%" is
+f16->OK_Q8 (quantization, top-1/output-lossless, NOT lossless). A model
+already at 4-bit (Q4_K_M) has no 50% to take; OK_Q4 gives ~17% structural,
+sub-Q4 is an open follow-up. Beta TIES llama.cpp on weight size; the win is
+bandwidth-efficient O(1) deep-context attention, NOT smaller weights.
