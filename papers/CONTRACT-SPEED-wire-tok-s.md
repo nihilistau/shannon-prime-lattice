@@ -221,20 +221,45 @@ PASS (GPU decode == GPU prefill teacher-forced).
 | ----------------------- | ----- | --------------------------------------- |
 | f32 + host argmax       | 6.93  | correctness baseline                    |
 | f32 + device argmax     | 7.04  | sync was NOT the wall (barely moved)    |
-| Q8 arena + device argmax| 11.97 | 1.7x — memory-traffic halving; SHIP path|
+| Q8 arena + device argmax| 11.97 | 1.7x — memory-traffic halving           |
+| **f32 + CUDA graph**    | **91.55** | **12.65x over per-step f32 (BETA.2)** |
 
-HONEST BOTTLENECK: the device-argmax barely helped f32 => the per-step host
-sync is not the wall. The wall is KERNEL LAUNCH OVERHEAD — ~250 tiny kernels
-per token (28 layers x ~9 ops) at 0.6B/short-ctx, each paying launch latency
-on a serialized dependency chain. Q8's 1.7x is pure weight-byte halving
-through the cuBLAS GEMMs (the 2060's 336 GB/s bus is the constraint, not ALU).
+HONEST BOTTLENECK (confirmed): the device-argmax barely helped f32 => the
+per-step host sync is not the wall. The wall is KERNEL LAUNCH OVERHEAD —
+~250 tiny kernels per token (28 layers x ~9 ops) at 0.6B/short-ctx, each
+paying launch latency on a serialized dependency chain. Q8's 1.7x is pure
+weight-byte halving through the cuBLAS GEMMs (the 2060's 336 GB/s bus is the
+constraint, not ALU).
 
-LEVER LADDER (BETA.2+): CUDA graphs (capture+replay the launch sequence,
-collapse 250 launches -> 1; the 50-100 tok/s jump) -> fused decode kernels
--> discrete router on GPU (warp-per-head NTT + shared-mem-staged bits-r64
-popcount; NO L2 pin on Turing, MaxPersistingL2=0 measured) -> llama.cpp-CUDA
-head-to-head (terminal gate; ref ~80-120 tok/s @0.6B). device-argmax KEPT
-(correct at large V/large model, just not this scale's bottleneck).
+## BETA.2 — CUDA graphs land the diagnosis (2026-06-06, engine ebcbedb)
+
+7.24 -> 91.55 tok/s, **12.65x**, BYTE-EXACT, on the SAME f32 precision —
+a pure launch-overhead win, no precision trick. Collapsing the ~250
+launches/token into ONE captured graph replayed per token converts a
+serialized launch-latency chain into a single submit. This proves the BETA.2
+diagnosis was correct: launch overhead was the entire wall, not compute.
+
+MECHANISM: a captured graph freezes every node's args + launch config, but the
+per-step loop changes them each step (embed reads dseq+pos, KV-store offset =
+pos*KVD, attn ctx/shared-mem grow with pos, argmax writes dseq+pos+1). Fix =
+position-indirection: hold pos in a device scalar int*dpos; new kernels
+(k_embed_at, k_rope_dyn, k_kv_store, k_attn_decode_dyn, k_argmax_at,
+k_incr_pos) DEREFERENCE dpos instead of taking it as a host launch arg, so
+topology + node params stay constant -> capture once, replay per token. cuBLAS
+SGEMM + arena-dequant kernels are capture-safe. Prompt ingest stays per-step
+(one-time, fills KV); only the generate hot loop is graphed. Fixed attn
+shared-mem = P floats with a 48KB/block sm_75 guard (ctx ceiling ~12k, inherits
+the existing k_attn_decode limit). GATE M_QWEN3_DECODE_CUDA = 7/7: decode
+graph-off == graph-on byte-exact AND both == GPU prefill teacher-forced.
+
+This already BEATS the llama.cpp-CUDA ~80-120 tok/s @0.6B band on f32 alone;
+Q8+graph not yet measured (expected higher).
+
+LEVER LADDER (BETA.3+): fused decode kernels (collapse the ~9 elementwise/norm
+kernels per layer, shrink graph node count) -> discrete router on GPU
+(warp-per-head NTT + shared-mem-staged bits-r64 popcount; NO L2 pin on Turing,
+MaxPersistingL2=0 measured) -> llama.cpp-CUDA head-to-head (terminal gate,
+formal). device-argmax KEPT (correct at large V/large model).
 
 WEIGHT-COMPRESSION HONESTY (corrected this session): the ".sp-model 50%" is
 f16->OK_Q8 (quantization, top-1/output-lossless, NOT lossless). A model
