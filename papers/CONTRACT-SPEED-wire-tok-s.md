@@ -421,3 +421,78 @@ dispatches on W->prec. Gate M_QWEN3_DECODE_CUDA now 28/28: f32/Q8/Q4/.sp-model a
 256/256 top-1 lossless. LESSON: isolated benches validate kernel MATH; production
 gates validate the DATA-STRUCTURE handoff. The 4-bit arena ingest+compute path is
 now battle-tested for Stage Eta to drop into.
+
+## ETA.5b — THE 12B SHOOTOUT: SP 34.2 tok/s vs llama.cpp-CUDA 31.29 (+9.3%) (2026-06-07, engine c89fc96→52b3379→af738f9, core e8708f7)
+
+**THE NUMBER (receipt `_12b_shootout.log`):** Gemma-4-12B, RTX 2060, tg256, SM
+pinned 2100 MHz (`-lmc` unsupported on GeForce — memory clock free-ran for BOTH
+engines, same conditions):
+
+| engine | artifact | tok/s |
+|---|---|---|
+| llama.cpp-CUDA b8861 (ngl 99) | Q4_K_M GGUF, 6.62 GB | 31.29 ± 0.20 |
+| **SP (graph + dp4a)** | **reducing .sp-model, 5.56 GB** | **34.2 (+9.3%)** |
+
+**ANCHOR — this number is NOT citable until the PPL gate closes:** the SP
+artifact squeezes the source's Q6_K tensors (attn_v, ffn_down) into Q4 codes —
+fewer bytes read (part of the win), MORE weight-quant error than llama.cpp's
+mixed K-quants. Quality currency so far = oracle-anchored top-1/top-2 on short
+streams. The named gate before paper 06 releases: wikitext PPL, both engines,
+same text, protocol disclosed.
+
+### The E2B ladder (the levers, isolated; suite 44/44)
+
+| config | tok/s | gate |
+|---|---|---|
+| oracle lift | 10.3 | byte-match (E_G4_CU_DEC oracle ALL) |
+| + CUDA graph | 10.6 | 256/256 EXACT |
+| + dp4a (Q8) | 62.3 (6.05×) | 256/256 top-1 |
+| graph + dp4a | **75.7 (7.35×)** | 256/256 top-1 |
+
+Amdahl composition, on the record: graphs do ~nothing under the bandwidth wall;
+dp4a removes the wall (6× ≈ the byte ratio at model scale); THEN the
+launch-overhead saving appears (+21%). Levers: device-side packed PLE gather
+(`pl_tok_embd` + `k_ple_gather_at`, TRUE-division host-mirror arithmetic —
+byte-match gated), packed tied head (`embd_packed`, the single largest decode
+matmul at 1 B/weight), jagged-topology graph capture (per-owner cache POINTERS
+fixed per layer; position via `*dpos`).
+
+### The dense 12B is NOT the E-series (ground truth: GGUF + llama.cpp gemma4-iswa.cpp)
+
+PL=0 (no AltUp/PLE) yet layer_output_scale + rope_freqs PRESENT (now keyed on
+tensor presence, not has_ple); shared_kv_layers=0; per-layer head_count_kv
+ARRAY (8 SWA / 1 global, period 6); **V-LESS GLOBALS** — attn_v absent on all
+8 global layers, V = the RAW K projection, weightless-normed, never roped
+("use_alternative_attention"). f32 embd (4 GB) not uploaded past a 2 GB budget
+— packed embed gather + dp4a tied head instead. Transcode REDUCES 6.63→5.56 GB.
+
+### The L11 kill — per-vector activation quant collapses on outlier-heavy models
+
+12B decode diverged at the SECOND generated token: oracle-rank 205596, logit
+gap 27.9. The operator-directed bisection (one strike per run): provenance
+bisect — innocent; embed intercept — 0.000e+00, innocent; layer-norm telemetry
+— smooth (directional damage, not magnitude); layer bisect vs the prefill
+probe — noise 32 through L11's entrance, **214 inside layer 11**, the layer
+whose TRAINED out_scale is 0.005 (the model flags its own activation
+magnitudes); **the LIFT discriminator** — identical path in exact arithmetic
+= 1.5e-4 f32 floors at EVERY boundary. Structure innocent; the per-VECTOR
+int8 activation quant guilty: one outlier ate the maxabs scale and stripped
+the mantissa from the other 3839 dims. E2B's tame activations never tripped it.
+
+**Fix:** per-16-BLOCK activation scales — blocks align EXACTLY with the GEMVs'
+128-bit `int4` loads (q8_v2: one chunk == one block; q4_v2: one chunk == two
+blocks), one extra f32 mul per block, ZERO extra bus traffic. The llama.cpp
+activation-quant pattern; the GPU twin of WIRE-CPU stage-1b block-Q8.
+**Verdict: rank 205596 → rank 2 at gap 0.31 — a MEASURED top-2 near-tie**, the
+legitimate top-1-trust currency (the DEC gate now prints oracle-rank + gap on
+any flip; rank ≫ 2 = damage, rank ≤ 2 = currency). 12B gate 24/24; E2B 44/44 +
+qwen3 regates green on the new kernels.
+
+### Open after ETA.5b
+
+1. **THE PPL GATE (release-blocking for paper 06)** — wikitext, both engines.
+2. 12B parity floors: telemetry-mode this run (E2B-pinned gates scope to E2B);
+   pin the 12B's own floors per telemetry-then-pin.
+3. Q8-head/Q4-body transcode option for the 12B (keep Q6_K-source tensors at
+   Q8): trades ~0.7 GB of reads for weight-quant fidelity — measure BOTH axes
+   if the PPL gate shows a squeeze cost.

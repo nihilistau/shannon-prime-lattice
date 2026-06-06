@@ -206,6 +206,15 @@ Canonical names for the physical deployment tiers. Each stage is a strict optimi
 - **Regime honesty:** B=512 @ 32k = **64× selection** — all quality gates were at 2×–8× (N=2048). And there is **no full-attention 32k control** for Qwen3-0.6B, so router-dilution vs model-ceiling is not yet separable.
 - **Disposition:** closed AS A MISS per the standing operator decision; NO Optane relaunch. A RAM-only NIAH ladder (N=2k/4k/8k/16k, B=512, mock RAM Ring-2 — minutes/rung) localizes the break point on the budget axis. **Paper 01 releases on the 512-position-proven claims; the public README's pre-claimed 32k HIT was corrected same-day.**
 
+## 5.12 ETA.5b CLOSED — THE 12B SHOOTOUT WON (2026-06-07)
+
+**SP 34.2 tok/s vs llama.cpp-CUDA 31.29 ± 0.20 (+9.3%) — Gemma-4-12B, RTX 2060, tg256, SM pinned** (`-lmc` unsupported on GeForce; memory free-ran for BOTH engines). Engine `af738f9`, core `e8708f7`. Full record CONTRACT-SPEED §ETA.5b; receipt `_12b_shootout.log`.
+
+- **ANCHOR: not citable until the PPL gate closes** — the SP artifact squeezes Q6_K source tensors to Q4 (5.56 GB vs the 6.62 GB GGUF; fewer bytes = part of the win, more weight-quant error). Named release-blocking gate for paper 06: wikitext PPL, both engines.
+- **E2B ladder (44/44):** lift 10.3 → graph 10.6 → dp4a 62.3 (6.05×) → **graph+dp4a 75.7 tok/s (7.35×)** — Amdahl-clean composition (device PLE gather + packed tied head + jagged graph capture).
+- **The dense 12B ≠ E-series:** PL=0 but out_scale + rope_freqs present (now presence-keyed); no KV sharing; per-layer kv-head ARRAY (8 SWA/1 global); **V-less globals (V = raw K projection)** — landed across transcode/bridge/oracle/CUDA, E2B regression held throughout.
+- **THE L11 KILL:** per-VECTOR int8 activation quant collapsed on the 12B's outlier-heavy activations (L11, trained out_scale 0.005) → oracle-rank 205596. Operator-directed bisection (provenance → embed 0.000e+00 → norms smooth → layer bisect → **LIFT discriminator: structure at 1.5e-4 floors everywhere**) pinned it to the quant. Fix = per-16-BLOCK scales aligned to the 128-bit loads (zero extra bus). Verdict: **rank 2 at gap 0.31 — a measured top-2 near-tie** (gates now print oracle-rank on any flip). 12B 24/24, E2B 44/44, qwen3 green.
+
 ## 5.1 FORWARD PRIORITY (re-ordered 2026-06-02 — differentiators ahead of context)
 
 C2's measurement phase is done and re-ranked the work (KV ~3.5× lossy; Ring-2 context ~hundreds× but largely disk-tiering). The unmeasured load-bearing differentiators now lead. Full rationale in **RFC-001 §11**:
