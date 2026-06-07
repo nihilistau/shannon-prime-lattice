@@ -1,0 +1,71 @@
+SWAP mode: 'none'
+streaming mode: row-gather embed + per-layer load/compute/free
+  rope_freqs[256]: [0..3]=[1.0, 1.0, 1.0, 1.0] [63..66]=[1.0, 1.0000000150474662e+30, 1.0000000150474662e+30, 1.0000000150474662e+30]
+  embed ready 0s; layer_output_scale[0:8] = [0.0544, 0.1836, 0.2832, 0.5273, 0.4062, 0.3652, 0.3574, 0.3203]
+Traceback (most recent call last):
+  File "C:\Users\Knack\AppData\Local\Temp\_t2m_run.py", line 273, in <module>
+    erows = torch.cat([deq_rows("token_embd.weight", t, t + 1) for t in uniq])   # [U, E] f32
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Knack\AppData\Local\Temp\_t2m_run.py", line 273, in <listcomp>
+    erows = torch.cat([deq_rows("token_embd.weight", t, t + 1) for t in uniq])   # [U, E] f32
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\Knack\AppData\Local\Temp\_t2m_run.py", line 221, in deq_rows
+    raise ValueError(ty)
+ValueError: 2
+SWAP mode: 'none'
+streaming mode: row-gather embed + per-layer load/compute/free
+  rope_freqs[256]: [0..3]=[1.0, 1.0, 1.0, 1.0] [63..66]=[1.0, 1.0000000150474662e+30, 1.0000000150474662e+30, 1.0000000150474662e+30]
+  embed ready 0s; layer_output_scale[0:8] = [0.0544, 0.1836, 0.2832, 0.5273, 0.4062, 0.3652, 0.3574, 0.3203]
+  gathered 169 unique embed rows
+  L0 |x| 1.955e+03 (4s)
+  L1 |x| 1.488e+03 (7s)
+  L2 |x| 1.487e+03 (11s)
+  L3 |x| 1.362e+03 (15s)
+  L4 |x| 8.214e+02 (18s)
+  L5 |x| 1.507e+03 (22s)
+  L6 |x| 1.459e+03 (26s)
+  L7 |x| 1.143e+03 (30s)
+  L8 |x| 2.333e+03 (33s)
+  L9 |x| 1.748e+03 (37s)
+  L10 |x| 7.898e+02 (40s)
+  L11 |x| 7.694e+02 (44s)
+  L12 |x| 1.518e+03 (48s)
+  L13 |x| 2.255e+03 (51s)
+  L14 |x| 2.568e+03 (55s)
+  L15 |x| 2.634e+03 (58s)
+  L16 |x| 2.945e+03 (62s)
+  L17 |x| 1.888e+03 (66s)
+  L18 |x| 2.861e+03 (69s)
+  L19 |x| 3.455e+03 (73s)
+  L20 |x| 3.032e+03 (77s)
+  L21 |x| 3.547e+03 (80s)
+  L22 |x| 3.973e+03 (84s)
+  L23 |x| 3.680e+03 (88s)
+  L24 |x| 4.015e+03 (91s)
+  L25 |x| 4.048e+03 (95s)
+  L26 |x| 3.261e+03 (98s)
+  L27 |x| 2.726e+03 (102s)
+  L28 |x| 2.713e+03 (106s)
+  L29 |x| 1.850e+03 (109s)
+  L30 |x| 1.983e+03 (113s)
+  L31 |x| 1.932e+03 (116s)
+  L32 |x| 2.012e+03 (120s)
+  L33 |x| 2.274e+03 (124s)
+  L34 |x| 2.102e+03 (127s)
+  L35 |x| 1.657e+03 (131s)
+  L36 |x| 1.972e+03 (135s)
+  L37 |x| 2.303e+03 (138s)
+  L38 |x| 2.122e+03 (142s)
+  L39 |x| 1.786e+03 (145s)
+  L40 |x| 1.201e+03 (149s)
+  L41 |x| 1.387e+03 (153s)
+  L42 |x| 1.670e+03 (156s)
+  L43 |x| 1.755e+03 (160s)
+  L44 |x| 1.691e+03 (163s)
+  L45 |x| 1.666e+03 (167s)
+  L46 |x| 1.709e+03 (170s)
+  L47 |x| 1.942e+02 (174s)
+GGUF-WEIGHTS GOLD-FORWARD PPL (targets [256,512)): 192.9404  (n=256)  [190s]
+  pos 255: max 27.8998 (id 236771)  target[236771] 27.8998  nll 0.0752
+  pos 256: max 28.6436 (id 236771)  target[236771] 28.6436  nll 0.0040
+  pos 257: max 26.9199 (id 236825)  target[236832] 25.9786  nll 1.4964
