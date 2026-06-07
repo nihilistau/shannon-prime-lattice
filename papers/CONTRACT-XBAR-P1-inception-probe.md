@@ -85,7 +85,25 @@ Per standing feedback: the harness banner **echoes every knob via getenv enumera
 - **Risk 2 — quantized-cache interaction.** If the cache path quantizes KV, payload round-trips through the same codec as native entries (capture *post*-codec so Arm A stays exact by construction).
 - **Risk 3 — concept choice confound.** High-frequency concepts can surface in B0 by chance; concept set must show rank>10k in B0 logits before being accepted as a probe concept.
 
-## 7. Deliverables
+## 7. FIRST LIGHT — run record 2026-06-07 (n=2 trials; gates G0/G2/G4 GREEN, G1 MISS-as-spec'd, G3 measured)
+
+Harness landed (engine: SP_XBAR_* knobs in `cuda_forward.cu` per-step path + `test_xbar_p1_cuda` driver; graph path declines when knobs set; banner getenv-echoed). Artifact: `gemma4-12b-b1.sp-model` (06-R10), dp4a route, 2060-12GB. Receipts: `D:\F\shannon-prime-repos\_xbar\` (fixtures, payloads, seq/rank dumps, runs.log/runs2.log). Tokenization: HF tokenizer.json from the gold campaign (sp_tok_dump declined — it is in the #115 broken-merge regime, spaces unmerged).
+
+| Gate | Verdict | Numbers |
+|---|---|---|
+| **G0_NULL** | **PASS** (2/2 trials) | self-capture+self-splice continuation bit-identical to B0, both prompts; B0 re-run also bit-identical |
+| **G1_CROSSBAR** | **MISS as spec'd** | best concept-rank improvement 21.6× (' Telephone' 21826→1011, trial 1) and 18× ('telephone' 13515→753); trial 2: 9.7× ('dragon' 7986→821). All < the spec'd ≥2 orders; no lexical surfacing. **But see selectivity below.** |
+| **G2_COHERENCE** | **PASS** | B0-window teacher-forced PPL 1.1977 baseline → 1.4271 under Arm-A cache = **1.19×** ≤ 1.5× |
+| **G3_DELTA** | **measured** | Arm A: selective rank shifts, stream stays near-coherent. B-raw (tiled resid): coherent but *generic* derail ("a man of few words…" — no concept content). B-norm: repetition collapse. **Layer-class ablation: global-only splice of off-manifold content = NO visible output change; swa-only = mild change** — single-row corruption of the 75%-unroped 1-kv-head globals is heavily damped. |
+| **G4_REWIND** | **PASS** | per-call cache rebuild = structural rewind; bit-identical re-runs confirm |
+
+**The headline observation (trial-2 crossed control, 2×2):** telephone payload improves telephone-family ranks ONLY (dragon family flat/worse); dragon payload improves dragon-family ranks ONLY ('dragon' 9.7×, ' dragon' 5.7×, ' Dragon' 3.3×) while pushing telephone family DOWN. A double dissociation — the foreign KV row carries **payload-specific semantic content** into attention, not a generic disturbance. The crossbar is real; its single-row effect size is ~0.5–1.3 orders, not ≥2.
+
+**Honest confounds on the record:** (a) the it-tuned 12B without its chat template degenerates to newline/repeat collapse within ~5–20 tokens on neutral prompts — both baselines partially degenerate, shrinking the room for lexical incorporation; (b) one transplanted row competes against 11–25 native rows — the spec'd ≥2-orders gate implicitly assumed a stronger coupling than a 1-of-26-rows overwrite delivers; (c) n=2 prompts × 2 concepts, below the contract's ≥5×≥3.
+
+**Proposed amendment (FORMAL — operator decision, per no-silent-gate-revision):** keep G1 as the *strong* gate (unmet), add **G1b SELECTIVITY** as the load-bearing crossbar-existence gate: payload-matched concept family improves while non-matched family does not, in ≥⅔ of trials. G1b is **2/2 PASS** on this evidence. Follow-ups before re-attempting G1-strong: multi-row transplant (the donor's whole concept phrase, 3–4 rows), chat-template-correct prompts (kills the degeneration confound), and the full ≥5×≥3 trial matrix. No ledger row is claimed — the contract's own rule (§7-old: ledger only if G0–G2 all green) holds.
+
+## 8. Deliverables
 
 1. Harness (HALT/CAPTURE/SPLICE/SNAPSHOT) behind env knobs in the engine, committed.
 2. `payload_*.bin` minting tool + ≥3 concept payloads with header receipts.
