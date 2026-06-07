@@ -128,7 +128,22 @@ Levers applied exactly as ratified: **SP_XBAR_NROWS** multi-row contiguous trans
 
 **Verdict: the latent crossbar is real and controllable.** Existence (G1b) closed 2026-06-07; control (G1-strong) closed 2026-06-08 with the operator's attention-mass calibration confirmed — 1 row could not breach the surface, 6 contiguous SWA rows breach it decisively. Single-trial-matrix caveat stands: full ≥5×≥3 matrix remains open before any public claim; chat-template B0 still shows mild end-of-window quirks (prompt echo). Next: trial matrix, then P2 (pseudo-token injection — the adapter-deployable mechanism) and P3 (ring wiring).
 
-## 9. Deliverables
+## 9. P1.c TRIAL MATRIX — run record 2026-06-08 (5 prompts × 3 concepts, 48 runs)
+
+Protocol: five chat-template scenes (quiet room / beach / classroom / garden / detective), three concept payloads (telephone / dragon / violin), one 6-row donor mint per concept reused across all prompts (shared 9-token prefix → rows 9–14 at identical absolute positions; payload headers row=9, n_rows=6 verified from the receipts). Receipts: `_xbar\m\` (fixtures, payloads, 15 seq+rank dumps, 20 score runs, runs.log).
+
+| Gate | Verdict | Numbers |
+|---|---|---|
+| **G0_NULL** | **PASS 5/5** | every prompt's self-transplant bit-identical |
+| **G1-STRONG** | **PASS 15/15** (gate ≥10/15) | lexical incorporation in ALL 15 trials; 14/15 also ≥2 orders on a deep-baseline own-family token; max **3.69 orders** (p3_vio ' violin' 4910→1). Examples: *"The phone rang loudly, echoing through the empty office. The detective hesitated, unsure whether to answer it"*; *"The dragon's roar echoed through the room, causing the desk to shake"*; *"The old violin began to play a haunting melody…"* |
+| **G1b SELECTIVITY** | **PASS 15/15** | own-family geomean improvement 11×–880×, always exceeding cross-family |
+| **G2_COHERENCE** | **11/15 as written — NOT green** | misses: p1_vio 1.584, p2_tel 1.568, p2_drg 1.547, p2_vio 1.570 (band 1.55–1.58 vs the 1.5 line). All four misses have qualitatively coherent steered continuations — the metric (B0-window NLL under the steered cache) structurally penalizes *successful* steering, and the misses concentrate where steering was strongest. **Surfaced upstream, not revised:** either (a) operator amends the threshold, or (b) G2v2 re-operationalizes coherence as the steered continuation's own quality under an independent instrument (e.g. gold-instrument PPL of the steered text). Until decided, G2 stands at 11/15 and **no ledger row is claimed** (§6 rule: ledger only on G0–G2 fully green). |
+
+Residual honest negatives: the dragon payload stalls after incorporation ("The dragon's" + collapse) on 3/5 prompts — payload-specific degeneration tendency, candidate cause for P2 study; occasional prompt-echo ("Continue this story:") leaks into continuations — an it-model template artifact, not injection-related (present in B0 p1 too).
+
+**P1 standing after the matrix: crossbar existence (G1b 15/15 + 4/4 prior) and control (G1-strong 15/15) are statistically closed. One open item — the G2 coherence metric decision — separates this from the ledger.**
+
+## 10. Deliverables
 
 1. Harness (HALT/CAPTURE/SPLICE/SNAPSHOT) behind env knobs in the engine, committed.
 2. `payload_*.bin` minting tool + ≥3 concept payloads with header receipts.
