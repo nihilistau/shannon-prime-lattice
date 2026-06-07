@@ -103,7 +103,32 @@ Harness landed (engine: SP_XBAR_* knobs in `cuda_forward.cu` per-step path + `te
 
 **Proposed amendment (FORMAL — operator decision, per no-silent-gate-revision):** keep G1 as the *strong* gate (unmet), add **G1b SELECTIVITY** as the load-bearing crossbar-existence gate: payload-matched concept family improves while non-matched family does not, in ≥⅔ of trials. G1b is **2/2 PASS** on this evidence. Follow-ups before re-attempting G1-strong: multi-row transplant (the donor's whole concept phrase, 3–4 rows), chat-template-correct prompts (kills the degeneration confound), and the full ≥5×≥3 trial matrix. No ledger row is claimed — the contract's own rule (§7-old: ledger only if G0–G2 all green) holds.
 
-## 8. Deliverables
+> **AMENDMENT RATIFIED — operator, 2026-06-08.** G1b SELECTIVITY approved as the
+> crossbar-EXISTENCE gate (PASS 2/2; the existence phase is CLOSED GREEN on
+> G0+G1b+G2+G4). G1-strong retained strictly as the *engineering threshold* for
+> the escalation phase (P1.b: attention-mass scaling). Operator's calibration
+> note, banked: a single transplanted row among 26 commands ≤~4% of pre-softmax
+> attention mass — rank 21,826→1,011 under that budget is a large pull that
+> simply cannot breach the lexical surface; the G1-strong miss was a
+> miscalibration of attention mass, not an absence of signal. P1.b levers:
+> (1) multi-row phrase transplant (a contiguous SWA attention sink),
+> (2) chat-template-wrapped prompts (stabilize the it-model's native
+> distribution, lower the noise floor).
+
+## 8. P1.b ESCALATION — run record 2026-06-08 (G1-STRONG FIRES; the man answered the phone)
+
+Levers applied exactly as ratified: **SP_XBAR_NROWS** multi-row contiguous transplant (engine: one D2H/H2D per layer per K/V — rows are contiguous in the jagged cache) + **chat-template prompts** (`<bos><|turn>user\n…<turn|>\n<|turn>model\n`, ids 105/106; markers verified from tokenizer.json — they are NOT the textual `<start_of_turn>` convention). Protocol: 6-row phrase transplant, donor rows 9–14 minted at identical absolute positions behind an identical 9-token template prefix. Receipts: `_xbar\runs3*.log`, `t3_*` fixtures/seqs/ranks, payloads `payload3_{tel,drg}.bin`.
+
+| Gate | Verdict | Numbers |
+|---|---|---|
+| **G0_NULL (6-row)** | **PASS** | self-capture+self-splice of rows 9..14 bit-identical to B0 — multi-row instrumentation proven |
+| **G1-STRONG** | **PASS** | **lexical incorporation in 2/2 arms.** Tel: continuation opens *"The phone rang loudly in the quiet room, and the man waited patiently for his friend to arrive…"* — 64 coherent tokens steered by VRAM injection alone. Drg: *"The dragon's"* then degeneration (partial). Rank evidence: **'dragon' 18931→13 = 1456× ≈ 3.2 orders** (the clean deep-baseline measurement), ' roared' 1407→6 (235×, 2.4 orders), ' dragon' 108→**1**, ' phone' 13→**1**, ' telephone' 214→6, ' ringing' 169→5. Tel-family ≥2-orders not numerically demonstrable — ceiling effect (B0 baseline ranks already 13–214 in this story context); top-1 attainment + surfacing carries the verdict there. |
+| **G1b SELECTIVITY** | **PASS (4/4 cumulative)** | double dissociation again: tel payload pushes drg family DOWN (' dragon' 108→963), drg payload pushes tel family DOWN (' Telephone' 1152→12851) |
+| **G2_COHERENCE** | **PASS (boundary)** | B0-window PPL 1.512 → tel 2.219 (**1.47×**), drg 2.264 (**1.50×**), both ≤ 1.5×. Interpretive note on the record: under *successful* steering the B0 continuation is off-policy, so window-NLL rises by design; the gate still held. Qualitative coherence: tel arm fully coherent; drg arm degenerates after incorporation. |
+
+**Verdict: the latent crossbar is real and controllable.** Existence (G1b) closed 2026-06-07; control (G1-strong) closed 2026-06-08 with the operator's attention-mass calibration confirmed — 1 row could not breach the surface, 6 contiguous SWA rows breach it decisively. Single-trial-matrix caveat stands: full ≥5×≥3 matrix remains open before any public claim; chat-template B0 still shows mild end-of-window quirks (prompt echo). Next: trial matrix, then P2 (pseudo-token injection — the adapter-deployable mechanism) and P3 (ring wiring).
+
+## 9. Deliverables
 
 1. Harness (HALT/CAPTURE/SPLICE/SNAPSHOT) behind env knobs in the engine, committed.
 2. `payload_*.bin` minting tool + ≥3 concept payloads with header receipts.
