@@ -643,6 +643,38 @@ container directly, dequants OK_Q8 as q·s/127, runs the proven forward;
 The 11.9 GB artifact (`models/gemma4-12b-st.sp-model`) is VALIDATED as the
 12B weight source; +1.33% is the measured Q8 cost on this model.
 
+### Q4B RECIPE DECISION MATRIX (sim'd via the gold instrument, 2026-06-08)
+
+Naive PTQ Q4 on gemma4-12B is expensive — the model is quantization-hostile
+(this is WHY Google ships QAT). All sims: identical fixture/protocol, vs
+gold 4.6776:
+
+| recipe | PPL | Δ | VRAM |
+|---|---|---|---|
+| all sym-32 Q4B | 6.79 | +45% | 6.4 GB |
+| sym-32 Q4B + Q8 down/embed | 6.29 | +34% | 8.3 GB |
+| sym-16 Q4B + Q8 down/embed | 6.13 | +31% | 8.7 GB |
+| asym-32 Q4B + Q8 down/embed | 5.86 | +25% | 8.7 GB |
+| **B1: sym-32 Q4B gate/up ONLY + Q8 rest** | **5.13** | **+9.6%** | **~8.9 GB** |
+| B2: asym-32 gate/up + Q8 rest | 5.01 | +7.0% | ~9.2 GB |
+
+**SHIPPING RECIPE: B1** (`sp_transcode --st … --q4b-ffn`, engine `32e74ce`,
+core dtype enums `e06eb7d`) — single-digit PPL, fits the 2060-12GB with
+~3 GB headroom, and its kernel is a ~30-line delta on the proven q4_v2
+dp4a chunk loop (per-32 weight-block f16 scale replaces the per-row scale;
+codes/nibble layout unchanged). B2 asym is the documented upgrade (needs
+per-block activation SUMS in k_quant_act_int8 + min-term FMA — llama's
+"bsums" pattern). The B1 telemetry pin: gate at sim-confirmed ≈5.13 ±2%
+once the in-engine artifact run lands.
+
+**ECOSYSTEM ADDENDUM — the rebuilt GGUFs are STILL broken (2026-06-08):**
+Unsloth's post-June-5 `gemma-4-12B-it-qat-UD-Q4_K_XL.gguf` (downloaded
+2026-06-07 13:20, after the rebuild wave) scores **192.94** through the
+gold arithmetic — better than the old wave's 364 but still ~41× above
+gold. PR #24118 fixed projector configs, not the text-tower damage. The
+GGUF lane remains DEAD for this model; Safetensors Direct is not just
+doctrine, it is the only working path anyone has.
+
 **Scope honesty:** this gate validates the ARTIFACT via the gold instrument
 (python), not the in-engine C path. The in-engine M_GEMMA4 12B run was
 KILLED at 331 CPU-minutes without output: the serial CPU oracle's scalar
