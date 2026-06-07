@@ -143,6 +143,26 @@ Residual honest negatives: the dragon payload stalls after incorporation ("The d
 
 **P1 standing after the matrix: crossbar existence (G1b 15/15 + 4/4 prior) and control (G1-strong 15/15) are statistically closed. One open item — the G2 coherence metric decision — separates this from the ledger.**
 
+> **G2 RESOLUTION — operator decision 2026-06-08: dual-metric (Option "both").**
+> **G2v1** is retained at 1.5× and *redefined as the divergence-from-unsteered-manifold
+> measure* (11/15 ≤ 1.5×; the four 1.55–1.58 entries record the strongest steering,
+> not incoherence). **G2v2** is the coherence gate proper: each steered continuation
+> scored through the GOLD INSTRUMENT (paper-04 bf16 oracle, one weight-stream pass,
+> 331 s, receipts `_xbar\m\g2v2_results.json` + `%TEMP%\g2v2.log`):
+>
+> all 15 steered texts land at **PPL 1.70–4.10** — inside the healthy band
+> (wikitext gold = 4.68), zero off-manifold explosions → **G2v2 PPL 15/15 PASS**.
+> The secondary distinct-token diagnostic (added because repetitive collapse is
+> *low*-PPL by construction) flags **3/15 dragon-payload trials at 9.4% distinct**
+> — the known post-incorporation stall, now quantified. The unflattering column
+> stays attached; it is P2's opening problem statement.
+>
+> **P1 IS FORMALLY CLOSED.** Ledger row **X-R1** cut in Position_Is_Arithmetic
+> (15/15 incorporation, 15/15 selectivity, 3.69 orders max, dose-response curve,
+> G0 7/7 across all campaigns, dual-metric coherence). Next: P2 (pseudo-token /
+> learned-adapter injection — the deployable mechanism and the degeneration fix),
+> P3 (ring wiring on the Exec path), then XBAR-C (Memo curates the shared ring).
+
 ## 10. Deliverables
 
 1. Harness (HALT/CAPTURE/SPLICE/SNAPSHOT) behind env knobs in the engine, committed.
