@@ -571,3 +571,64 @@ becomes sp_transcode-from-safetensors (bf16 front-end → OK_Q8 / OK_Q4B),
 bypassing GGUF entirely; rebuilt-GGUF re-download is an optional cross-check.
 The SP PPL gate target for the 12B is **single-digit vs 4.68**, with the
 gold instrument (lattice `tests/gemma4_gold/`) as the reference engine.
+
+### SPEC OK_Q4B — block-scaled Q4, the 12B's GPU vehicle (drafted 2026-06-07)
+
+Status: SPEC. Implements the principled branch of the §ETA.5b fix fork. The
+per-row OK_Q4 verdict stands (one Frobenius scale per 3840-weight row at 15
+levels destroys the 12B distributionally even on grid-trained weights);
+OK_Q4B replaces the ROW scale with PER-32-BLOCK scales while keeping the
+container, sibling and arena conventions of the O_K family.
+
+**Format.** Codes: int4 two's-complement in [-7, +7] (15 levels, symmetric,
+zero-free — unchanged from OK_Q4), nibble-packed 2/byte, row-major, low
+nibble = even column. Scales: ONE f16 PER 32-ELEMENT BLOCK along the row,
+stored as a `.bscale` sibling tensor [rows × ceil(cols/32)] f16, row-major,
+emitted adjacent to its parent (the §9 sibling-adjacency rule, same as
+`.scale`). Rows whose cols are not a multiple of 32 pad the final block's
+codes with zeros (scale computed over real elements only). New dtype id:
+`SP_DT_OK_Q4B`; `.bscale` dtype `SP_DT_BLOCK_SCALE_FP16`.
+
+**Quantization (transcoder).** Per block: `s = maxabs/7` computed in f32,
+ROUNDED THROUGH f16 FIRST, then `code = clamp(round(w / s_f16), -7, +7)` —
+codes are quantized against the STORED scale, never the ideal one (the same
+store-then-derive discipline as the Frobenius lift; skipping it costs a
+systematic half-ULP bias across 357M blocks). Source: the safetensors bf16
+stream via `--st` (doctrine above). All matmul weights + the tied embed go
+Q4B; norms/scalars/rope stay F32.
+
+**Budget (RTX 2060 12GB, nvidia-smi-verified).** ~11.4B matmul params:
+codes ≈ 5.7 GB + bscales ≈ 0.71 GB + F32 smalls ≈ 6.4-6.6 GB resident →
+~5 GB headroom for KV/activations/logits/graph. No mixed-precision or
+per-64 compromises required.
+
+**Kernel (the dp4a alignment story).** The shipped q4_v2 GEMV consumes 32
+codes (16 bytes, one 128-bit `int4` load) per chunk — exactly ONE OK_Q4B
+weight block — and the shipped activation quant is per-16 blocks, so each
+weight block spans exactly TWO activation blocks. The chunk loop splits its
+dp4a accumulation into two 16-element halves:
+`facc += wscale * (ascale_a * (f32)acc_a + ascale_b * (f32)acc_b)` —
+two extra FMAs per 32 weights, ZERO extra code-bus traffic; the bscale
+stream adds 1/16th of code bytes (f16, `__ldg`-cached, sequential).
+Symmetric CPU dequant path lands in the bridge/oracle for parity
+(`build_packed_q4b` + lift-exact reference).
+
+**Gates (telemetry-then-pin, no silent revisions).**
+1. `T_Q4B_ROUNDTRIP` — transcode→load→dequant bit-exact vs the transcoder's
+   own stored grid (container correctness).
+2. `M_GEMMA4_Q4B_PPL` — chunk-0 wikitext vs gold **4.6776** on the pinned
+   512/[256,512) protocol. Expectation: low-single-% inflation (4.5 bpw,
+   block-scaled, bf16 source); first run is TELEMETRY, the pin follows.
+3. DEC top-1/oracle-rank currency on generation (rank ≤ 2 = currency).
+4. **SHOOTOUT-2** — tg256 vs llama.cpp-CUDA re-run on the SAME protocol as
+   §ETA.5b; the tok/s number becomes CITABLE only with gate 2 green.
+
+**Harness prerequisites (found the hard way, 2026-06-07/08):** before any
+regate, `test_gemma4_ppl` gets (a) score-only-positions — logits computed
+only for [n_ctx/2, n_ctx), halving the head cost; (b) per-layer + head
+progress prints — the 4-hour silent CPU-oracle bake on the 12B was
+diagnosable only by working-set forensics; reference paths must narrate.
+
+**Sequencing.** harness fixes → transcoder Q4B writer → bridge
+`build_packed_q4b` + CPU parity → CUDA q4b chunk loop → gates 1-3 →
+SHOOTOUT-2 → LEDGER + paper 06.
