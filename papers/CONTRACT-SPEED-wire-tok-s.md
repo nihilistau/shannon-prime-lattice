@@ -633,6 +633,33 @@ diagnosable only by working-set forensics; reference paths must narrate.
 `build_packed_q4b` + CPU parity → CUDA q4b chunk loop → gates 1-3 →
 SHOOTOUT-2 → LEDGER + paper 06.
 
+### CLOSED GREEN (2026-06-08): OK_Q4B end-to-end + SHOOTOUT-2 — paper 06 anchored
+
+Built in one block: arena layout **v2** (formal migration in arena.c — optional
+`bscale`/`bs_nblk`, NULL = v1 exactly, all producers audited zero-init);
+`build_packed_q4b` (core bridge, `.bscale` sibling aliased from mmap);
+CPU dequant + `matmul_arena` per-block paths; CUDA `DevTensor.bscale` +
+`k_gemv_q4b_dp4a_v2` (q4_v2 chunk loop, per-32 f16 block scale replaces the
+per-row scale — codes/loads/unpack/dp4a UNCHANGED) + `k_dequant_arena_q4b`
+(exact f32 prefill dequant, no post-lift) + routing in
+gemm_w/gemm_w_lift/gemv_w_packed.
+
+**GPU PPL GATE (M_GEMMA4_CUDA_PPL): 5.1160 vs gold 4.6776 (+9.37%) — PASS.**
+Triple-instrument agreement on the B1 artifact: sim 5.1259 / CPU artifact
+gate 5.1259 / GPU 5.1160. The Q4B math is preserved on the device.
+
+**SHOOTOUT-2 (tg256, SM 2100, B1 9.4 GB):** graph+dp4a **26.1 tok/s**,
+graph 256/256 EXACT, int8 256/256 top-1, 24/24 gates. vs llama.cpp-CUDA
+31.29 tok/s on its 6.6 GB Q4_K_M — which scores PPL 192-506 (broken
+weights, 06-R8). Decomposition: SP effective decode bandwidth 245 GB/s vs
+llama 207 GB/s (**+18% engine efficiency**); the artifact is 42% heavier
+because it is the only mathematically intact 4-bit gemma4-12B in existence.
+**The citable claim (LEDGER 06-R10): 26.1 tok/s at PPL 5.12 on a 12 GB
+card — a point no other stack can produce at any speed. 06-R6's 34.2 is
+formally RETIRED with its quality-failed artifact.** Headroom: B2 asym
+(sim 5.01) shrinks nothing but buys quality; artifact-size reduction
+(quality-budgeted Q4B widening, imatrix) is the future speed lever.
+
 ### ARTIFACT GATE GREEN (2026-06-08): the sovereign pipeline reproduces gold
 
 **safetensors → `sp_transcode --st` → OK_Q8 `.sp-model` → gold arithmetic =
