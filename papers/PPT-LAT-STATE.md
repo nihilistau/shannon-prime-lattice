@@ -206,7 +206,38 @@ Canonical names for the physical deployment tiers. Each stage is a strict optimi
 - **Regime honesty:** B=512 @ 32k = **64× selection** — all quality gates were at 2×–8× (N=2048). And there is **no full-attention 32k control** for Qwen3-0.6B, so router-dilution vs model-ceiling is not yet separable.
 - **Disposition:** closed AS A MISS per the standing operator decision; NO Optane relaunch. A RAM-only NIAH ladder (N=2k/4k/8k/16k, B=512, mock RAM Ring-2 — minutes/rung) localizes the break point on the budget axis. **Paper 01 releases on the 512-position-proven claims; the public README's pre-claimed 32k HIT was corrected same-day.**
 
-## 5.12 ETA.5b CLOSED — THE 12B SHOOTOUT WON (2026-06-07)
+## 5.13 THE GEMMA-4 CAMPAIGN CLOSED — SOVEREIGN PIPELINE + CITABLE 06-R10 (2026-06-08)
+
+The ETA.5b anchor (§5.12 below) detonated, and the campaign that followed closed
+the whole arc in two days. Full record: CONTRACT-SPEED (GOLD INSTRUMENT addendum
+→ RESOLUTION → Q4B SPEC + decision matrix → CLOSED GREEN); receipts lattice
+`tests/gemma4_gold/`; public LEDGER 06-R8/R9/R10 + papers 04/05/06 (written).
+
+- **THE GOLD INSTRUMENT:** a from-scratch reference forward off the official
+  safetensors measured gemma-4-12B's TRUE wikitext PPL at **4.6776** — llama.cpp's
+  397–506 was the ARTIFACTS, not the engine (same arithmetic over GGUF-dequantized
+  tensors reproduces the breakage: pre-fix 271–364, post-June-5 rebuilt still
+  192.9). Forensics: no permutation, in-place period-6 damage, layer_output_scale
+  class independently defective (scalar swap 364→97). GGUF lane DEAD for this model.
+- **SAFETENSORS DIRECT (the sovereign pipeline):** `sp_transcode --st` takes weight
+  values from the checkpoint (GGUF = verified-clean metadata/tokenizer only;
+  mapped-but-missing = hard error). OK_Q8 artifact: **4.7396 (+1.33%)**.
+- **OK_Q4B (arena layout v2, formal migration):** per-32-block f16 scales,
+  store-then-derive; recipe **B1** (Q4B gate/up + Q8 rest, chosen from a 6-recipe
+  SIMULATION matrix — gemma4 is PTQ-hostile, all-sym-32 = +45%) → 9.4 GB artifact
+  at **5.1259 = the simulation to four decimals**; GPU kernel `k_gemv_q4b_dp4a_v2`
+  (one weight block per 128-bit chunk) landed **5.1160** — triple-instrument
+  agreement. Core `85aadd3`, engine `bea361e`.
+- **SHOOTOUT-2 (CITABLE, 06-R10):** **26.1 tok/s at PPL 5.12 on the 2060-12GB**
+  (graph EXACT 256/256, dp4a top-1 256/256, 24/24). llama.cpp: 31.29 tok/s at PPL
+  192–506. Engine bandwidth 245 vs 207 GB/s (+18%). §5.12's 34.2 is formally
+  RETIRED with its quality-failed per-row artifact — the series' own anchor rule
+  caught it. Community deliverables: public `GEMMA4-QUANT-FIX.md` + issue post.
+- **Open from the campaign:** gemma4 tokenizer dispatch (SPEC written), B2 asym
+  upgrade, in-engine CPU 12B PPL gate behind harness fixes (progress prints +
+  score-only-positions; the serial oracle was killed undetermined at 331 min).
+
+## 5.12 ETA.5b CLOSED — THE 12B SHOOTOUT WON (2026-06-07) *(SUPERSEDED by §5.13: the 34.2 is RETIRED — its artifact failed the PPL gate)*
 
 **SP 34.2 tok/s vs llama.cpp-CUDA 31.29 ± 0.20 (+9.3%) — Gemma-4-12B, RTX 2060, tg256, SM pinned** (`-lmc` unsupported on GeForce; memory free-ran for BOTH engines). Engine `af738f9`, core `e8708f7`. Full record CONTRACT-SPEED §ETA.5b; receipt `_12b_shootout.log`.
 
