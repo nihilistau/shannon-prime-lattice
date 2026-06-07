@@ -632,3 +632,24 @@ diagnosable only by working-set forensics; reference paths must narrate.
 **Sequencing.** harness fixes → transcoder Q4B writer → bridge
 `build_packed_q4b` + CPU parity → CUDA q4b chunk loop → gates 1-3 →
 SHOOTOUT-2 → LEDGER + paper 06.
+
+### ARTIFACT GATE GREEN (2026-06-08): the sovereign pipeline reproduces gold
+
+**safetensors → `sp_transcode --st` → OK_Q8 `.sp-model` → gold arithmetic =
+PPL 4.7396 vs gold 4.6776 → +1.33%, PASS** (8% telemetry floor; receipt
+`%TEMP%\_t2h_gate.log`, instrument `_t2h_spmodel_gate.py` — parses the
+container directly, dequants OK_Q8 as q·s/127, runs the proven forward;
+67 s wall). Residual norms track the bf16 run digit-for-digit per layer.
+The 11.9 GB artifact (`models/gemma4-12b-st.sp-model`) is VALIDATED as the
+12B weight source; +1.33% is the measured Q8 cost on this model.
+
+**Scope honesty:** this gate validates the ARTIFACT via the gold instrument
+(python), not the in-engine C path. The in-engine M_GEMMA4 12B run was
+KILLED at 331 CPU-minutes without output: the serial CPU oracle's scalar
+dot (~80× slower than threaded torch on identical math) made the 512-ctx
+12B run economically absurd, and whether it was minutes from finishing or
+looping is UNDETERMINED — instrument before rerun (per-layer progress
+prints, score-only-positions, optional bit-safe row-parallel OMP in
+sp_matmul). The C forward itself is NOT in doubt — it is E2B-gate-proven
+bit-faithful and was never tonight's variable. The in-engine 12B regate
+lands together with the OK_Q4B gates after the harness fixes.
