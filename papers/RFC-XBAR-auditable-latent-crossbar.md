@@ -1,6 +1,6 @@
 # RFC-XBAR — The Auditable Latent Crossbar (Exec + Memo sharing Ring 2)
 
-**Status:** **v1** (consolidated 2026-06-09 on P1/P2.a POC data; v0 brainstorm formalized 2026-06-07, KnackAU + Gemini + Claude). v1 deltas: §5 roadmap rewritten on measured physics (P1 CLOSED ledger X-R1; P2.a CLOSED; PLE-stall theory formally corrected in CONTRACT-XBAR-P2); P2.b reframed as the span-compression adapter (CONTRACT-XBAR-P2b) — **the convergence point where the injector, the curator's compaction organ, the modality template and NIGHTSHIFT's worker become one trained component**; C1 split into C1-lite (qwen3 CPU ring, exists today) and C1-full (post-P3); §7 NIGHTSHIFT/Optane persistence design added; §8 endgame risk register added.
+**Status:** **v1.1** (Ring 3 consolidated tier added 2026-06-09, §3.1); **v1** (consolidated 2026-06-09 on P1/P2.a POC data; v0 brainstorm formalized 2026-06-07, KnackAU + Gemini + Claude). v1 deltas: §5 roadmap rewritten on measured physics (P1 CLOSED ledger X-R1; P2.a CLOSED; PLE-stall theory formally corrected in CONTRACT-XBAR-P2); P2.b reframed as the span-compression adapter (CONTRACT-XBAR-P2b) — **the convergence point where the injector, the curator's compaction organ, the modality template and NIGHTSHIFT's worker become one trained component**; C1 split into C1-lite (qwen3 CPU ring, exists today) and C1-full (post-P3); §7 NIGHTSHIFT/Optane persistence design added; §8 endgame risk register added.
 **Parents:** RFC-001 (discrete substrate doctrine) · CONTRACT-C2 (ARM Spinor-KV two-ring) · Phase 4-MeMo (M.0 stub / M.1 dual-load / M.2 zero-copy dialogue loop) · Heterogeneous-SoC manifesto (tricks #1, #4, #7, #9).
 **One line:** two models — the Executive (Exec, $M_{gen}$) and the Memory curator (Memo, $M_{manage}$) — share Ring 2 of the cyclotomic memory and communicate through **latent state, not tokens**, with every write receipt-backed, gated, and rewindable. The industry strings agents together through the tokenizer; we hand them the same VRAM.
 
@@ -39,15 +39,20 @@ The same mechanism is the multimodal door: any encoder whose output is adapter-a
         │   causal forward, generates           non-causal pass over the episode   │
         │        │            ▲                        │             ▲             │
         │        ▼ write      │ attend                 ▼ propose     │ read        │
-        │   ┌─ Ring 1 ─┐  ┌── Ring 2 (canonical) ──┐  ┌─ Ring 2′ (shadow) ─┐       │
-        │   │ working  │  │ Spinor blocks, 0xA5,   │◄─│ Memo's proposals   │       │
-        │   │ KV       │  │ receipt per block      │  │ promote-on-accept  │       │
-        │   └──────────┘  └────────────────────────┘  └────────────────────┘       │
-        │                          ▲                                               │
-        │              modality lanes (CRT prime per modality):                    │
-        │              audio adapter (voxtral), video, ...                         │
+        │   ┌─ Ring 1 ─┐  ┌── Ring 2 (hippocampus) ┐  ┌─ Ring 2′ (shadow) ─┐       │
+        │   │ working  │  │ verbatim Spinor KV,    │◄─│ Memo's proposals   │       │
+        │   │ KV       │  │ recent + bounded       │  │ promote-on-accept  │       │
+        │   └──────────┘  └────────────────────────┘  └─────────┬──────────┘       │
+        │        ▲ recall from BOTH                              │ promote (gated)  │
+        │        │                ┌── Ring 3 (neocortex) ───┐◄───┘                  │
+        │        └────────────────│ adapter pseudo-tokens,  │   G-R3-LOSS bounded   │
+        │                         │ consolidated long-term  │   (irreversible)      │
+        │                         └─────────────────────────┘                       │
+        │              modality lanes (CRT prime per modality):                      │
+        │              audio adapter (voxtral), video, ...                           │
         └──────────────────────────────────────────────────────────────────────────┘
-   Gate on every promotion: coherence/PPL delta on post-injection window → accept or REWIND.
+   Ring 2′ promotions: coherence/PPL delta → accept or REWIND (transient, reversible).
+   Ring 3 promotions: G-R3-LOSS bounded BEFORE source eviction (permanent, irreversible).
 ```
 
 Design rules (settled in the 2026-06-07 brainstorm):
@@ -57,6 +62,31 @@ Design rules (settled in the 2026-06-07 brainstorm):
 3. **Shadow ring, promote-on-accept.** Memo never writes the canonical Ring 2 directly. Proposals land in Ring 2′; a cheap downstream coherence gate (PPL delta over the post-injection window) accepts → promote with receipt, or rejects → rewind. The canonical episode stays clean and every promotion is auditable.
 4. **Geometry is the law.** A ring entry is a per-layer, per-head (K,V) at a position — roped, normed, V-less where the architecture says so (gemma4 globals: V = raw K projection, weightless-RMS-normed, never roped). Nothing enters the ring that does not honor the coordinates. XBAR-P1 exists to *measure* how strict this law is.
 5. **One CRT prime per modality lane.** Audio/text/video blocks are residue-separable in the same unified ring; Exec attends to one memory, provenance stays recoverable, lanes can never alias. (Manifesto tricks #4 + #9, applied to modality instead of hardware channel.)
+
+## 3.1 The memory hierarchy — Ring 3, the consolidated tier (v1.1 amendment, 2026-06-09)
+
+v1 carried two rings + a shadow. P2.b's reframing (the adapter as Memo's compaction organ) and the C2.4 finding (raw recall degrades past ~16× selection budget) together force a distinction we had been conflating: **a transient staging buffer and a permanent consolidated store are different objects.** Naming them separately yields a four-tier hierarchy that maps cleanly onto the brain's memory consolidation:
+
+| Tier | Substrate | Representation | Lifetime | Biological analogue |
+|---|---|---|---|---|
+| **Ring 1** | RAM working window | verbatim KV, full attention | the live turn | sensory / working memory |
+| **Ring 2** | Optane raw episodic store | verbatim Spinor KV blocks | recent episode (bounded) | **hippocampus** — recent, detailed, lossless |
+| **Ring 2′** (shadow) | transient staging copy of Ring 2/3 | proposals awaiting the gate | one consolidation pass | (no analogue — it's the *audit* mechanism) |
+| **Ring 3** | Optane consolidated store | **P2.b-adapter pseudo-tokens** (n→k gist) | long-term | **neocortex** — old, dense, semantic |
+
+**The transfer-and-transform rule (what NIGHTSHIFT actually does).** Sleep does not just tidy the hippocampus; it *replays raw episodes and writes compressed semantic traces to neocortex.* NIGHTSHIFT does the same: it reads aging Ring 2 episodes, runs the P2.b adapter to compress n verbatim positions into k pseudo-tokens, proposes those to Ring 2′, and on gate-accept **promotes them to Ring 3** (and may then evict the now-redundant raw Ring 2 positions under the same receipt). Ring 3 is therefore populated *exclusively* by the adapter — it is the curator's compaction organ writing to its long-term destination.
+
+**Recall-from-both (the Executive's new query path).** Exec no longer recalls from a single growing list. Per step it queries **Ring 2 for verbatim recent detail** and **Ring 3 for dense long-ago grounding**, and attends over the union. This is why Ring 3 *resolves* the C2.4 ceiling rather than re-hitting it: raw Ring 2 stays **bounded and recent** (where the selection budget is favorable — the NIAH ladder was clean through ~8k), and the long tail lives in Ring 3 as compact gist whose effective selection budget is k-per-episode, not n-per-token. You stop asking the raw router to do 64× selection over 32k verbatim positions — the regime where it broke.
+
+**Honest negatives (operator-specified, on the board permanently):**
+
+1. **Double-recall cost.** The router must now score candidates across *both* Ring 2 and Ring 3 every step — two stores, two index scans, a merged top-k. The ±1 projection sidecar already supports an arbitrary candidate set, so the mechanism composes; the *cost* is ~2× the routing scan plus a fetch from two physical stores (the C2.2 split-device `read_batch2` overlap pattern applies directly). Gate **G-R3-DUALROUTE**: dual-store recall reproduces single-store recall when Ring 3 is empty (parity null), and the added scan cost is measured, not assumed.
+
+2. **The consolidation-loss gate (irreversible).** Compressing n raw tokens into k pseudo-tokens *discards detail by construction* — and unlike eviction (which the operator can refuse), a promoted Ring 3 block has thrown its source away. So the loss must be **quantified and bounded before promotion, permanently.** Gate **G-R3-LOSS**: for each candidate consolidation, measure the recoverable-information delta — PPL of a held-out continuation that *depended on the raw span* under {raw Ring 2} vs {Ring 3 gist}, plus a NIAH-style fact-survival probe on facts inside the compressed span. Promote only if the loss is within a pinned budget; otherwise the span stays verbatim in Ring 2 (some episodes are not compressible without unacceptable loss — that is a valid, logged outcome, not a failure). This gate is **load-bearing and irreversible-aware**: a bad Ring 3 promotion cannot be rewound the way a Ring 2′ proposal can, because the raw source is gone — so the gate runs *before* the source is evicted, and the eviction is part of the same receipt or does not happen.
+
+3. **Ring 3 is the §4 risk surface, doubled.** Ring 3 blocks are adapter-*generated*, not model-*minted* — they are exactly the "semantically-wrong-but-valid" objects §4 warns about, now made permanent. The discrete substrate proves a Ring 3 block is *well-formed* (sentinel, lift identity); only G-R3-LOSS proves it is *faithful*. The coherence gate is therefore not optional on the Ring 3 path — it is the only thing standing between "consolidated memory" and "confidently fabricated history."
+
+**Lane ownership:** Ring 2 verbatim store + cold-evict = **C1-lite** (heuristic, today, no adapter). Ring 3 consolidation = **C2** (the P2.b adapter) under G-R3-LOSS. NIGHTSHIFT = the offline loop that drives Ring 2 → (adapter) → Ring 2′ → (gate) → Ring 3. The C1-lite persistence format (episode = {K store, V store, manifest}) is the substrate both Ring 2 and Ring 3 serialize into; Ring 3 just carries pseudo-token blocks instead of verbatim KV.
 
 ## 4. The honest negative (stated up front)
 
@@ -75,8 +105,9 @@ Second honest negative: RoPE phase ties keys to absolute position; SWA layers fa
 | P3 | XBAR-P | Ring wiring on the Exec path — two-ring to the gemma4 CUDA decode loop; KV slots become Spinor-block ring entries with receipts | T_ARM gates green on gemma4-CUDA; bit-exact null path | pending |
 | C1-full | XBAR-C | C1-lite's loop re-run on Exec (gemma4-CUDA ring) | same gates, Exec path | pending P3 |
 | C2 | XBAR-C | Memo v1 = the P2.b adapter applied to ring state: **fixed ring budget, maximize Exec's recall over the episode** (the adapter compacts; promote-on-accept gates). Open decision logged: Memo body may be *adapter + tiny ring-block encoder*, not the 0.5B M.0 stub | recall@budget beats C1 heuristics on held-out episodes | pending P2.b + C1 |
+| **R3** | XBAR-C | **Ring 3 consolidated tier** (§3.1) — dual-store recall (Ring 2 verbatim + Ring 3 gist); NIGHTSHIFT writes adapter pseudo-tokens to Ring 3 under the irreversible loss gate | G-R3-DUALROUTE (empty-Ring3 parity null + measured scan cost) + G-R3-LOSS (n→k loss bounded, fact-survival, pre-eviction) | pending P2.b + C1-lite |
 | M1 | XBAR-M | Audio lane — voxtral latents through the P2.b recipe (source swap), CRT prime lane | Exec answers questions about injected audio never seen as text | pending P2.b |
-| N1 | XBAR-N | **NIGHTSHIFT** (§7) — episode persistence on Optane + offline consolidation under promote-on-accept, schtasks-owned | unattended run: net-positive gated promotions, zero canonical corruption, full receipt log | v0 (heuristic) pending C1-lite; v1 (adapter) pending P2.b |
+| N1 | XBAR-N | **NIGHTSHIFT** (§7) — episode persistence on Optane + offline Ring 2→Ring 3 consolidation under promote-on-accept, schtasks-owned | unattended run: net-positive gated promotions, zero canonical corruption, full receipt log | v0 (heuristic, Ring 2 evict) pending C1-lite; v1 (adapter, Ring 3) pending P2.b + R3 |
 
 Order discipline, updated: P1's physics is banked — **training is now licensed**, and P2.b leads because four lanes converge on it. C1-lite runs in parallel on existing infrastructure (the curator's *control flow* needs no training and no CUDA port). Compute split: training = cloud (RunPod/Colab A100-class, bf16 bucket weights); deployment + every gate that touches receipts = the 2060/B1 artifact via the P2.a harness.
 
@@ -100,6 +131,8 @@ Honest constraint carried forward: the NIAH budget ladder broke at 16×–32× s
 | Recall budget scaling B∝N (16×+ selection breaks) | OPEN (C2.4 ladder) | NIGHTSHIFT v0 episode bound ≤8k; two-stage re-rank as the design fallback |
 | gemma4 tokenizer dispatch (#115) blocks 12B text-in (daemon/interactive Exec) | SPEC'D, unbuilt | SPEC-gemma4-tokenizer-dispatch; required before any interactive XBAR demo (fixtures carry everything until then) |
 | Semantically-wrong-but-valid blocks undetectable by the substrate | DOCTRINE (§4) | the coherence gate is load-bearing on every promotion, forever |
+| Ring 3 consolidation is IRREVERSIBLE (raw source evicted) — a bad gist can't be rewound | DESIGN (§3.1) | G-R3-LOSS runs BEFORE eviction; loss bounded + fact-survival probe; un-compressible episodes stay verbatim in Ring 2 (valid outcome) |
+| Dual-store recall doubles routing scan + adds a second fetch | DESIGN (§3.1) | G-R3-DUALROUTE: empty-Ring3 parity null + measured cost; reuse C2.2 split-device `read_batch2` overlap |
 | Host memory wedge after big bakes (32 GB box, driver-pinned pages) | KNOWN | budget a reboot into post-bake plans; stream big models per-layer |
 
 ## 6. Fit to the lattice
