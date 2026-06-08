@@ -96,6 +96,25 @@ Phase 0 closed existence + the Pareto; the operating point is selected **during 
 
 **Why recall-primary is the Shannon-Prime choice:** it measures what the system is *for* (does the compressed memory still answer questions), it needs no fluent-baseline (the three-times-failed requirement), and it folds the old G-P2b-3 "operating point" question into a number with a receipt.
 
+## 3d. THE RECALL-INVARIANT DECIDER — run record 2026-06-09 (local, B1, no cloud; the operating-point call the reframe deferred)
+
+The §3c reframe made the Curator's Recall Invariant the PRIMARY selection metric and retired generation-parity. Rather than wait for P2.b training to apply it, this runs the recall invariant **directly on the Phase-0 golden vectors we already hold** — deciding the F-vs-H operating point with assets in hand, zero cloud spend, no P3.
+
+**Design (the key discipline): the metric must be OUT-OF-OBJECTIVE.** Phase-0 inversion optimized the k=2 vectors to match the *continuation* distribution, so re-measuring continuation-KL just re-derives the training target (F wins by construction). The recall invariant instead probes **span-content readback**: teacher-force the span's own 6 tokens after the compressed prefix and score their NLL — "does the compressed memory predict its own contents." This is the G-P2b-2 content-survival gate at span granularity. Harness: existing `SP_XBAR_EMB` (inject k=2 at rows 64–65) **composes with** `SP_G4_SCORE` (teacher-force NLL from pos 66) in the same `gemma4_decode_cuda` prefill (`cuda_forward.cu:2043` entry-overwrite + `:1710` score lane — verified independent overlays; **no engine change**). Span s12 = `" of the sons died in infancy"`; all three injected conditions position-matched (span at 66–71, only rows 64–65 differ). Receipts `_xbar/recall/`.
+
+| condition | rows 64–65 | span PPL | per-tok NLL |
+|---|---|---|---|
+| CTX floor | (none — span at 64) | 4.45 | 1.49 |
+| **F off-manifold** (golden, dist 16.7) | F pseudo ×2 | **8.67** | **2.16** |
+| FILLER null | token-0 ×2 (noise) | 9.50 | 2.25 |
+| **H on-manifold** (golden, hull, dist 0.69) | H pseudo ×2 | **19.03** | **2.95** |
+
+**VERDICT — operating point = F (off-manifold / high-recovery); the convex-hull manifold constraint is NOT recall-safe.** On the position-matched triple: **F (8.67) beats the noise-filler null (9.50); H (19.03) is 2× WORSE than noise.** The off-manifold F vectors preserve recoverable span content; the on-manifold H vectors *actively destroy* readback — the model predicts the span's *neighbor* tokens (the hull is built from the 64 nearest embedding rows) confidently and wrongly. This is RFC §4's "semantically-wrong-but-valid" failure **measured**: on-manifold-by-construction produces confident-wrong recall. The recall axis (the correct one per §3c) sharpens Phase-0's continuation-KL gap (F 94% vs H 73%) into a *much* harder recall gap, and reverses the naive "on-manifold is safer" intuition.
+
+**Consequence for P2.b training (§3c loss):** the manifold penalty `λ·L_manifold` must be a **light regularizer toward the F end**, NOT pushed to the Arm-H hull limit — high λ buys geometric tidiness at the cost of recall. Sweep λ low; select by the recall invariant, expecting the optimum near the free/off-manifold end.
+
+**Honest caveats (attached, per methodology):** (1) **n=1 span.** s12 only — the obvious second datapoint (s6, parity_co) is the degenerate empty-string-loop span from the failed G-P2b-3b coherent run (`span_ids` = `…258882×4`), invalid as content. Confirmation needs K more *valid* spans' goldens pulled from `KnackAU/xbar-p2b-run` (cheap) before the operating point is locked into the loss. (2) The CTX floor (4.45) ≪ all injected conditions — the span is highly context-predictable, so the absolute recall signal is small; the *valid* comparison is the position-matched F/H/FILLER triple, where the F<FILLER≪H ordering is large and one-directional. (3) span-token-NLL is a strong content-preservation proxy; a query/cloze recall harness is cleaner but needs per-span query design — a P2.b-training-time upgrade. The DIRECTION (favor F, hull is recall-hostile) is decisive; the magnitude wants n>1.
+
 ## 4. Compute plan & receipts
 
 RunPod/Colab A100-class, bf16 HF checkpoint from the proven bucket (the 4.68-gold weights — the ONLY trusted source, STATE doctrine). All cloud runs export: config echo (banner = printed env/args), dataset manifest hashes, loss curves, golden-pair archives. Receipts land in `_xbar/p2b/` + the contract run-record; ledger row only on the agreed gates green. **Ops upgrades banked from the Phase-0 runs:** the pod bootstrap must **periodic-upload its log** (RunPod community API returns no telemetry — flying blind otherwise; the operator had to pull the console log manually); validate the corpus is *coherent before* inverting (greedy 90-tok generation degenerates — use continue-narrative seeds + shorter gen + sampling if a fluent baseline is ever needed).
