@@ -1,7 +1,7 @@
 # CONTRACT XBAR-P1 — The Inception Probe (prove the latent crossbar, measure its geometric tolerance)
 
 **Parent:** RFC-XBAR §5 stage P1. **Priority:** gates the entire XBAR lane — no curator training, no ring wiring, no adapter work until this runs.
-**Status:** DRAFT (spec'd 2026-06-07; not yet run — no numbers exist for this contract yet).
+**Status:** CLOSED — ledger X-R1 (spec'd 2026-06-07; FIRST LIGHT + P1.b escalation + P1.c 5×3 matrix all run; existence G1b 15/15 + 4/4, control G1-strong 15/15, dual-metric coherence resolved). See §7–9 for the run records. Forward lane: P2 (CONTRACT-XBAR-P2*, P2.a CLOSED + P2.b Phase 0 CLOSED) → C1-lite (CONTRACT-XBAR-C1-lite, C1L.0a/0b/1 green).
 **One line:** halt gemma-4-12B mid-decode, splice foreign state into its KV cache two ways — geometrically exact (Arm A) and geometrically naive (Arm B) — and measure both whether the model integrates the memory and *how much geometric fidelity the integration demands*. The A−B delta is the spec every future injector (Memo, modality adapters) must be trained to hit.
 
 ---
