@@ -109,11 +109,29 @@ The §3c reframe made the Curator's Recall Invariant the PRIMARY selection metri
 | FILLER null | token-0 ×2 (noise) | 9.50 | 2.25 |
 | **H on-manifold** (golden, hull, dist 0.69) | H pseudo ×2 | **19.03** | **2.95** |
 
-**VERDICT — operating point = F (off-manifold / high-recovery); the convex-hull manifold constraint is NOT recall-safe.** On the position-matched triple: **F (8.67) beats the noise-filler null (9.50); H (19.03) is 2× WORSE than noise.** The off-manifold F vectors preserve recoverable span content; the on-manifold H vectors *actively destroy* readback — the model predicts the span's *neighbor* tokens (the hull is built from the 64 nearest embedding rows) confidently and wrongly. This is RFC §4's "semantically-wrong-but-valid" failure **measured**: on-manifold-by-construction produces confident-wrong recall. The recall axis (the correct one per §3c) sharpens Phase-0's continuation-KL gap (F 94% vs H 73%) into a *much* harder recall gap, and reverses the naive "on-manifold is safer" intuition.
+**n=1 (s12) read (SUPERSEDED in part — see the n=6 correction below):** on s12 alone, F 8.67 < FILLER 9.50 << H 19.03, which read as "F preserves recall, H is recall-hostile (2× worse than noise)." That second half was an **outlier**, walked back below.
 
-**Consequence for P2.b training (§3c loss):** the manifold penalty `λ·L_manifold` must be a **light regularizer toward the F end**, NOT pushed to the Arm-H hull limit — high λ buys geometric tidiness at the cost of recall. Sweep λ low; select by the recall invariant, expecting the optimum near the free/off-manifold end.
+### n=6 HARDENING — 5 more valid spans (2026-06-09, B1, detached; receipts `_xbar/recall_multi/`)
 
-**Honest caveats (attached, per methodology):** (1) **n=1 span.** s12 only — the obvious second datapoint (s6, parity_co) is the degenerate empty-string-loop span from the failed G-P2b-3b coherent run (`span_ids` = `…258882×4`), invalid as content. Confirmation needs K more *valid* spans' goldens pulled from `KnackAU/xbar-p2b-run` (cheap) before the operating point is locked into the loss. (2) The CTX floor (4.45) ≪ all injected conditions — the span is highly context-predictable, so the absolute recall signal is small; the *valid* comparison is the position-matched F/H/FILLER triple, where the F<FILLER≪H ordering is large and one-directional. (3) span-token-NLL is a strong content-preservation proxy; a query/cloze recall harness is cleaner but needs per-span query design — a P2.b-training-time upgrade. The DIRECTION (favor F, hull is recall-hostile) is decisive; the magnitude wants n>1.
+Before letting the operating point anchor P2.b's λ schedule, hardened to n>1: 5 clean content-bearing spans (kl_dropped 0.25–1.25 spread, newline/empty degenerates excluded), contexts reconstructed from the local wiki stream + **`span_ok` verified** against each receipt, goldens pulled fresh from `KnackAU/xbar-p2b-run` + header-restamped to the inject row, all conditions position-matched (FILLER/F/H, span readback NLL @66). Per-span span-readback PPL:
+
+| span | kl_drop | FILLER (null) | F (off-manifold) | H (on-manifold) | F vs null | H vs null |
+|---|---|---|---|---|---|---|
+| s12 (prior) | 0.25 | 9.50 | **8.67** | 19.03 | F better | **H WORSE** |
+| s0 | 1.25 | 130.87 | **72.21** | 128.90 | F better | ≈neutral |
+| s9 | 0.54 | 401.19 | **154.51** | 333.93 | F better | H better |
+| s17 | 1.22 | 135.74 | 97.26 | **96.86** | F better | H better |
+| s23 | 0.93 | 630.05 | **163.81** | 377.70 | F better | H better |
+| s43 | 0.50 | 28.59 | 12.47 | **8.52** | F better | H better |
+
+**CORRECTED VERDICT (n=6) — lean F as the robust default; the manifold penalty stays an EMPIRICAL dial, NOT a hard lock. The n=1 "Arm H is recall-hostile" claim is RETRACTED (s12 was an outlier).**
+- **F robustly preserves recall: 6/6 spans beat the noise-filler null**, with large margins on the informative spans (s9 155 vs 401, s23 164 vs 630). The F-favorable direction is solid.
+- **H is NOT recall-hostile in general.** It beats or ties the filler null on **5/6** spans (only s12 had H worse than noise); the "2× worse than noise / confident-wrong neighbor prediction / RFC §4 measured" reading does **not** generalize and is withdrawn.
+- **F vs H is mixed:** F wins 4/6 (incl. every high-information span), H wins 2/6 (s17 ≈ tie, s43). The recall edge favors F, but it is span-dependent, not a law — the **"Mixed" branch** of the pre-stated falsification matrix.
+
+**Consequence for P2.b training (§3c loss):** keep `λ·L_manifold` as the planned **swept hyperparameter** with the **F/free end as the prior** (it never hurt recall and won the informative spans); select the operating λ by the recall invariant on held-out episodes (§3c-1). Do **not** hard-lock to the hull limit (no consistent recall gain) and do **not** claim the manifold constraint is recall-hostile (n=6 refutes it). The §3c framework — sweep λ, select by recall — is unchanged and now empirically grounded.
+
+**Methodology note (kept on the record):** the n=1 s12 verdict was a genuine overclaim caught by the n>1 hardening we ran *before* the number could anchor a cloud-training schedule — the exact value of "the magnitude wants n>1." Residual caveats: span-readback NLL is a strong content proxy (a query/cloze recall harness is the P2.b-training-time upgrade); absolute PPLs are large on low-context-predictability spans (the *relative* position-matched FILLER/F/H ordering is the signal, not the absolute value).
 
 ## 4. Compute plan & receipts
 
