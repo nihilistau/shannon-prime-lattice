@@ -133,6 +133,25 @@ Before letting the operating point anchor P2.b's λ schedule, hardened to n>1: 5
 
 **Methodology note (kept on the record):** the n=1 s12 verdict was a genuine overclaim caught by the n>1 hardening we ran *before* the number could anchor a cloud-training schedule — the exact value of "the magnitude wants n>1." Residual caveats: span-readback NLL is a strong content proxy (a query/cloze recall harness is the P2.b-training-time upgrade); absolute PPLs are large on low-context-predictability spans (the *relative* position-matched FILLER/F/H ordering is the signal, not the absolute value).
 
+## 3e. PHASE 1 — ADAPTER FIRST RUN (G-P2b-1, 2026-06-09; A6000, self-terminating; pod 1bgv4i8h3ah5aw)
+
+The trained adapter (`train_p2b.py`: span embeddings → bottleneck-d512 transformer → k=2 cross-attention queries → k pseudo-tokens; **11.3M params**, ≤50M ✓) amortizing the Phase-0 inversion. Same differentiable gold forward; loss = continuation-KL + λ·soft-min manifold (Arm-F, λ=0.1 — the n=6 F-prior). 200 train / 40 held-out wiki spans, 4 epochs. Local toy smoke + on-pod real smoke both green first (cost discipline). Receipts: HF `KnackAU/xbar-p2b-run` `results_p1/lam0.1/`.
+
+| epoch | held-out recovery_med | readback F / null | F beats null |
+|---|---|---|---|
+| 0 | 0.124 | 4.23 / 4.36 | 22/40 |
+| 1 | 0.190 | 4.20 / 4.36 | 25/40 |
+| **2 (peak)** | **0.204** | 4.25 / 4.36 | 25/40 |
+| 3 | 0.148 | 4.33 / 4.36 | 19/40 |
+
+**VERDICT — G-P2b-1 WEAK POSITIVE (telemetry; band NOT pinned). NOT the kill, NOT a clean pass.**
+- **The adapter generalizes:** held-out recovery is **0.15–0.20 — clearly > 0** on spans it never trained on, so it learns a transferable span→pseudo-token mapping, not per-span overfitting. The pre-stated falsification (recovery ≈ 0 → amortized 6→2 dead) **did not trigger.** Amortization is viable.
+- **But ~5× below the inversion ceiling** (Phase 0 per-span: ~0.94 free / ~0.73 hull; this amortized adapter: ~0.20). The generalization gap is the new problem.
+- **Recall marginal:** readback-F barely beats the noise null (4.25 vs 4.36; F_beats_null ≤25/40) — compressions preserve a little content, not a lot.
+- **Overfitting by epoch 3** (recovery 0.204→0.148, F_beats_null 25→19) on only 200 spans → the lever is **more training data + early-stop at the held-out peak**, NOT more epochs.
+
+**Consequence / next (no λ-sweep yet):** sweeping λ on a weak adapter is premature. The next run closes the gap — **scale train spans (~1–2k) + early-stop**, possibly a larger adapter / longer span budget — then re-assess G-P2b-1; only once the adapter is strong does the λ-sweep (the operating-point refinement, F-prior) become meaningful. The §3c framework is intact; this run pins the *bottleneck* (data/amortization capacity), not λ.
+
 ## 4. Compute plan & receipts
 
 RunPod/Colab A100-class, bf16 HF checkpoint from the proven bucket (the 4.68-gold weights — the ONLY trusted source, STATE doctrine). All cloud runs export: config echo (banner = printed env/args), dataset manifest hashes, loss curves, golden-pair archives. Receipts land in `_xbar/p2b/` + the contract run-record; ledger row only on the agreed gates green. **Ops upgrades banked from the Phase-0 runs:** the pod bootstrap must **periodic-upload its log** (RunPod community API returns no telemetry — flying blind otherwise; the operator had to pull the console log manually); validate the corpus is *coherent before* inverting (greedy 90-tok generation degenerates — use continue-narrative seeds + shorter gen + sampling if a fluent baseline is ever needed).
