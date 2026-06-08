@@ -134,9 +134,34 @@ Honest constraint carried forward: the NIAH budget ladder broke at 16×–32× s
 | Ring 3 consolidation is IRREVERSIBLE (raw source evicted) — a bad gist can't be rewound | DESIGN (§3.1) | G-R3-LOSS runs BEFORE eviction; loss bounded + fact-survival probe; un-compressible episodes stay verbatim in Ring 2 (valid outcome) |
 | Dual-store recall doubles routing scan + adds a second fetch | DESIGN (§3.1) | G-R3-DUALROUTE: empty-Ring3 parity null + measured cost; reuse C2.2 split-device `read_batch2` overlap |
 | Host memory wedge after big bakes (32 GB box, driver-pinned pages) | KNOWN | budget a reboot into post-bake plans; stream big models per-layer |
+| No PERMISSIONS model on Ring 2/3 writes (gap named via §6.1 taxonomy audit) | OPEN/BACKLOG | who/what may propose+promote to the canonical/consolidated rings — access control is unspecified; fine while Memo is the sole writer, must be specified before multi-writer / networked curators |
 
 ## 6. Fit to the lattice
 
 The opening doctrine: floating-point drift and unprovable identity are entropy bleeding into the hardware; the lattice makes correctness a property you *prove*. The paper series extended that from kernels to artifacts (the supply chain is part of the math). XBAR extends it one more level: **to cognition between models.** Inter-model memory becomes a thing with receipts — proposed, gated, promoted or rewound, bit-auditable end to end. A synthetic subconscious whose dreams are auditable.
+
+## 6.1 Convergent external work (verified, 2026-06-09 — abstracts fetched, not trusted second-hand)
+
+Two recent preprints independently arrive at the systems doctrine XBAR was built on. Cited as *convergence/validation*, not as frameworks XBAR implements — and one yields a usable methodology with a Shannon-Prime sharpening.
+
+**AI Harness Engineering** (Zhong & Zhu, arXiv:2605.13357, 13 May 2026). Argues capability emerges from the *model–harness–environment system*, not the model alone; names 11 runtime responsibilities and a trace protocol producing an **"auditable episode package."** That is, in their vocabulary, exactly what XBAR builds at the *latent* level (they audit text-level SWE-agent runs; XBAR audits inter-model cognition — a level deeper). Mapping XBAR against their 11-item taxonomy is a genuine gap audit:
+
+| their responsibility | XBAR analogue | status |
+|---|---|---|
+| context selection | ±1 Rademacher recall router (Ring 2/3) | covered |
+| project memory | Ring 2 (episodic) + Ring 3 (consolidated) | covered |
+| task state | `sp_session_clone`/`rewind` | covered |
+| observability | `receipts.log` + getenv-echo banners | covered |
+| failure attribution | the bisection-forensics doctrine (e.g. the L11 kill) | covered |
+| verification | every gate (G-R3-LOSS, MTP accept, PPL gates) | covered |
+| entropy auditing | Frobenius-lift bit-identity + Spinor 0xA5 sentinel | covered |
+| intervention recording | per-promote/rewind receipt | covered |
+| **permissions** | — | **GAP**: no access-control model on who/what may write Ring 2/3. Backlog item, surfaced honestly. |
+| task specification | the per-stage contracts (out-of-band) | N/A (infra, not an agent task layer) |
+| tool access | — | N/A |
+
+So XBAR covers ~8/11 natively; "permissions" is a real, newly-named gap (banked above), and two are out of scope (XBAR is memory substrate, not an agent task framework).
+
+**Retrospective Harness Optimization** (Pan et al., arXiv:2606.05922, 4 Jun 2026; code github.com/wbopan/retro-harness). Self-supervised improvement from **unlabeled past trajectories** — coreset of hard cases, parallel re-solve, candidate updates scored by the agent's **pairwise self-preference** (SWE-Bench Pro 59→78%, no external grader). This is the right *shape* for NIGHTSHIFT's curator-learning: Memo generates parallel n→k compression candidates over a past episode (the rollouts), and the best is kept. **Shannon-Prime sharpening (ours, claimed as an improvement, not an adoption):** RHO's self-preference is a *gameable* LLM preference judgment (self-preference bias, reward-hacking). XBAR replaces it with a **measured PPL-delta on a held-out continuation** (G-R3-LOSS) — a number with a receipt, not a preference. Same label-free trajectory-derived loop; an ungameable scorer. The exact-citation honesty: we adopt RHO's *pattern*, not its algorithm; we do not "implement RHO," and these are unrefereed preprints.
 
 *The unflattering numbers, when they arrive, stay attached on purpose.*
