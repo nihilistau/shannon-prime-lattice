@@ -1,6 +1,6 @@
 # RFC-XBAR — The Auditable Latent Crossbar (Exec + Memo sharing Ring 2)
 
-**Status:** DRAFT v0 (brainstorm formalized 2026-06-07, KnackAU + Gemini + Claude).
+**Status:** **v1** (consolidated 2026-06-09 on P1/P2.a POC data; v0 brainstorm formalized 2026-06-07, KnackAU + Gemini + Claude). v1 deltas: §5 roadmap rewritten on measured physics (P1 CLOSED ledger X-R1; P2.a CLOSED; PLE-stall theory formally corrected in CONTRACT-XBAR-P2); P2.b reframed as the span-compression adapter (CONTRACT-XBAR-P2b) — **the convergence point where the injector, the curator's compaction organ, the modality template and NIGHTSHIFT's worker become one trained component**; C1 split into C1-lite (qwen3 CPU ring, exists today) and C1-full (post-P3); §7 NIGHTSHIFT/Optane persistence design added; §8 endgame risk register added.
 **Parents:** RFC-001 (discrete substrate doctrine) · CONTRACT-C2 (ARM Spinor-KV two-ring) · Phase 4-MeMo (M.0 stub / M.1 dual-load / M.2 zero-copy dialogue loop) · Heterogeneous-SoC manifesto (tricks #1, #4, #7, #9).
 **One line:** two models — the Executive (Exec, $M_{gen}$) and the Memory curator (Memo, $M_{manage}$) — share Ring 2 of the cyclotomic memory and communicate through **latent state, not tokens**, with every write receipt-backed, gated, and rewindable. The industry strings agents together through the tokenizer; we hand them the same VRAM.
 
@@ -64,19 +64,43 @@ Design rules (settled in the 2026-06-07 brainstorm):
 
 Second honest negative: RoPE phase ties keys to absolute position; SWA layers fade injected state beyond their window (the GLOBAL period-6 layers are the long-range carrier); partial-rotary-0.25 globals are the most transplant-tolerant. The probe must quantify all three, not assume them.
 
-## 5. Roadmap (lanes and order)
+## 5. Roadmap v1 (consolidated 2026-06-09 — rewritten on measured POC physics)
 
 | Stage | Lane | What | Gate / exit | Status |
 |---|---|---|---|---|
-| **P1** | XBAR-P | **Inception Probe** — A/B latent injection on gemma-4-12B CUDA path: Arm A real-KV transplant vs Arm B raw-residual overwrite, with self-transplant null control and snapshot/restore rewind | see `CONTRACT-XBAR-P1-inception-probe.md` (G0–G4) | **SPEC'D** |
-| P2 | XBAR-P | Pseudo-token injection — inject at the *residual entry* (embedding-level), let the real forward mint the KV; this is the mechanism a trained adapter would actually use | concept resonance ≥ Arm A's within measured tolerance | pending P1 |
-| P3 | XBAR-P | Ring wiring on the Exec path — bring two-ring (today: qwen3 CPU math-core) to the gemma4 CUDA decode loop; KV slots become Spinor-block ring entries with receipts | T_ARM gates green on gemma4-CUDA; bit-exact null path | pending |
-| C1 | XBAR-C | Memo v0 = handwritten curator — no training; CUDA/C heuristics (select/merge/evict blocks) driving the full propose→gate→promote/rewind loop on Ring 2′ | loop closes; ≥1 promotion improves post-window PPL vs no-curation baseline | pending P1/P3 |
-| C2 | XBAR-C | Memo v1 = learned curator — small model trained self-supervised: **fixed ring budget, maximize Exec's recall over the episode** (QA-over-episode / reconstruction, supervised by Exec's own behavior; no text labels) | recall@budget beats Memo v0 heuristics on held-out episodes | pending C1 |
-| M1 | XBAR-M | Audio lane — voxtral encoder + learned projection adapter into Exec's residual geometry; deposit as pseudo-tokens on a dedicated CRT prime lane | Exec answers questions about injected audio it never saw as text | pending P2 |
-| N1 | XBAR-N | **NIGHTSHIFT** — consolidation as idle-time PoUW (manifesto trick #7): Memo replays and compacts the day's ring while the operator is away; every promotion receipt-logged | unattended run produces net-positive gated promotions, zero canonical corruption | pending C1 |
+| **P1** | XBAR-P | Inception Probe — KV transplant A/B + escalation + 5×3 matrix | CONTRACT-XBAR-P1 G0–G4 + G1b + dual-metric G2 | **CLOSED — ledger X-R1 citable** (15/15 incorporation, 15/15 selectivity, 3.69 orders, dose-response curve) |
+| **P2.a** | XBAR-P | Residual-entry pseudo-token mechanism probe | CONTRACT-XBAR-P2 G0E–G3E | **CLOSED** (ghost prompt ≥ KV transplant; blends fall off manifold; stall theory corrected — PLE falsified, PL=0 on the 12B) |
+| **P2.b** | XBAR-P/C | **The span-compression adapter** (cloud-trained, frozen 12B): n-token span → k on-manifold pseudo-tokens; inversion Phase 0 → adapter Phase 1 → on-silicon deployment gate. *The keystone: injector + Memo's compaction organ + modality template + NIGHTSHIFT worker in one component.* | CONTRACT-XBAR-P2b G-P2b-0..4 | **SPEC'D** — next build |
+| **C1-lite** | XBAR-C | Memo v0 heuristic curator on the **existing qwen3 CPU two-ring** (no new infra): select/merge/evict driven by router scores + the LRU access telemetry; full propose→gate→promote/rewind loop on Ring 2′ | loop closes; ≥1 promotion improves post-window PPL/NIAH vs no-curation; rewind receipts complete | **UNBLOCKED TODAY** — can run before P3 |
+| P3 | XBAR-P | Ring wiring on the Exec path — two-ring to the gemma4 CUDA decode loop; KV slots become Spinor-block ring entries with receipts | T_ARM gates green on gemma4-CUDA; bit-exact null path | pending |
+| C1-full | XBAR-C | C1-lite's loop re-run on Exec (gemma4-CUDA ring) | same gates, Exec path | pending P3 |
+| C2 | XBAR-C | Memo v1 = the P2.b adapter applied to ring state: **fixed ring budget, maximize Exec's recall over the episode** (the adapter compacts; promote-on-accept gates). Open decision logged: Memo body may be *adapter + tiny ring-block encoder*, not the 0.5B M.0 stub | recall@budget beats C1 heuristics on held-out episodes | pending P2.b + C1 |
+| M1 | XBAR-M | Audio lane — voxtral latents through the P2.b recipe (source swap), CRT prime lane | Exec answers questions about injected audio never seen as text | pending P2.b |
+| N1 | XBAR-N | **NIGHTSHIFT** (§7) — episode persistence on Optane + offline consolidation under promote-on-accept, schtasks-owned | unattended run: net-positive gated promotions, zero canonical corruption, full receipt log | v0 (heuristic) pending C1-lite; v1 (adapter) pending P2.b |
 
-Order discipline: **P1 before any training.** You cannot optimize a loss toward a target whose physics is unproven; P1's Arm-A/Arm-B delta *is* the spec the curator trains against.
+Order discipline, updated: P1's physics is banked — **training is now licensed**, and P2.b leads because four lanes converge on it. C1-lite runs in parallel on existing infrastructure (the curator's *control flow* needs no training and no CUDA port). Compute split: training = cloud (RunPod/Colab A100-class, bf16 bucket weights); deployment + every gate that touches receipts = the 2060/B1 artifact via the P2.a harness.
+
+## 7. NIGHTSHIFT — the Optane subconscious (v1 design, operator synthesis 2026-06-09)
+
+C2 already proved the substrate this rests on: byte-exact Ring-2 spill/recall on physical Optane (7.57 µs/read floor), 16.3 h unattended saturation with zero leaks (the honest-MISS finale's infrastructure half), receipts end to end. NIGHTSHIFT adds three things, none of them new physics:
+
+1. **Episode persistence.** The Ring-2 store + router sidecar + a manifest (artifact sha, geometry, block receipts) become a named *episode* file set on E:/F: that survives sessions. Exec's recall router pulls from a reloaded episode exactly as it pulls from a live one — the recall machinery is already store-agnostic (RAM mock / Optane / QUIC peer, all proven).
+2. **The consolidation pass.** Offline (idle-time, manifesto trick #7), Memo walks the episode non-causally: select/merge/evict in v0 (heuristics), span-compression via the P2.b adapter in v1 — proposals to a shadow episode, **promote-on-accept** (PPL/recall delta on probe queries), rewind on reject, every promotion receipt-logged. **The association-strength signal already exists:** the LRU temporal-locality telemetry (measured 67% hit-rates, absorption-vs-depth curves) is a live record of which blocks attention keeps returning to — "strengthen frequent associations, cull dead ones" is driven by data we already collect, not by a new estimator.
+3. **Operational discipline inherited:** NIGHTSHIFT runs are schtasks-owned (the C2.4 lesson — bakes belong to the OS, not the agent tree); the runner banner echoes `getenv` (the config-regression lesson); no agent poll-watching.
+
+Honest constraint carried forward: the NIAH budget ladder broke at 16×–32× selection (4k miss-by-a-digit, 16k clean miss) — **v0 NIGHTSHIFT bounds episodes ≤8k tokens** or runs two-stage re-rank; B∝N scaling is an open item on the risk register, not a buried assumption.
+
+## 8. Endgame risk register (kept current; each item has an owner-gate)
+
+| Risk | Status | Where it's held |
+|---|---|---|
+| Dragon-stall cause unknown (PLE theory falsified — PL=0 on the 12B) | OPEN; two hypotheses (context contradiction / baseline-attractor amplification) | P2 contract correction; P2.b G-P2b-4 stall-rate gate |
+| Inter-token manifold is thin (α-blend degeneration) | MEASURED | P2.b Phase-0 arm A/B (soft-min penalty vs convex-hull parameterization) |
+| Cloud-bf16 ↔ local-B1-quantized behavior gap | NAMED GATE | P2.b G-P2b-3 (on-silicon parity through the P2.a harness) |
+| Recall budget scaling B∝N (16×+ selection breaks) | OPEN (C2.4 ladder) | NIGHTSHIFT v0 episode bound ≤8k; two-stage re-rank as the design fallback |
+| gemma4 tokenizer dispatch (#115) blocks 12B text-in (daemon/interactive Exec) | SPEC'D, unbuilt | SPEC-gemma4-tokenizer-dispatch; required before any interactive XBAR demo (fixtures carry everything until then) |
+| Semantically-wrong-but-valid blocks undetectable by the substrate | DOCTRINE (§4) | the coherence gate is load-bearing on every promotion, forever |
+| Host memory wedge after big bakes (32 GB box, driver-pinned pages) | KNOWN | budget a reboot into post-bake plans; stream big models per-layer |
 
 ## 6. Fit to the lattice
 

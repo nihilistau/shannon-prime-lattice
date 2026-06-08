@@ -47,3 +47,22 @@ Engine: `SP_XBAR_EMB_CAPTURE` / `SP_XBAR_EMB` (XBE1 payloads, entry vectors capt
 **Mechanism findings, banked:** (1) α=1.0 entry injection is a *ghost prompt* — the model integrates the injected vectors as if they were real tokens (natively-minted KV everywhere), and steers as strongly as or stronger than the KV transplant; (2) the deployable adapter's true job, sharpened by G2E + G3E: output vectors **on the embedding manifold** (not linear blends), and on AltUp models supply a **PLE strategy** (nearest-token id or a second adapter head). These two constraints ARE the P2.b spec.
 
 **P2.a CLOSED.** P2.b (learned adapter, training) is a compute project gated on an extracted dataset; its loss targets the P1 dose-response curve + the two constraints above.
+
+> **FORMAL CORRECTION — 2026-06-09 consolidation pass (no silent revision; the
+> banked finding above is amended, not erased).** The §5 "prime suspect" for the
+> p1 dragon stall — the PLE/AltUp side-lane carrying the neutral tokens' per-layer
+> embeddings — is **falsified by architecture ground truth**: the dense 12B has
+> **PL=0, no PLE/AltUp lane at all** (STATE §5.12, llama.cpp reference read; the
+> engine guards every PLE call behind `if (PL)`, and our B1 artifact runs PL=0).
+> §2's wrinkle statement was written from the E-series geometry and does not apply
+> to the deployment target. Replacement hypotheses, both testable and neither yet
+> proven: (a) **context contradiction** — the ghost prompt's rows 9–14 say
+> "dragon" while the surviving rows 15+ still narrate the quiet room; (b)
+> **baseline-attractor amplification** — p1's own B0 already exhibits the
+> "Continue this story:" echo loop that the stalled trial collapses into, while
+> p5's B0 does not; the stall follows the prompt's pre-existing attractor.
+> Consequences inherited by P2.b: the `L_PLE` loss term and second adapter head
+> are DROPPED for the 12B target (one-line note kept for future E-series
+> deployments, which do carry PLE); the stall is tracked empirically via a
+> **distinct% stall-rate metric in adapter training/selection** since no clean
+> mechanistic account survives.
