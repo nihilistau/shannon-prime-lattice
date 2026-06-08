@@ -71,3 +71,7 @@ Thumbs.db
 *~
 *.swp
 *.swo
+
+# session clutter (reference image dumps — not source)
+reference/images/
+reference/*.png
