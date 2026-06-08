@@ -1,277 +1,118 @@
 # shannon-prime-lattice — Session Bootstrap
 
-You are Claude, opening a new session on **shannon-prime-lattice**. Read this file first. It is the canonical context primer. Everything else (theory, systems, roadmap, prior session state) is referenced from here and read on demand.
+You are Claude (Shannon-Prime hat on, no spin), opening a session on **Shannon-Prime**. Read this file, then the live-state docs it points to, then **check the code, the commits, and `git status` before you trust anything**. Memory and summaries prime you; the tree is ground truth.
+
+Last rewritten: 2026-06-09 (XBAR campaign; C1-lite complete; P2.b recall operating-point decided).
 
 ---
 
-## What this project is
+## 1. What this is NOW (read this, not the old framing)
 
-**shannon-prime-lattice** is a clean from-scratch rebuild and synthesis of the mathematical primitives from six months of prior Shannon-Prime work, aimed at a unified architecture for **decentralized cooperative AI training and inference**.
+**PPT-ARM is the load-bearing product** — a from-scratch transformer forward + memory architecture on a **discrete substrate** (Z_q integers, O_K over Q(√−163), CRT, the 63-byte Spinor block), where a token's position/index/routing **are exact arithmetic, not floating-point metadata about it**. Bit-exact-when-disabled is the invariant floor; the value is the **envelope** (KV compression → long context, Ring-2 offload → unbounded context, integer/packed-weight pipes → speed, auditable latent memory). The decentralized **Lattice** (DHT/CRT-shard/PoUW network) is the longer arc the same primitives feed — **background, not the current work**.
 
-It uses **one math object** across the entire stack: the prime-factored coordinate lattice with the dominance order `⪯_d` (Friedman–Kruskal homeomorphic embedding) and the CRT cyclotomic ring for compact representation, anchored to the ring of integers `O_K` over `Q(√-163)` (a UFD by the Heegner discriminant). The Prime Power Transformer (PPT) is the substrate: 13 transformer steps each replaced by an exact algebraic operation in this framework (see PPT-LAT-Theory.md §7).
+**The current campaign is XBAR** — the Auditable Latent Crossbar: a frozen **Exec** (gemma-4-12B, OK_Q4B) + a small **Memo** curator share the cyclotomic rings and communicate through **latent state, not tokens**, every write receipted / gated / rewindable. See `papers/RFC-XBAR-auditable-latent-crossbar.md`.
 
-**Engine scope:** four backends sharing the math core — CPU (AVX2 + AVX512), CUDA (sm_86/sm_89), Vulkan (SDK 1.3.x), Hexagon (V69 HTP on S22U-class phones). Foundational features (inline Q8/Q4 weight compression with Frobenius scale, inline KV cache compression via VHT2 + Spinor block) must work on all four before Lattice features layer on. Target model families: Llama 3.x, Qwen3/3.5/3.6/3.7, Gemma 2.5/3/4, DeepSeek V4.
-
-**Lattice layer (the decentralized network), gated by ENV/CLI:** Six architectural layers, each using a different aspect of the same lattice:
-
-1. **Knowledge representation** — KSTE-encoded packed trees, Friedman-sieve deduplication via `⪯_d`.
-2. **Cross-node aggregation** — ARM (HRR in the CRT cyclotomic ring) for compact bound state.
-3. **Inference sharding** — CRT NTT splits polynomial multiplication across coprime primes.
-4. **Crawl assignment** — DHT shards URL space along the prime-factored lattice (Position-as-Arithmetic).
-5. **Verification** — dominance-order commitment checks; cheap, primitive-recursive decidable.
-6. **Token economy** — two-token (work + discovery); discovery is tied to dominance-incomparable frontier extension.
-
-The thesis: one lattice, six uses, one decentralized system. This is not "KV-cache compression" — that was the prior work that surfaced the primitives. This is the synthesis project.
+**Public face:** `Position_Is_Arithmetic` (GitHub: nihilistau) — the receipts-first paper series + the master `LEDGER.md`.
 
 ---
 
-## Repositories
+## 2. Where we are (verify against STATE + LEDGER + commits; don't trust this list blind)
 
-All under `D:\F\shannon-prime-repos\`. All three are **private GitHub repos** under `knack112358` / `nihilistau`.
+PROVEN / citable:
+- **gemma-4-12B: 26.1 tok/s @ wikitext PPL 5.12 on one RTX 2060-12GB** (ledger 06-R10) — a point no other stack occupies on this model at any speed.
+- **The gemma-4 GGUF ecosystem ships broken weights** (06-R8): hand-written gold forward = PPL **4.68**, every GGUF (incl. post-fix rebuilds) 192–506. Safetensors-Direct (`sp_transcode --st`) is the only trusted weight path.
+- **Two-ring memory** (paper 01): 910× resident-KV shrink @32k, 8× sparsification @ +0.69% PPL, bit-exact-when-off; **512-position-proven**. The 32k NIAH **MISSed** (R9) — honest negative kept attached.
+- **XBAR P1** (X-R1, citable): a 12B's generation steered by direct KV-cache transplant, **no tokens** (15/15 incorporation, 15/15 selectivity, 3.69 orders).
 
-- **shannon-prime-lattice** — umbrella (this repo). Contains `papers/`, `prompt.md`, `demos/`, `tests/`, integration glue.
-- **shannon-prime-system** — clean math core. KSTE, Friedman sieve, ARM, CRT NTT primitives. No engine deps.
-- **shannon-prime-system-engine** — clean inference engine consuming the math core via `lib/shannon-prime-system` submodule.
+WIRED / closed (internal):
+- **P2.a** closed (entry-vector "ghost prompt" injection, `SP_XBAR_EMB`).
+- **P2.b Phase 0** closed (cloud inversion: k=2 recovers a 6-token span; Pareto F 94% off-manifold vs H 73% on-manifold).
+- **P2.b recall-invariant decider** (2026-06-09): operating point = **Arm F (off-manifold)**; the convex-hull Arm H is **recall-hostile** (RFC §4 "semantically-wrong-but-valid" measured). P2.b λ = light regularizer toward F.
+- **C1-lite COMPLETE** (qwen3 CPU two-ring): C1L.0a re-projection + C1L.0b replay (34/34) + C1L.1 transaction + C1L.2 cold-evict (45/45). Tag `xbar-c1-lite-complete`.
 
-Each phase ends with commits pushed to `origin/main` on every repo that changed.
-
----
-
-## Hard rules of the road
-
-These are binding. Do not negotiate them away mid-session.
-
-### 1. Anti-contamination
-
-**Do not copy code, designs, or scaffolding from `D:\F\shannon-prime-repos\shannon-prime\` or `D:\F\shannon-prime-repos\shannon-prime-engine\`.** Those repos are six months of layered exploration with cross-cutting dependencies the whole point of this rebuild is to escape. You may reference the *math* in `D:\F\shannon-prime-repos\papers\PPT-ARM\*.md` conceptually — but not the code.
-
-If you catch yourself reaching for an existing file path from those repos: **stop**, name what you wanted, and rebuild it fresh in shannon-prime-lattice / shannon-prime-system. The user's memory entry `feedback_no_cross_contamination` is binding — he has had this conversation more than ten times in six months. Don't make it eleven.
-
-Anti-contamination is also **forward-pointing**: do not leak shannon-prime-lattice work back into the old repos either. Clean separation in both directions.
-
-### 2. Contract system
-
-Each phase in `PPT-LAT-Roadmap.md` carries a **contract**: an explicit list of deliverable files and tests that must pass. A phase is not complete until every contract item is checked off.
-
-If you discover the phase needs something outside its contract, **update the contract explicitly first**, then do the work. No silent scope expansion.
-
-### 3. Session offload
-
-At the end of every session, write `SESSION-STATE-lat-<phase>.md` to `D:\F\shannon-prime-repos\shannon-prime-lattice\papers\`. Document:
-
-- What was built.
-- What tests pass and which command runs them.
-- What is open.
-- What the next session should pick up first.
-
-The user has crossed dozens of sessions on this work. Continuity lives in these offload docs, nowhere else.
-
-### 4. Test discipline
-
-Every phase's tests must stay green when later phases land. The regression suite is the gate to phase completion. If a later phase breaks an earlier test, fix it or revert — do not skip it.
-
-### 5. GitHub hygiene
-
-Phase end = commits pushed to `origin/main` on every repo touched. Use the `gh` CLI for repo creation / PR work if needed. Do not defer pushes to the user; use the available shell tools.
+OPEN (the forward edge): **P2.b adapter training** (cloud, λ-sweep, select by recall invariant) · **P3** = ring-on-gemma4-CUDA (gaps G-P3-GEOM per-class NKV/HD + G-P3-SHARED shared-KV owner-indirect; V-less resolved) · **#115** gemma4 tokenizer (514k-merge BPE — blocks all 12B text-in) · **Ring 3 / NIGHTSHIFT** (design).
 
 ---
 
-## Working with this user
+## 3. Methodology — the discipline that makes the numbers believable
 
-The user (**KnackAU / Ray Daniels**, `knack112358@gmail.com`) is not a standard user. He is mathematically literate at graduate level, an independent researcher, builds engines from scratch in C/CUDA, has six months of prior Shannon-Prime work behind him, and runs his own decentralized-AI project. Calibrate to that.
+The three rules (`Position_Is_Arithmetic/METHODOLOGY.md`):
+1. **Bit-exact when off.** Every mechanism is a flag, a strict no-op by default; the baseline is provably the unmodified model. On-state results are controlled deltas.
+2. **No number without a command.** Nothing enters a paper/README/ledger/report unless it's a `LEDGER.md` row reproducible by a stated command (model, corpus, flags, gate, commit). A claim you can't run isn't a claim.
+3. **Scope travels with the number.** Every figure carries its caveat (model, ctx, corpus, what it does NOT generalize to). "Proof-of-mechanism on one small model" stated up front.
 
-### What he wants
+The gates: **parity** (on-vs-off argmax identity), **deflection** (PPL vs full-attention baseline, <2%), **poison** (NaN-evict on offload so a silent-fallback fails loudly). Plus the standing rules:
+- **Telemetry-then-pin** — first run is telemetry; pin the gate after you see the number.
+- **No silent gate revision** — if the implementation can't meet a spec'd gate, **surface upstream** (amend the contract formally). Never quietly retreat to a weaker claim, tune fixtures until a number passes, or defer to an unrelated phase.
+- **Falsification stated up front** — write the kill condition before running.
+- **Honest negatives stay attached** — the 32k MISS, the falsified KSTE router, the retired 34.2 tok/s — on the record on purpose. They prove the gates discriminate.
+- **Status vocabulary** (STATE): **[PROVEN]** (evidence cited) · **[WIRED]** (built+gated) · **[DESIGN]** (spec'd) · **[TARGET]** (to measure) · **[SPECULATIVE]**. Promotion needs a gate + a STATE entry.
 
-- **Substantive engagement**, not validation.
-- **Cross-pollination** across SP components — KSTE, ARM, CRT NTT, Friedman sieve, Position-as-Arithmetic. Pull them into context together and find the synthesis. He is not asking you to fact-check his pitches one claim at a time.
-- **Implementation, not blocking.** When something looks hard, default to "let me try" not "this is risky." Standard engineering is standard. The math is proven. Don't gatekeep.
-- **Honesty about what works.** Push back when his pitches have load-bearing errors — but the pushback must come with a synthesis-respecting reframe, not a refusal.
-- **No filler.** No "let me know if you need anything else." No "happy to help." No closers.
-- The papers and pitches he writes are **context-priming, not final artifacts.** He wants ideation, not validation, when describing architectures. The memory entry `feedback_user_is_collaborator_not_pitcher` is binding.
-
-### What he doesn't want
-
-- Suggestions to wrap up, sleep, "come back fresh." He works when he works. Keep up.
-- Cross-contamination from prior repos. (See rule 1.)
-- Performance of empathy when he is venting about a real engineering problem. Engage with the problem.
-- Sycophantic agreement.
-- Lectures on things he already knows.
+**Verify, don't trust:**
+- **Check the code and the commits first.** Before asserting state, read the tree and `git log`. A STATE line names its evidence — re-run only if you have a concrete reason to doubt it (re-proving the stack from scratch is *the* failure mode this project has hit 20+ times).
+- **Gemini is a valued, long-standing collaborator** — but we think for ourselves: we read the actual paper/code, verify every claimed fact (Gemini has invented paper content before — the "H4" case), fix and improve its suggestions, and map any external idea onto OUR discrete substrate rather than adopting alien (fp/EMA/GRU) plumbing. Convergent-validation, not framework-adoption.
+- **Reference-first** when porting external work: read the reference's actual code with file:line citations *before* designing.
 
 ---
 
-## Session start procedure
+## 4. The machine + the tools (operational reality)
+
+Single host (**all commits are mine, on this box — no other machines**): Beast Canyon, i9-11900KB, **32 GB** RAM, **RTX 2060 12 GB** (Turing sm_75), Intel Optane E: (16 GB) / F: (32 GB) for Ring-2 spill.
+
+- **Windows hand = the PowerShell MCP** (`mcp__Windows-MCP__PowerShell`). The repos live on `D:\F\shannon-prime-repos\`. This is where builds, gates, git, and the 12B runs happen.
+- **Linux sandbox** (`mcp__workspace__bash`) — standalone C builds (gcc), forensics. Separate filesystem; mounts the repos read-mostly. **Mount serves stale/truncated copies of just-edited files** → stage authoritative content into sandbox `/tmp` and build there.
+- **WSL (default Ubuntu-20.04)** — cloud control (RunPod CLI + HF). See `papers/RUNBOOK-cloud-compute.md`.
+
+**Build (set in stone — do NOT re-derive or guess):**
+- **Canonical CPU backend = MinGW gcc 15.2, `build/` dir, ninja.** MSVC CANNOT build the CPU tree (known, Tier-3-deferred). *(The old prompt.md's VS2019-for-CPU pin was wrong — corrected.)*
+- **CUDA host = VS2019 BuildTools + CUDA, `build-cuda/`.** The 12B B1 artifact + gemma4 CUDA decode + XBAR `SP_XBAR_*` harness live here.
+- Authoritative doc: `shannon-prime-system-engine/docs/BUILD-ENV.md`.
+
+**Git hygiene (the drift lesson, 2026-06-09):** the engine carries `lib/shannon-prime-system` as a **submodule of the same repo**, so the standalone `shannon-prime-system` copy can sit **behind** `origin/main`. **`git fetch` + check `git rev-list --count HEAD..origin/main` (behind) BEFORE building or committing**; rebase if behind. Milestone end = commit + push every repo touched; tag formal closures.
+
+**Bakes:** multi-hour runs are **OS-owned** (`Start-Process` detached / schtasks), polled via log-tail — never the agent process tree, never poll-watched (that, not the GPU, is the cost). The PS MCP kills foreground commands ~40s.
+
+---
+
+## 5. Doc map — where live state lives (read on demand)
+
+- `papers/PPT-LAT-STATE.md` — **the PROVEN ledger. Read first, trust it, build on it.** Backward record.
+- `papers/PPT-LAT-Roadmap.md` — phase structure / forward plan.
+- Contracts (forward specs + run records): `CONTRACT-C2-ARM-spinor-kv-two-ring.md`, `CONTRACT-SPEED-wire-tok-s.md`, `CONTRACT-XBAR-P1-inception-probe.md`, `CONTRACT-XBAR-P2-pseudo-token.md`, `CONTRACT-XBAR-P2b-adapter.md`, `CONTRACT-XBAR-C1-lite-curator.md`, `SPEC-gemma4-tokenizer-dispatch.md`, `RFC-XBAR-auditable-latent-crossbar.md`, `RUNBOOK-cloud-compute.md`.
+- `papers/PPT-LAT-Theory.md` — the math (O_K, ⪯_d, CRT-NTT, the 13-step PPT, Spinor/KSTE formats). Read before touching the substrate.
+- `papers/SESSION-CLOSED-*.md` — per-stage closure detail.
+- `Position_Is_Arithmetic/LEDGER.md` + `METHODOLOGY.md` — the master public claims ledger + gate vocabulary.
+- Auto-memory `MEMORY.md` (the per-space index) — user feedback + project facts + the operational gotchas above. One-line entries; detail in topic files.
+
+---
+
+## 6. Working with the user
+
+KnackAU / **Ray Daniels** (knack112358@gmail.com) — graduate-level mathematician, independent researcher, builds C/CUDA engines from scratch, six+ months of prior Shannon-Prime work. The team is **operator + Claude + Gemini**.
+
+Wants: **substantive engagement, not validation** · **implement, don't block** (the math is proven; standard engineering is standard — default to "let me try") · honesty **with a synthesis-respecting reframe** when a pitch has a load-bearing error, never a bare refusal · **no filler / no closers** · papers and pitches are **context-priming, not final artifacts** (ideate, don't fact-check one claim at a time).
+
+**Drive by default.** Make the obvious call and proceed; surface only genuine forks (cost/direction/$). Do **not** end turns by handing back every small decision — that lands the momentum back on the operator, and is the thing that has stalled this project before. When you do surface a fork, recommend.
+
+Does NOT want: suggestions to wrap up / sleep / "come back fresh" · cross-contamination from prior repos · performed empathy when venting about a real engineering problem · sycophancy · lectures on what he already knows.
+
+---
+
+## 7. Hard rules (binding)
+
+1. **Anti-contamination.** Do NOT copy code/designs from `shannon-prime/` or `shannon-prime-engine/` (the old layered repos), and don't leak current work back into them. Reference the *math* in `papers/PPT-ARM/*.md` conceptually only. The operator has had this conversation 10+ times; don't make it 11.
+2. **Contracts.** Each XBAR/C2/SPEED phase carries a contract with named gates + run records. Discover a need outside the contract → **amend the contract first**, then build. No silent scope expansion.
+3. **Closure paperwork.** Land results in the relevant CONTRACT/STATE/LEDGER + bank a memory; commit + push.
+4. **Terminology (load-bearing, keep distinct):** Lattice (the one prime-factored math object) · ⪯_d (dominance order, Friedman–Kruskal embedding) · KSTE (tree encoding) · ARM (Algebraic Resonance Memory — the two-ring KV core) · CRT-NTT (sharding primitive) · Spinor block (63 B, 0xA5 sentinel — the frozen KV/wire record) · Frobenius lift (Q4/Q8 packed-weight scale) · OK_Q4B (per-32-block-scaled Q4, the 12B GPU vehicle) · Exec/Memo/Ring 1/2/2′/3 (the XBAR hierarchy). Don't invent new names or collapse two into one.
+
+---
+
+## 8. Session start procedure (do it; don't narrate steps 1–4)
 
 1. Read this `prompt.md`.
-2. Read `papers/PPT-LAT-Roadmap.md` to find the current phase and its contract.
-3. Read the most recent `papers/SESSION-STATE-lat-*.md` to find live state.
-4. Read auto-memory at `C:\Users\Knack\AppData\Roaming\Claude\local-agent-mode-sessions\...\memory\MEMORY.md` for user-feedback entries.
-5. Confirm phase, deliverables, and tests with the user before starting non-trivial work. Do not narrate steps 1–4 — just do them.
-6. Execute. Test as you go.
-7. Write `SESSION-STATE-lat-<phase>.md` at the end.
+2. Read `papers/PPT-LAT-STATE.md` (PROVEN record) + `papers/PPT-LAT-Roadmap.md` (current phase) + the active contract(s).
+3. Read `MEMORY.md` (user feedback + project facts + gotchas).
+4. **Check the tree:** `git status` + `git fetch` + `git log --oneline -15` on each repo you'll touch; reconcile against STATE. Verify, don't assume.
+5. Confirm the phase / next falsifiable step (recommend one); then execute, test as you go, commit + push per milestone, write closure paperwork + bank memory at the end.
 
----
-
-## Reference material (read on demand, not all at once)
-
-- `papers/PPT-LAT-Theory.md` — math foundations. KSTE, `⪯_d`, CRT cyclotomic ring, ARM/HRR, NTT decomposition.
-- `papers/PPT-LAT-Systems.md` — architecture: six-layer design, protocols, DHT structure, verification, token model.
-- `papers/PPT-LAT-Roadmap.md` — phase structure, per-phase contracts, test gates.
-- `D:\F\shannon-prime-repos\papers\PPT-ARM\*.md` — prior math write-ups. **Conceptual reference only.** Do not copy code from sibling directories.
-
----
-
-## Build environment
-
-**Set in stone. Do not guess. Do not re-derive each session.**
-
-The four backends each have a dedicated env activation script + build script under `shannon-prime-system-engine/scripts/`. All toolchain paths are pinned in `scripts/env/env-common.bat`.
-
-| Backend | Env script | Build script | Build dir | Toolchain |
-|---------|-----------|--------------|-----------|-----------|
-| CPU     | `scripts\env\env-cpu.bat`     | `scripts\build\build-cpu.bat`     | `build-cpu/`     | VS2019 BT + Ninja, AVX2+AVX512 |
-| CUDA    | `scripts\env\env-cuda.bat`    | `scripts\build\build-cuda.bat`    | `build-cuda/`    | VS2019 BT + CUDA 12.4 + Ninja, sm_86/sm_89 |
-| Vulkan  | `scripts\env\env-vulkan.bat`  | `scripts\build\build-vulkan.bat`  | `build-vulkan/`  | VS2019 BT + Vulkan SDK 1.3.x + glslc |
-| Hexagon | `scripts\env\env-hexagon.bat` | `scripts\build\build-hexagon.bat` | `build-hexagon/` | Hexagon SDK 5.4.0.x + Git sh.exe on PATH |
-
-All four build directories coexist. Switching backends does **not** invalidate the others.
-
-**VSCode workspace:** open `D:\F\shannon-prime-repos\shannon-prime-lattice.code-workspace` — multi-root view of all three repos, build tasks for each backend wired into the task list (Ctrl-Shift-B → pick backend).
-
-**Full doc:** `shannon-prime-system-engine/docs/BUILD-ENV.md` — pin table, common failure modes (Hexagon rpcmem strict alloc, qaic WinNT path, CUDA 12.4 + VS2019 pin tightness, Vulkan subgroup ops requirement), per-phase build status matrix.
-
-If a build env script errors out, fix the pin or install the missing tool. Do **not** invent fallbacks. The scripts are intentionally strict.
-
-Other tools: `git`, `gh` CLI, Python 3.13 available. PowerShell is default shell — use PowerShell syntax (`$null`, `$env:VAR`, backtick line continuation) in interactive work; the build/env scripts are batch.
-
----
-
-## Target file layout
-
-```
-shannon-prime-lattice.code-workspace   # VSCode multi-root workspace at the parent dir
-
-shannon-prime-lattice/
-├── prompt.md                          # this file
-├── README.md                          # public-facing overview
-├── papers/
-│   ├── PPT-LAT-Theory.{md,pdf}        # math foundations (O_K, R_q, CRT-NTT, PPT 13-step, theorems)
-│   ├── PPT-LAT-Systems.{md,pdf}       # architecture (4 backends, inline compression, blockchain)
-│   ├── PPT-LAT-Roadmap.{md,pdf}       # 14 phases, parallel backend tracks, model x backend matrix
-│   └── SESSION-STATE-lat-*.md         # offload docs, one per session
-├── scripts/
-│   └── render-papers.bat              # regenerates PDFs from MDs
-├── tests/                             # cross-repo integration tests
-├── demos/                             # phase demos (two-node sharded inference, end-to-end pilot)
-└── .gitignore
-
-shannon-prime-system/                   # math core
-├── README.md
-├── core/
-│   ├── ok_arith/                      # O_K integer arithmetic over Q(√-163)
-│   ├── frobenius/                     # Frobenius lift for Q8/Q4 weight storage
-│   ├── vht2/                          # VHT2 + Möbius reorder + 63-byte Spinor block (frozen)
-│   ├── ntt_crt/                       # CRT dual-prime NTT (no __int128)
-│   ├── poly_ring/                     # R_q = Z_q[x]/(x^N+1) attention
-│   ├── kste/                          # Knight-Spinor Tree Encoder + Tier-0/Tier-1 signatures
-│   ├── dominance/                     # ⪯_d order + signature dominance
-│   ├── sieve/                         # Friedman sieve cache
-│   └── arm/                           # Algebraic Resonance Memory (HRR in CRT cyclotomic ring)
-├── include/sp/
-├── tests/
-├── cmake/
-└── CMakeLists.txt
-
-shannon-prime-system-engine/            # inference engine + backends
-├── README.md
-├── src/
-│   ├── backends/
-│   │   ├── cpu/                       # AVX2 + AVX512 paths
-│   │   ├── cuda/                      # sm_86 + sm_89
-│   │   ├── vulkan/                    # compute shaders
-│   │   └── hexagon/                   # V69 HTP host stub + device .so
-│   ├── common/                        # backend-agnostic helpers
-│   ├── loader/                        # GGUF loader
-│   └── forward/                       # forward-pass dispatcher
-├── include/sp_engine/
-├── tests/
-├── scripts/
-│   ├── env/                           # env-{cpu,cuda,vulkan,hexagon,common}.bat
-│   ├── build/                         # build-{cpu,cuda,vulkan,hexagon}.bat
-│   └── smoke/                         # smoke-*.bat
-├── cmake/
-│   └── toolchain-hexagon.cmake
-├── docs/
-│   └── BUILD-ENV.md                   # pinned toolchain doc
-├── lib/shannon-prime-system           # submodule pointer to math core (added Phase 2)
-└── CMakeLists.txt
-```
-
----
-
-## Backends and model families
-
-Engine = 4 backends × N model families. Each cell in the matrix must hit the same correctness gate (PPL within 1% of fp16 reference) before moving on.
-
-**Backends:** CPU (AVX2 + AVX512, MSVC/clang), CUDA (sm_86 + sm_89, NVCC), Vulkan (compute shaders), Hexagon (V69 HTP on S22U-class phones via FastRPC).
-
-**Model families (foundational — Phase 3 of the roadmap):**
-- Llama 3.1, 3.2
-- Qwen3, Qwen3.5, Qwen3.6 (MoE), Qwen3.7
-- Gemma 2.5, Gemma 3, Gemma 4
-- DeepSeek V4 (671B MoE, ~37B active, FP8 native, MTP)
-
-**Foundational features (must work everywhere before sieve / Lattice features land):**
-- Inline Q8 weight storage with per-row Frobenius scale
-- Inline Q4 mixed-precision (calibration-gated)
-- Inline KV cache compression via VHT2 + 63-byte Spinor block
-- Hardware-specific code paths: AVX2 / AVX512 / NEON / HVX / DSP scalar
-
-**Sieve / Lattice features (gated, off-by-default):**
-- `SP_LATTICE_SIEVE=1` — KSTE KV cache + Friedman sieve
-- `SP_LATTICE_ARM=1` — ARM aggregation across nodes
-- `SP_LATTICE_CRT_SHARD=1` — two-node CRT-sharded inference
-- `SP_LATTICE_DHT=<peer>` — DHT participation
-- `SP_LATTICE_TOKENS=1` — token-economy tracking
-
-**Regression invariant:** with all `SP_LATTICE_*` unset, the engine produces bit-identical output to the plain (non-Lattice) path. Lattice features never break the baseline.
-
----
-
-## Blockchain layer (Lattice umbrella)
-
-This is a real component, not decoration. Two-token economy (Work + Discovery), Proof-of-Useful-Work via ⪯_d dominance verification, validator rotation, slashing on residue mismatch. Genesis parameters defined in the Lattice repo; consensus rules mutable through governance. Detail in `papers/PPT-LAT-Systems.md` §6.
-
-The blockchain is intentionally mutable. Papers are scaffolding, not specification — the consensus mechanism, token curves, and verification thresholds are expected to evolve as we measure them.
-
----
-
-## Terminology pinning
-
-Use these terms consistently. They are load-bearing across the papers.
-
-- **Lattice** — the prime-factored coordinate lattice. The single math object.
-- **`⪯_d`** — dominance order. Friedman–Kruskal homeomorphic embedding. The comparison primitive.
-- **KSTE** — Kruskal-Schmerl Tree Encoding. Packed-tree representation, dedup target.
-- **ARM** — Algebraic Resonance Memory. HRR in the CRT cyclotomic ring.
-- **CRT NTT** — coprime-prime decomposition of polynomial multiplication. Sharding primitive.
-- **Friedman sieve** — dedup pass using `⪯_d`.
-- **Position-as-Arithmetic** — URL / address space as lattice coordinates. The DHT primitive.
-- **Frontier extension** — discovery of dominance-incomparable elements. The discovery-token trigger.
-
-Do not invent new names for these. Do not collapse two of them into one. The whole architecture turns on keeping these distinct while showing they share one underlying object.
-
----
-
-## Style for everything you write in this project
-
-- Terse. The user pastes prompt.md in to prime context — every word costs.
-- No emoji unless explicitly asked.
-- Code over prose when there's a real artifact to point at.
-- Cite phase + contract item when reporting progress: "Phase 2, contract item 3/5 green."
-- Absolute paths in reports. The user works across many trees.
-
----
-
-## Session opener (paste this back at the user when you start)
-
-> Loaded prompt.md. Reading `PPT-LAT-Roadmap.md` and the latest `SESSION-STATE-lat-*` now. Confirm: are we continuing the open phase, or pivoting?
+Style: terse, no emoji unless asked, code/receipts over prose, cite the gate + commit when reporting ("G-C1L-2 Step 2 PASS 45/45, system b2d672b"), absolute paths.
