@@ -60,6 +60,19 @@ The inversion ran on the real gemma-4-12B (gold bucket, byte-verified `google/ge
 
 **Pinned follow-ups:** (a) the on-silicon generation-coherence test above (local, free, decisive); (b) a λ-sweep tracing the F Pareto front (cloud) once (a) says which end we want; (c) hull-entropy median 3.05 vs ln(64)=4.16 says Arm H concentrates on ~6–8 effective neighbors — the adapter's hull head can be narrow. Cost of the run: ~$0.50 (A6000, ~1.5 h across two launches).
 
+### G-P2b-3a ON-SILICON GENERATION TEST — run record 2026-06-09 (B1 quantized 12B, 2060)
+
+Picked the most off-manifold-exploiting F span (s12, kl_final **0.0135**, dist-to-token **16.7**) vs its on-manifold H twin (0.066, 0.69); reconstructed the exact 64-token wikitext context; injected k=2 golden vectors at rows 64–65 via `SP_XBAR_EMB`; greedy free-gen 48 tokens on the B1 artifact. Real span = `" of the sons died in infancy"`. Receipts `_xbar/parity/`.
+
+| arm | distinct% | continuation |
+|---|---|---|
+| **B0 real span** (control) | **15%** | "He was the son of the emperor." × loop |
+| H on-manifold | 27% | "757, the youngest, was still alive. He" → newline collapse |
+| F off-manifold | 29% | "He was the son of the king of the 750s…" fluent, on-topic, looping |
+| drop (no span) | 42% | most diverse, on-topic |
+
+**Verdict: INCONCLUSIVE-but-encouraging — the catastrophic-collapse hypothesis is NOT supported.** The decisive observation is the *control*: B0, fed the **real tokens**, degenerates *hardest* (15%, tight loop). This is the P1 greedy-wikitext confound (base/it-model on raw prose without a chat template loops under greedy decode) — so "degeneration" cannot be the clean falsification signal here, because it is present with ground truth. Within that limit: F's first sentence is coherent and on-topic, and F's distinct-rate (29%) ≥ H (27%) ≥ B0 (15%). **The off-manifold vector does not degrade generation relative to the real span it replaces; the α=0.5 immediate-collapse mode did not occur.** It does NOT earn a clean G-P2b-3 PASS — a subtler off-manifold gap could be masked by the looping baseline. **Clean re-test (the real G-P2b-3): re-run the cloud inversion on chat-template / coherent-generation contexts (the P1.b regime, where B0 is fluent), then repeat this parity test — degeneration becomes a meaningful signal only when the baseline is coherent.** Operating-point lean from this evidence: off-manifold is *tolerated* (favor the higher-recovery F end), pending the coherent-regime confirmation.
+
 ## 4. Compute plan & receipts
 
 RunPod/Colab A100-class, bf16 HF checkpoint from the proven bucket (the 4.68-gold weights — the ONLY trusted source, STATE doctrine). All cloud runs export: config echo (banner = printed env/args), dataset manifest hashes, loss curves, golden-pair archives. Receipts land in `_xbar/p2b/` + the contract run-record; ledger row only on G-P2b-1..4 green (the standing rule).
