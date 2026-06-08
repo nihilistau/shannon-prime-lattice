@@ -1,0 +1,16 @@
+{
+ "model.safetensors": {
+  "size": 23919549408,
+  "sha256_head1MB_tail1MB": "70256c27617839a951c079b55813fb0a52c8666babd69fdedc139d53ae476434"
+ },
+ "config.json": {
+  "size": 4383,
+  "sha256_head1MB_tail1MB": "5048ccc7d72ff4483eae2a604aacc12bfa14aede490bc46053b912d358c06774"
+ },
+ "tokenizer.json": {
+  "size": 32170070,
+  "sha256_head1MB_tail1MB": "623c4b69229aada604a2b1f1add7496074b3bc9ea40b21aa10fd8246dc836b3e"
+ },
+ "safetensors_header_sha256": "d8b49f990225888acc5734bd55e2c269404d24b5a7dc2d3122be4f75500d8fb4",
+ "tensor_count": 678
+}
