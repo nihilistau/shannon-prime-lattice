@@ -83,9 +83,22 @@ The coherent re-run executed (30 spans × 2 arms, model's-own-generation context
 
 **Reframe (the correct conclusion, not a consolation).** The operating point is NOT lockable by a parity test on a model whose every greedy baseline loops. It is a **P2.b training-time selection**: train with the manifold-penalty λ as a swept hyperparameter (the planned λ-sweep), and select the point with a generation metric robust to greedy looping — temperature-sampled generation, or gold-PPL + distinct% on a *validated-coherent* eval set, or the deployed curator's recall metric. Phase 0 (existence + Pareto, twice) is the durable result and is **CLOSED**; G-P2b-3 folds into P2.b training as the λ-selection gate rather than a standalone parity test. Cost of the coherent run: ~$0.40.
 
+## 3c. The admissible P2.b training framework (agreed 2026-06-09 after the G-P2b-3 reframe)
+
+Phase 0 closed existence + the Pareto; the operating point is selected **during training**, not pre-locked. The cloud loop sweeps the manifold penalty and selects with a metric robust to the greedy-looping instrument that failed G-P2b-3.
+
+**Loss (multi-objective, per the Phase-0 arms):**
+`L = L_KL(student ‖ teacher) + λ · L_manifold`, where `L_manifold` = the soft-min logsumexp over the nearest embedding rows (the Phase-0-stable Arm-F penalty; Arm-H's hull parameterization is the λ→∞ limit). Sweep **λ on a log scale** to export a spectrum of adapters from aggressive/abstract (Arm-F-like, ~94–96% recovery, off-manifold) to constrained (Arm-H-like, ~73%, on-manifold).
+
+**Selection metrics (greedy-coherence is dead; these replace it):**
+1. **PRIMARY — the Curator's Recall Invariant.** The adapter *is* Memo's compaction organ, so the deployed-task metric is the gate: compress an episode to each λ-density, then measure whether **Exec retrieves facts from the compressed episode** (NIAH/QA-over-episode). This is a *retrieval* signal, not a free-generation one — it structurally sidesteps the greedy-loop confound that broke G-P2b-3. The operating point is the λ that maximizes recall-at-budget on held-out episodes.
+2. **SECONDARY — gold-PPL deflection via temperature-sampled rollouts.** PPL of validation continuations under the gold instrument, sampled (T>0) to break greedy loops, multi-seed for variance control. Cross-check, not the primary gate (carries sampling variance + a residual coherence-judgment problem).
+
+**Why recall-primary is the Shannon-Prime choice:** it measures what the system is *for* (does the compressed memory still answer questions), it needs no fluent-baseline (the three-times-failed requirement), and it folds the old G-P2b-3 "operating point" question into a number with a receipt.
+
 ## 4. Compute plan & receipts
 
-RunPod/Colab A100-class, bf16 HF checkpoint from the proven bucket (the 4.68-gold weights — the ONLY trusted source, STATE doctrine). All cloud runs export: config echo (banner = printed env/args), dataset manifest hashes, loss curves, golden-pair archives. Receipts land in `_xbar/p2b/` + the contract run-record; ledger row only on G-P2b-1..4 green (the standing rule).
+RunPod/Colab A100-class, bf16 HF checkpoint from the proven bucket (the 4.68-gold weights — the ONLY trusted source, STATE doctrine). All cloud runs export: config echo (banner = printed env/args), dataset manifest hashes, loss curves, golden-pair archives. Receipts land in `_xbar/p2b/` + the contract run-record; ledger row only on the agreed gates green. **Ops upgrades banked from the Phase-0 runs:** the pod bootstrap must **periodic-upload its log** (RunPod community API returns no telemetry — flying blind otherwise; the operator had to pull the console log manually); validate the corpus is *coherent before* inverting (greedy 90-tok generation degenerates — use continue-narrative seeds + shorter gen + sampling if a fluent baseline is ever needed).
 
 ## 5. Convergence note (why this is the home stretch's keystone)
 
