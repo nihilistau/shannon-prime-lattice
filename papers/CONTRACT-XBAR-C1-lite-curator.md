@@ -53,6 +53,24 @@ Original turnkey procedure (now executed; retained for the real-`qwen3_rt.sp-mod
 
 Intact-faithful + zeroed-divergent + off-identical is the honest decode-layer analog of the Step-1 standalone null already passed. Recall-layer + load-seam already green (§C1L.0b Step 1); this closes the model-attention layer.
 
+## 3b. P3 PRE-FLIGHT — gemma4 geometry compatibility audit (2026-06-09, grounded in `core/forward/gemma4.c` + `include/sp/model.h`)
+
+**Why this section exists (operator challenge, 2026-06-09):** XBAR's deployment target is gemma-4-12B, but the ARM two-ring + curator + replay are wired ONLY into the qwen3 CPU decode (`core/forward/decode.c`; `core/forward/gemma4.c` is forward-only — no decode, no KV cache, no ring). qwen3 is therefore the correct substrate for proving the **model-agnostic curator ALGORITHM** (transactional loop, episode replay) cheaply and bit-exactly — but a qwen3-green gate does **not** prove gemma4-readiness. This audit reads the real gemma4 geometry and scopes exactly what the P3 port must handle. It already **corrected one false alarm and surfaced the real gaps**.
+
+gemma4 geometry ground truth (line-cited): per-layer class `global = (L % g4_swa_period==period-1)`, period 6 → 8 global / 40 SWA over 48 layers (`gemma4.c:148`). GLOBAL = n_head 4 / **n_kv 1 / head_dim 512**, RoPE 1e6 + proportional freqs, full attention (`gemma4.c:11,70,148-157`). SWA = **n_kv 2 / head_dim 256**, RoPE 1e4, sliding window (`gemma4.c:14,71`). Shared-KV: layers `[0,g4_n_kv_from_start)` own K/V; trailing layers reuse an owner (shared SWA→kvfs-2, shared global→kvfs-1) and **skip their own K/V projection** (`gemma4.c:20-22,174,190`; `model.h:52`).
+
+| # | Curator structure | gemma4 reality | Verdict |
+|---|---|---|---|
+| 1 | episode block layout `((L*P)+pos)*KVD*4` (single KVD) | **KVD is CONSTANT 512** both classes (SWA 2×256, global 1×512; `gemma4.c:16,79`) | **COMPATIBLE** — the false alarm. The byte layout + the decode.c replay injection survive gemma4 unchanged dimensionally. |
+| 2 | recall router `projk[L][P][NKV][r]` + `sp_arm_select` project per-kv-head over `head_dim` | per-layer-class **NKV (1 vs 2) and head_dim (512 vs 256)** | **GAP — P3.** projk + select must carry per-layer-class NKV/HD; a single global NKV/HD (qwen3) is wrong for gemma4. |
+| 3 | ring spills EVERY layer's K/V per position; recall reads `(L,pos)` | shared layers (`L≥kvfs`) **mint no K/V**; reuse an owner's | **GAP — P3.** curator must skip shared layers on spill and **owner-indirect** on recall; episode manifest needs an owner map / own-vs-shared skiplist. |
+| 4 | one uniform Ring-1 window/sink policy | SWA layers carry the model's OWN sliding window; globals are full-attn | **GAP — P3.** ring-window × model-SWA interaction is untested; globals (full-attn, 1 kv-head, 75% unroped) and SWA need separate recall policy. |
+| 5 | episode stores K and V as **independent** blocks | oracle projects V (weightless-norm, `gemma4.c:186`), but eta-5b SESSION-CLOSED says the **12B globals are V-less (V = raw K)** | **CONFIRM — P3.** resolve oracle-vs-12B before finalizing the episode V-block for global layers (independent vs derived). |
+
+**P3 sub-gates (named now so the port has explicit targets):** G-P3-GEOM (per-layer-class NKV/HD in projk + select; parity vs gemma4 oracle), G-P3-SHARED (shared-KV skip/owner-indirect; episode owner map; replay null on a shared-layer episode), G-P3-WIN (SWA-window × ring-window; globals full-attn recall), G-P3-VLESS (confirm + handle 12B global V semantics). The decode.c replay seam (`SP_REPLAY`) and the episode byte layout transfer **as-is** (finding #1); the router + shared-KV handling are the real port work.
+
+**Scope statement (no false readiness):** C1L.* green = the curator's transactional control flow + replay/persistence MECHANISM proven on uniform-geometry KV. It does NOT certify the gemma4 jagged/shared/V-less cache — that is P3, gated above. Development stays on the fast bit-exact qwen3 substrate (operator-endorsed); P3 is the gemma4-readiness gate.
+
 ## 4. Scope discipline
 
 C1-lite proves the curator's **control flow + a working heuristic on real KV**, nothing about learned compression (that is C2 = the P2.b adapter applied to ring state). It runs entirely on the qwen3 CPU path; the gemma4-CUDA ring is P3. NIGHTSHIFT (N1) = C1-lite's loop run offline under schtasks over a persisted episode — so C1L.0's persistence format is also NIGHTSHIFT's episode format. No silent gate revisions; surface upstream.
