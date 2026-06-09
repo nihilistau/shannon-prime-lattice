@@ -30,7 +30,7 @@ WIRED / closed (internal):
 - **P2.b recall-invariant decider** (2026-06-09): operating point = **Arm F (off-manifold)**; the convex-hull Arm H is **recall-hostile** (RFC §4 "semantically-wrong-but-valid" measured). P2.b λ = light regularizer toward F.
 - **C1-lite COMPLETE** (qwen3 CPU two-ring): C1L.0a re-projection + C1L.0b replay (34/34) + C1L.1 transaction + C1L.2 cold-evict (45/45). Tag `xbar-c1-lite-complete`.
 
-OPEN (the forward edge): **P2.b adapter training** (cloud, λ-sweep, select by recall invariant) · **P3** = ring-on-gemma4-CUDA (gaps G-P3-GEOM per-class NKV/HD + G-P3-SHARED shared-KV owner-indirect; V-less resolved) · **#115** gemma4 tokenizer (514k-merge BPE — blocks all 12B text-in) · **Ring 3 / NIGHTSHIFT** (design).
+OPEN (the forward edge): **P2.b adapter** — Fork-2 readback-CE made the recall invariant WORK (3-seed 80–84/100 vs 58≈chance; recovery held ~0.18); λ_read band [0.25, 0.5]; **k-sweep in flight** (k∈{1,3,4,6}; k=6 = compression-vs-adapter-limit control; CONTRACT-P2b §3i) · **P3** = ring-on-gemma4-CUDA (gaps G-P3-GEOM per-class NKV/HD + G-P3-SHARED shared-KV owner-indirect; V-less resolved) · **#115** gemma4 tokenizer (514k-merge BPE — blocks all 12B text-in) · **Ring 3 / NIGHTSHIFT** (design) · **GNA Stage 3** (HW bring-up; kit staged in `archive/notes_and_stuff/GNA/`).
 
 ---
 

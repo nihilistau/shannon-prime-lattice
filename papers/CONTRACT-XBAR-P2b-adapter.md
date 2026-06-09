@@ -235,6 +235,27 @@ Reads: (1) raw recall (readback_F) improves monotonically with λ (3.38→3.32�
 
 **VERDICT (scan):** usable band **[0.25, 0.5]**; avoid ≤0.1 (unstable) and ≥1.0 (tension). **λ=0.5 is the candidate operating point**, BUT its edge over the 3-seed-confirmed λ=0.25 sits *inside* the λ=0.25 seed spread → NOT pinned on n=1 (the single-seed lesson). DECISION step: 3-seed confirm at λ=0.5 vs the λ=0.25 anchor; if 0.5 holds its edge across seeds it's the operating point, else 0.25 stands (already confirmed). Either way the band is locked. THEN: close the recovery gap (k>2 / larger adapter — Fork-1, now evidence-justified) and contrastive if it plateaus.
 
+## 3i. FORK-1 k-SWEEP — the compression/recovery Pareto front (PRE-REGISTERED; IN FLIGHT 2026-06-09/10, pod l4e73rex8m3sxs A6000; receipts HF `results_ksweep/k_<v>/`)
+
+**Pre-registered design (locked in `bootstrap_ksweep.sh` before spend):** vary ONLY k (pseudo-token count) at the adopted λ_read=0.5 (the §3h-sweep knee); span n=6 fixed; seed 20260609; identical corpus / disjoint split / 11.3M architecture as §3g/§3h. k ∈ {1,3,4,6}; k=2 is the held 3-seed anchor. **k=6 (=n, NO compression) is the DIAGNOSTIC CONTROL — it separates compression-limit from adapter-limit:** if removing the bottleneck sends recovery toward the per-span inversion ceiling (~0.94/0.73), the 6→k squeeze was the binding constraint (lever = k); if recovery stays ~0.2 regardless of k, the d=512/11.3M adapter caps recovery (lever = adapter capacity/data — Fork-1's capacity arm — NOT more tokens). Single-seed scan → 3-seed confirm at the knee. Per-k upload inside the loop + self-terminating trap (the Fork-2 ops lessons applied).
+
+Landed so far (BEST = recall-margin early-stop checkpoint):
+
+| k | comp (6/k) | F_beats_null | margin null−F | recovery_med |
+|---|---|---|---|---|
+| 1 | 6× | **88/100** | **0.579** | 0.101 |
+| 2 (anchor, 3-seed) | 3× | 84 | 0.56 | **0.206** |
+| 3 | 2× | 72 | 0.453 | 0.184 |
+| 4 | 1.5× | *pending* | | |
+| 6 (control) | 1× | *pending* | | |
+
+Interim reads (NO verdict from a partial scan — the §3g lesson; verdict waits on `STATUS=DONE` + k=6):
+1. **Dilution confirmed directionally** — recall falls monotonically with k (88→84→72 across three points): more pseudo-tokens dilute the address key.
+2. **Recovery plateaus at k=2** (0.101 → 0.206 → 0.184) — capacity for continuation stops paying after two vectors; the adapter-limited tell.
+3. **Recall and recovery ANTI-CORRELATE along k** — k=1 is the *most selectable* address (88/100, best margin) at half the recovery; addressability and continuation capacity pull in opposite directions along this axis.
+
+**Pre-stated k=6 predictions (written before its receipt):** adapter-limited ⇒ recovery_k6 ≈ 0.18–0.22 with recall sliding further (~60s); compression-limited ⇒ recovery_k6 breaks well above ~0.25 toward the inversion ceiling. If adapter-limited holds, k=2 stands as the product-maximizing knee and the next lever is adapter width/depth/data; k>2 is retired as a recovery lever.
+
 ## 4. Compute plan & receipts
 
 RunPod/Colab A100-class, bf16 HF checkpoint from the proven bucket (the 4.68-gold weights — the ONLY trusted source, STATE doctrine). All cloud runs export: config echo (banner = printed env/args), dataset manifest hashes, loss curves, golden-pair archives. Receipts land in `_xbar/p2b/` + the contract run-record; ledger row only on the agreed gates green. **Ops upgrades banked from the Phase-0 runs:** the pod bootstrap must **periodic-upload its log** (RunPod community API returns no telemetry — flying blind otherwise; the operator had to pull the console log manually); validate the corpus is *coherent before* inverting (greedy 90-tok generation degenerates — use continue-narrative seeds + shorter gen + sampling if a fluent baseline is ever needed).
