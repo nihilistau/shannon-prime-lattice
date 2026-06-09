@@ -267,6 +267,26 @@ Interim reads (NO verdict from a partial scan — the §3g lesson; verdict waits
 
 **CONSEQUENCE (the Fork-1 pivot, evidence-forced):** **k is retired as a recovery lever.** The gap to the 0.94 per-span inversion ceiling is an *adapter* problem: capacity (d512 width / 2-layer depth / 11.3M params, contract cap ≤50M), training data volume, and the deferred contrastive/InfoNCE uniqueness term. **Operating point pinned at k=2, λ_read ∈ [0.25, 0.5]** (the remaining decision: 3-seed confirm of λ=0.5 vs the 0.25 anchor). Next run = the capacity arm at the pinned point, recall-invariant primary, ≥3 seeds before any band is pinned.
 
+## 3j. THE CAPACITY ARM — width/depth grid at the pinned point (PRE-REGISTERED 2026-06-10, before spend)
+
+**Design:** hold EVERYTHING at the §3i pinned point — k=2, n=6, λ=0.1, λ_read=0.5, loss-mode both, 16k corpus, disjoint val-frac 0.25, 2000/100 spans, 6 epochs, recall-margin early-stop — and vary ONLY adapter architecture, **×3 seeds {20260609,10,11} per config** (gains are hunted above a ~±0.02 noisy floor; single-seed is inadmissible here by standing rule). Param counts computed from the real `train_p2b.py` Adapter (in/out E=3840 projections ≈4M fixed/side; encoder ≈12d²/layer):
+
+| config | params | role |
+|---|---|---|
+| d512 / L2 | 11.3M | baseline — **doubles as the deferred 3-seed λ=0.5-vs-0.25 confirm** (the λ=0.25 anchor is the existing 3-seed; this leg closes the band decision) |
+| d1024 / L2 | ~37.3M | width-heavy arm |
+| d512 / L4 | ~17.6M | depth-heavy arm |
+| d1024 / L3 | ~49.9M | combined, AT the ≤50M cap (d1024/L4 = ~62M would bust it — rejected, no silent cap amendment) |
+
+Width/depth arms are NOT param-matched (37.3 vs 17.6M) — they read as width-heavy vs depth-heavy; the capacity axis proper is the monotone series 11.3→17.6→37.3→49.9M. Bootstrap enforces the cap mechanically (computes params pre-run; CAP-EXCEEDED = skip + log). Hardware: A6000 (batch=1 latency-bound — the banked GPU-matching rule; the 12B backward dominates, the +50M adapter ≈ +0.6 GB optimizer state). 12 runs ≈ 21 GPU-h ≈ $7, split over two self-terminating pods (per-RUN upload).
+
+**PRE-STATED FALSIFICATION MATRIX (locked before spend):**
+- **CAPACITY-WORKS** → some expanded config's 3-seed median recovery ≥ ~0.25 (clears the 0.206 baseline by ≥2× seed spread) with F_beats_null ≥ ~75 → capacity is the lever; continue along the winning axis (and data next).
+- **NOT-CAPACITY (data/objective-limited)** → all configs flat ~0.20 — or *worse* via faster overfit on 2000 spans (early-stop will show best-epoch ≪ final) → capacity retired at this data scale; fork = data volume/diversity, then the contrastive/InfoNCE uniqueness term.
+- **RECALL-TENSION** → recovery rises but F_beats_null drops materially (<~70) → added capacity is being spent blurring the address key → contrastive term and/or λ_read upward before more width/depth.
+
+Cross-config comparisons are within-grid (identical data/split/seeds); the §3i k=2 anchor is the external reference. VERDICT only on STATUS=DONE × both pods, all 12 receipts (standing rule).
+
 ## 4. Compute plan & receipts
 
 RunPod/Colab A100-class, bf16 HF checkpoint from the proven bucket (the 4.68-gold weights — the ONLY trusted source, STATE doctrine). All cloud runs export: config echo (banner = printed env/args), dataset manifest hashes, loss curves, golden-pair archives. Receipts land in `_xbar/p2b/` + the contract run-record; ledger row only on the agreed gates green. **Ops upgrades banked from the Phase-0 runs:** the pod bootstrap must **periodic-upload its log** (RunPod community API returns no telemetry — flying blind otherwise; the operator had to pull the console log manually); validate the corpus is *coherent before* inverting (greedy 90-tok generation degenerates — use continue-narrative seeds + shorter gen + sampling if a fluent baseline is ever needed).
