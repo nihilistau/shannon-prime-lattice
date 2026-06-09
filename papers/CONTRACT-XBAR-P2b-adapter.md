@@ -158,6 +158,30 @@ The trained adapter (`train_p2b.py`: span embeddings → bottleneck-d512 transfo
 
 **Fix, built + smoked:** (1) tokenized `_wiki_head64k.raw` (65 KB) with the real gemma-4 tokenizer → a **~16k-token corpus** (~3× larger); (2) `train_p2b.py` gains a **DISJOINT train/val split** (`--val-frac`: val spans sampled only from the tail corpus region — zero context leakage) and **early-stop / best-checkpoint** (`adapter_best.pt`; the Phase-1 run shipped the overfit *final* epoch, not the epoch-2 peak). Local toy re-smoke green (clean split + best-checkpoint verified). **Run launched** (A6000, self-terminating): 2,000 spans, 6 epochs, λ=0.1, clean split, early-stop → `results_p1b/lam0.1`. This makes the next G-P2b-1 read **clean**: if recovery still ~0.20 on the leakage-free split, that's the honest amortized-generalization number; if it rises with the larger corpus, data-scale is confirmed as the lever (the operator's capacity-vs-data hypothesis) and we then sweep λ. If it *drops* (the prior 0.20 was leakage), the gap is larger than thought and a still-bigger corpus / different architecture is next. Telemetry-then-pin; band still unpinned. **First p1b attempt (ahwa6mfim1q9yk) failed at the on-pod smoke** (~$0.10, self-terminated before the batch): the on-pod tokenizer wrote space-separated ids on one line, but `train_p2b.py` parsed the corpus newline-per-id (`[int(x) for x in open(f)]`) — fixed to `.read().split()`. The local toy smoke can't catch this (toy path skips the file parse); the **on-pod real-smoke gate caught it pre-batch** — exactly its job. Re-launched **pod 6noo1gnegghfcl**.
 
+## 3g. PHASE 1b — CLEAN-SPLIT RESULT + the correction (DONE 2026-06-08 23:52 UTC, pod 6noo1gnegghfcl self-terminated; cost-capped ✓)
+
+Receipts: HF `KnackAU/xbar-p2b-run` `results_p1b/lam0.1/` (`receipts_train.json`, `adapter_best.pt`, `adapter_final.pt`). Provenance: 11.296M-param adapter, k=2, n=6, ctx=64, cont=24, d=512, enc 2L, nhead 8, lr 3e-4, λ=0.1, tau=1.0, seed 20260609; ~16k-token corpus; 2000 train / 100 val spans; **disjoint split** `train [1,12046) | val [12046,16062)` (banner-confirmed, zero context leakage); 6 epochs, early-stop on `recovery_med`.
+
+| epoch | held-out recovery_med | readback F / null | F beats null |
+|---|---|---|---|
+| init (untrained) | 0.141 | 5.58 / 5.26 | 57/100 |
+| 0 | 0.104 | 3.83 / 3.87 | 43/100 |
+| 1 | 0.132 | 3.64 / 3.87 | 58/100 |
+| 2 | 0.127 | 3.72 / 3.87 | 46/100 |
+| 3 | 0.113 | 3.76 / 3.87 | 52/100 |
+| 4 | 0.085 | 3.96 / 3.87 | 45/100 |
+| **5 (best)** | **0.171** | 3.797 / 3.873 | 54/100 |
+| final | 0.164 | 3.744 / 3.873 | 51/100 |
+
+**CORRECTION ON THE RECORD (no spin).** A mid-run console snapshot (uploaded ep0–ep4 only) drove an over-claimed verbal verdict — *"recovery dropped below untrained init (0.141→0.085), the signature of a network actively unlearning, never beats init, dead end"* — which the operator amplified. **The final epoch (ep5=0.171, final=0.164) falsifies it.** The ep4 dip to 0.085 was a transient in a **high-variance, non-monotone** single-seed trajectory; the best and final epochs both land **above** untrained init (0.141). The truncated log produced the overclaim; the full receipt corrects it. Correction attached, not silently downgraded.
+
+**VERDICT — G-P2b-1 on the leakage-free split: WEAK / INCONCLUSIVE on recovery, NEGATIVE on the recall invariant. Band NOT pinned.**
+- **Recovery — leakage was real but modest.** Leaky §3e peak 0.204 → clean best **0.171** (~0.03 inflation, not the evaporation the partial log suggested). Training clears untrained init (0.141) by only **~+0.03**, and that margin sits *inside* the epoch-to-epoch noise band (0.085–0.171 on one seed). A faint positive pulse, **not bankable without multi-seed** repetition.
+- **Recall invariant — the operative gate — at chance.** Best epoch `F_beats_null` 54/100, `readback_F` 3.797 ≈ `readback_null` 3.873. On the axis the Curator actually selects on (read a span back from its pseudo-tokens), the k=2 compressions carry **no above-noise span identity**. This is the load-bearing negative and it is unambiguous.
+- **Net:** the §3e "weak positive / amortization viable" claim is **retracted as leakage-inflated**; the corrected signal is too weak (recovery) and absent (recall) to call the mechanism working. But it is **not** the hard dead-end declared from 5/6 epochs — the recovery pulse over init is real if fragile.
+
+**Consequence / next.** The bottleneck is **mechanism, not data scale** (the larger clean corpus did not lift recovery materially, and recall stayed at chance). Two falsifiable forks before any λ-sweep (λ-sweep on a chance-level recall signal remains premature): (1) **capacity/structure of the write** — k>2 pseudo-tokens and/or a larger adapter, testing whether the 6→k bottleneck is simply too tight for a selectable code; (2) **the loss itself** — continuation-KL + soft-min manifold optimizes *next-token continuation*, not *span recoverability*; add an explicit **readback/reconstruction term** so the objective rewards the recall invariant directly rather than hoping it falls out of continuation. Multi-seed (≥3) any next run before pinning a band — the single-seed variance here (±0.04 epoch-to-epoch) is the reason this read stays INCONCLUSIVE rather than positive.
+
 ## 4. Compute plan & receipts
 
 RunPod/Colab A100-class, bf16 HF checkpoint from the proven bucket (the 4.68-gold weights — the ONLY trusted source, STATE doctrine). All cloud runs export: config echo (banner = printed env/args), dataset manifest hashes, loss curves, golden-pair archives. Receipts land in `_xbar/p2b/` + the contract run-record; ledger row only on the agreed gates green. **Ops upgrades banked from the Phase-0 runs:** the pod bootstrap must **periodic-upload its log** (RunPod community API returns no telemetry — flying blind otherwise; the operator had to pull the console log manually); validate the corpus is *coherent before* inverting (greedy 90-tok generation degenerates — use continue-narrative seeds + shorter gen + sampling if a fluent baseline is ever needed).
