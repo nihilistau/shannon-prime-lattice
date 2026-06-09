@@ -197,7 +197,28 @@ Receipts: HF `KnackAU/xbar-p2b-run` `results_p1b/lam0.1/` (`receipts_train.json`
 - **TENSION** → recall rises but continuation-recovery collapses → the two objectives fight at k=2 → evidence-backed trigger for k>2 (Fork 1).
 - **CEILING** → `F_beats_null` stays ~50 across all seeds EVEN while directly optimizing readback → k=2 cannot carry a selectable code → information-theoretic ceiling established as a byproduct → Fork 1 / rethink injection point.
 
-Fork-2 strictly dominates Fork-1: it either fixes recall, or its failure mode hands us Fork-1's ceiling readout for free. Orchestration: bootstrap_fork2.sh / stage_fork2.py / launch_pod_fork2.py / fetch_fork2.py in _xbar/p2b/. VERDICT pending STATUS=DONE (no verdict from in-flight logs — §3g lesson).
+Fork-2 strictly dominates Fork-1: it either fixes recall, or its failure mode hands us Fork-1's ceiling readout for free. Orchestration: bootstrap_fork2{,b}.sh / stage_fork2.py / launch_pod_fork2{,b}.py / fetch_fork2.py in _xbar/p2b/. VERDICT pending STATUS=DONE (no verdict from in-flight logs — §3g lesson).
+
+### Fork-2 RESULT — WORKS, CONFIRMED across 3 seeds (DONE 2026-06-09; receipts HF `results_fork2/seed_<s>/`)
+
+Ops note: seed 20260609 ran on H100 PCIe (pod tpau7g2lwe1hny) — a GPU-mismatch (batch=1 is latency-bound; H100 gave A6000 wall-speed at 28% util / ~6× cost). Caught mid-run; seed-1 salvaged via the RunPod web terminal (`cat` + HF `upload_folder`), H100 terminated, seeds 2&3 cascaded to A6000 (pod p2ydnrm83s3urm, per-seed upload, self-terminated ✓). ~$11 all-in vs ~$24 to ride. Lessons banked: match GPU to workload profile; upload per-unit.
+
+**Recall invariant (the operative gate), final epoch:**
+
+| seed | F_beats_null | recall margin (null−F) | recovery_med |
+|---|---|---|---|
+| 20260609 | 82/100 | 3.870−3.430 = 0.440 | 0.192 |
+| 20260610 | 80/100 | 3.765−3.461 = 0.305 | 0.168 |
+| 20260611 | 84/100 | 4.167−3.891 = 0.276 | 0.181 |
+| **§3g baseline (no readback term, same harness)** | **58/100 ≈ chance** | **≈ 0** | **0.171** |
+
+Best-epoch (recall-margin early-stop) F_beats_null: 78 / 83 / 72 (median 78). Final: 80–84 (median 82).
+
+**VERDICT — G-P2b-1 / recall invariant: WORKS, reproducible.** (1) Recall robustly off chance — every seed 80–84/100 final (6–7σ from p=0.5 at n=100), tight across initializations → not a lucky draw, the §3g single-seed-variance trap does not recur. (2) Recall margin reliably positive (~0.28–0.44 NLL; F below null every seed). (3) **No TENSION** — recovery held at ~0.17–0.19 (≈ §3g's 0.171, not collapsed) → k=2 carries continuation **and** a selectable identity simultaneously. (4) **Causal attribution clean** — §3g (identical corpus/split/architecture, no readback term) sat at chance; the *only* change is `+λ_read·L_readback`, and it flipped recall decisively. The Fork-2 diagnosis is validated: the loss must be computed at the END of the forward (through-model readback), not via embedding-distance proxies (`manifold_pen` already failed that).
+
+**Scope kept honest:** single λ_read=0.25, single corpus, single architecture (k=2, 11.3M). This establishes the **mechanism works**; it is NOT yet the pinned operating point. Recovery (~0.18) is still ~5× below the Phase-0 per-span inversion ceiling (~0.94 free / 0.73 hull) — the adapter now generalizes AND is selectable, but is not at the inversion ceiling (a separate data/capacity optimization, not required for WORKS).
+
+**NEXT (now unlocked):** λ_read sweep {0.1, 0.25, 0.5, 1.0} (best seed or ≥3-seed at the top candidates) to pin the operating point on the recall margin — the §3c/§3d selection, now grounded on a working signal. Then: close the recovery gap (k>2 and/or larger adapter, the deferred Fork-1, now justified by evidence not guesswork) and the contrastive/InfoNCE uniqueness term (deferred from §3h — reach for it if the sweep plateaus). The P2.b adapter now produces Curator-selectable pseudo-tokens — the keystone the XBAR Memo/consolidation lanes were blocked on.
 
 ## 4. Compute plan & receipts
 
