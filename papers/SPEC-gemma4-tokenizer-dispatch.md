@@ -1,9 +1,23 @@
 # SPEC — gemma4 tokenizer dispatch (the 514k-merge BPE)
 
-Status: DESIGN SKETCH (2026-06-08). Implements engine task "fix the gemma4
-tokenizer dispatch + parity gate vs the llama dump". Blocking nothing today
-(every PPL number rides the verified token FIXTURE), but blocks any 12B
-text-in path: daemon serving, NIAH on the 12B, Stage Eta voice prompting.
+Status: **IMPLEMENTED — GATES GREEN (2026-06-10).** Engine `3457a41..3253a82` +
+core `9d3cc72` (SP_TOK_GEMMA4_BPE=4 + a vocab-only-GGUF open fix found en route).
+**T_G4_TOK_PARITY 5432/5432 exact on BOTH lanes** (GGUF-direct AND
+`--tok-only`-transcoded GEMMA4_BPE blob), **T_G4_TOK_ROUNDTRIP 60/60** (incl.
+emoji/CJK/control-byte/invalid-UTF-8 `<0xNN>` fallback). Fixture provenance
+reconstructed: first 24576 B of `archive/eval/wikitext-103-raw/wiki.test.raw`,
+re-verified fresh vs HF tokenizers 0.22.2 (official bucket tokenizer.json).
+No-regression: qwen3 `.sp-tokenizer` SHA-identical through the new dispatch;
+GPT2 lane 45/45 vs stock-llama oracle ids; E_FMT_4_QWEN3 green. Stage-0
+normalizer point: llama-vocab.cpp:3144-3151 (b8861); regex `"[^\n]+|[\n]+"`,
+byte_encode=false. REMAINING (deliberate): the shipped gold-campaign
+`models/gemma4-12b*.sp-tokenizer` blobs are legacy type_id=2 (old loud
+encode-(-1) behavior) until regenerated with `--tok-only` and re-paired via
+`tokenizer_hash` — the gold artifacts were NOT mutated. 12B text-in (daemon,
+NIAH-on-12B, Stage-Eta prompting) is now unblocked behind that regeneration.
+
+*(Original status, for history: DESIGN SKETCH 2026-06-08; every PPL number
+rode the verified token fixture.)*
 
 ## Ground truth (established 2026-06-07, receipts in session record)
 
