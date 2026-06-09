@@ -246,12 +246,12 @@ Landed so far (BEST = recall-margin early-stop checkpoint):
 | 1 | 6× | **88/100** | **0.579** | 0.101 |
 | 2 (anchor, 3-seed) | 3× | 84 | 0.56 | **0.206** |
 | 3 | 2× | 72 | 0.453 | 0.184 |
-| 4 | 1.5× | *pending* | | |
-| 6 (control) | 1× | *pending* | | |
+| 4 | 1.5× | 70 | 0.448 | 0.186 |
+| 6 (control) | 1× | *pending (~21:15 UTC)* | | |
 
 Interim reads (NO verdict from a partial scan — the §3g lesson; verdict waits on `STATUS=DONE` + k=6):
-1. **Dilution confirmed directionally** — recall falls monotonically with k (88→84→72 across three points): more pseudo-tokens dilute the address key.
-2. **Recovery plateaus at k=2** (0.101 → 0.206 → 0.184) — capacity for continuation stops paying after two vectors; the adapter-limited tell.
+1. **Dilution confirmed** — recall falls monotonically with k across FOUR points (88→84→72→70): more pseudo-tokens dilute the address key.
+2. **Recovery plateaus at k=2** (0.101 → 0.206 → 0.184 → 0.186; k≥2 flat within noise) — capacity for continuation stops paying after two vectors; the adapter-limited tell.
 3. **Recall and recovery ANTI-CORRELATE along k** — k=1 is the *most selectable* address (88/100, best margin) at half the recovery; addressability and continuation capacity pull in opposite directions along this axis.
 
 **Pre-stated k=6 predictions (written before its receipt):** adapter-limited ⇒ recovery_k6 ≈ 0.18–0.22 with recall sliding further (~60s); compression-limited ⇒ recovery_k6 breaks well above ~0.25 toward the inversion ceiling. If adapter-limited holds, k=2 stands as the product-maximizing knee and the next lever is adapter width/depth/data; k>2 is retired as a recovery lever.
