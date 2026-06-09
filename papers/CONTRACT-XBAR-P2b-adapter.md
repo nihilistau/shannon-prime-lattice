@@ -220,6 +220,21 @@ Best-epoch (recall-margin early-stop) F_beats_null: 78 / 83 / 72 (median 78). Fi
 
 **NEXT (now unlocked):** λ_read sweep {0.1, 0.25, 0.5, 1.0} (best seed or ≥3-seed at the top candidates) to pin the operating point on the recall margin — the §3c/§3d selection, now grounded on a working signal. Then: close the recovery gap (k>2 and/or larger adapter, the deferred Fork-1, now justified by evidence not guesswork) and the contrastive/InfoNCE uniqueness term (deferred from §3h — reach for it if the sweep plateaus). The P2.b adapter now produces Curator-selectable pseudo-tokens — the keystone the XBAR Memo/consolidation lanes were blocked on.
 
+### Fork-2 λ_read SWEEP — tradeoff curve (DONE 2026-06-09; pod iaun2xu3ep5b5n A6000, self-terminated ✓; receipts HF `results_sweep/lam_<v>/`)
+
+Single-seed scan (seed 20260609) of the NEW points {0.1, 0.5, 1.0}, anchored on the 3-seed λ=0.25 (recall 80–84, recovery ~0.18). best = recall-margin early-stop checkpoint.
+
+| λ_read | F_beats_null (best) | margin null−F | recovery (best) | readback_F | sustained (final F_beats_null) |
+|---|---|---|---|---|---|
+| 0.1 | 73/100 | 0.49 | 0.190 | 3.383 | **NO — 48/100 (decays to chance)** |
+| 0.25 (3-seed) | 78–82 | 0.40–0.55 | ~0.19 | ~3.32–3.46 | yes (80–84) |
+| **0.5** | **84/100** | **0.56** | **0.206** | 3.315 | yes (81) |
+| 1.0 | 78/100 | 0.59 | **0.154** | 3.280 | yes (78), recovery cannibalized |
+
+Reads: (1) raw recall (readback_F) improves monotonically with λ (3.38→3.32→3.28). (2) **λ=0.1 is unstable** — peaks at epoch 1 (73) then decays to chance by final (48); too weak to *sustain* the signal (early-stop caught a transient). (3) **λ=1.0 is the TENSION branch** — recall sustained but recovery collapses 0.21→0.15; strictly worse than 0.5 (pays recovery for raw-recall gain that doesn't even lift F_beats_null). (4) **λ=0.5 is the knee** — max F_beats_null (84) with recovery still at peak (0.206).
+
+**VERDICT (scan):** usable band **[0.25, 0.5]**; avoid ≤0.1 (unstable) and ≥1.0 (tension). **λ=0.5 is the candidate operating point**, BUT its edge over the 3-seed-confirmed λ=0.25 sits *inside* the λ=0.25 seed spread → NOT pinned on n=1 (the single-seed lesson). DECISION step: 3-seed confirm at λ=0.5 vs the λ=0.25 anchor; if 0.5 holds its edge across seeds it's the operating point, else 0.25 stands (already confirmed). Either way the band is locked. THEN: close the recovery gap (k>2 / larger adapter — Fork-1, now evidence-justified) and contrastive if it plateaus.
+
 ## 4. Compute plan & receipts
 
 RunPod/Colab A100-class, bf16 HF checkpoint from the proven bucket (the 4.68-gold weights — the ONLY trusted source, STATE doctrine). All cloud runs export: config echo (banner = printed env/args), dataset manifest hashes, loss curves, golden-pair archives. Receipts land in `_xbar/p2b/` + the contract run-record; ledger row only on the agreed gates green. **Ops upgrades banked from the Phase-0 runs:** the pod bootstrap must **periodic-upload its log** (RunPod community API returns no telemetry — flying blind otherwise; the operator had to pull the console log manually); validate the corpus is *coherent before* inverting (greedy 90-tok generation degenerates — use continue-narrative seeds + shorter gen + sampling if a fluent baseline is ever needed).
