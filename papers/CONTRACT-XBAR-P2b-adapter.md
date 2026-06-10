@@ -287,6 +287,25 @@ Width/depth arms are NOT param-matched (37.3 vs 17.6M) — they read as width-he
 
 Cross-config comparisons are within-grid (identical data/split/seeds); the §3i k=2 anchor is the external reference. VERDICT only on STATUS=DONE × both pods, all 12 receipts (standing rule).
 
+### CAPACITY-ARM VERDICT (2026-06-10; both pods DONE + self-terminated ✓, 12/12 rc=0; receipts HF `results_cap/{a,b}/`) — **NOT-CAPACITY**
+
+**Calibration first (pre-committed):** baseline d512L2 @λ_read=0.5, 3-seed BEST recovery = 0.206/0.138/0.148 → **median 0.148, spread ±0.034** (the n=1 "0.206" anchor seed confirmed as the lucky draw). Re-derived WORKS bar ≈ median + 2×spread ≈ **0.22** — the original 0.25 line survives calibration; thresholds did not need weakening to produce this verdict (the conservative direction).
+
+| config | params | recovery med (3-seed BEST) | recall med | tells |
+|---|---|---|---|---|
+| d512L2 baseline | 11.3M | 0.148 | **84** | seed 20260611 FINAL collapsed (0.075 / 43-100) — λ=0.5 late-training instability on 1/3 seeds |
+| d512L4 depth | 17.6M | 0.145 | 84 | flat |
+| d1024L2 width | 37.3M | 0.151 | **72** | early-stop @epoch 1; finals decay (one to 49/100) |
+| d1024L3 combined | 49.9M | 0.168 | **68** | early-stop @epochs 2–4; finals decay |
+
+1. **NOT-CAPACITY:** every config's recovery median sits inside the baseline noise band; 4.4× parameters bought zero recovery. The §3j matrix's overfit signature fired exactly as pre-named (large adapters peak at epoch 1–2 then decay on the same 2000 spans). **The ~0.18 plateau is DATA/OBJECTIVE-limited, not architecture-limited.** Width and depth are retired as recovery levers at this data scale.
+2. **Capacity actively harms the address key:** d1024 recall medians 72/68 vs 84 — added capacity is spent memorizing, blurring selectivity. The smallest adapter is Pareto-optimal on BOTH axes.
+3. **The λ-confirm leg resolved itself (bonus):** baseline λ=0.5 3-seed median 0.148 ± 0.034 with one final-epoch collapse, vs the §3h λ=0.25 3-seed anchor at **0.181 median, tight (0.168–0.192), recall 80–84 sustained, zero collapses**. λ=0.5's n=1 edge was seed luck. **OPERATING POINT PINNED: k=2, λ_read=0.25, d512/L2 (11.3M).** The keystone component is deliberately small — excellent for deployment (Memo co-residency in 12 GB).
+4. **NEXT (the pre-registered NOT-CAPACITY fork):** (a) **data volume/diversity** — the 16k-token corpus / 2000 spans is the suspected binding constraint (large adapters overfitting it is the tell); scale corpus 10–100× + spans ~10× at the pinned point, 3 seeds, same matrix discipline; (b) if data plateaus → the deferred **contrastive/InfoNCE uniqueness term** (the §3h deferred lever); (c) the Phase-0 per-span ceiling (~0.94) remains the honest reference — amortization has captured ~19% of it so far.
+5. **Kairos/NIGHTSHIFT implication (on the record):** the recall invariant — the Curator's actual currency — is strong and stable at the pinned point (80–84/100). Consolidation with ~0.18 recovery is *lossy gist memory by construction*, which is what Ring 3 was designed to be; **G-R3-LOSS is the load-bearing bound** (un-compressible episodes stay verbatim in Ring 2 — a valid outcome, not a failure). K1/NIGHTSHIFT is therefore NOT blocked by this verdict; it inherits a high-selectivity, bounded-loss substrate with the loss gate doing the governing.
+
+Cost: 12 runs ≈ 22 GPU-h ≈ $7.3 (A6000 ×2, per-run upload, clean self-termination both pods).
+
 ## 4. Compute plan & receipts
 
 RunPod/Colab A100-class, bf16 HF checkpoint from the proven bucket (the 4.68-gold weights — the ONLY trusted source, STATE doctrine). All cloud runs export: config echo (banner = printed env/args), dataset manifest hashes, loss curves, golden-pair archives. Receipts land in `_xbar/p2b/` + the contract run-record; ledger row only on the agreed gates green. **Ops upgrades banked from the Phase-0 runs:** the pod bootstrap must **periodic-upload its log** (RunPod community API returns no telemetry — flying blind otherwise; the operator had to pull the console log manually); validate the corpus is *coherent before* inverting (greedy 90-tok generation degenerates — use continue-narrative seeds + shorter gen + sampling if a fluent baseline is ever needed).
