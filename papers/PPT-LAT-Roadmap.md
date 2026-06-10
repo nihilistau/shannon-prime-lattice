@@ -9,6 +9,24 @@
 
 ---
 
+## AGENT NAVIGATION / CURRENT PHASE (added 2026-06-10 — read this box, then jump; do NOT read this 8,500-line file top-to-bottom)
+
+**Today's forward edge (2026-06-10):**
+- **XBAR P2.b capacity arm IN FLIGHT** (4 configs × 3 seeds, CONTRACT-XBAR-P2b §3j) — no verdict yet; do not pre-claim.
+- **P3 ring-on-gemma4-CUDA** next (G-P3-GEOM substrate landed, core `64b698c`; remaining: decode.c wiring + G-P3-SHARED).
+- **NIGHTSHIFT v0** (schtasks over the C1-lite loop) · **GNA Stage 3** HW bring-up in reserve (kit staged).
+
+**Where current truth lives — supersession order: STATE > contract run records > the amendment blocks below > this file's body.**
+- `PPT-LAT-STATE.md` — the PROVEN ledger. §5.07 stage taxonomy (Alpha…Eta, Omicron ο, Holon ⬢⃝) · §5.13 gemma-4 campaign (citable 06-R10) · §5.14 XBAR (X-R1, P2.b, C1-lite).
+- Contract run records: `CONTRACT-XBAR-P2b` (the live lane) · `CONTRACT-XBAR-C1-lite` (complete, P3 pre-flight §3b) · `CONTRACT-SPEED` (06-R10) · `CONTRACT-C2` (two-ring; honest 32k MISS in §C2.4-CLOSURE).
+- `RFC-XBAR-auditable-latent-crossbar.md` — the current architecture: §3 diagram · §3.1 four-tier hierarchy (Ring 1/2/2′/3) · §5 roadmap · §7 NIGHTSHIFT.
+- **The amendment blocks immediately below** (2026-06-02 → 2026-06-10) are the real current state of THIS file; the latest XBAR STATUS REFRESH supersedes earlier NEXT lines.
+- In the body: §2 phase summary table (~line 135) · §19 Stage Eta / §20 Omicron ο / §21 Stage Beta (~lines 8490–8600) · Phase log (~line 4410).
+
+**Warning:** the body below the amendment blocks is largely HISTORICAL (planned 2026-05-21; many phases since closed or superseded). Use it for per-phase gate definitions and context, never as current state.
+
+---
+
 > **PRIORITY AMENDMENT (2026-06-02) — differentiators ahead of context.** C2's measurement phase is done (KV ~3.5× lossy, real-model 29/31; Ring-2 ~hundreds× effective context but largely disk-tiering; recall router open — KSTE falsified). Forward order is now **P1 SPEED/WIRE→tok/s vs llama.cpp (north-star), P2 C4 MTP, P3 C3 multi-device CRT residues (2-node byte-exact vertical slice), P4 remaining C2 (demoted), P5 eMeMo/cyclotomic.** Authoritative in **RFC-001 §11** + **STATE §5.1**. The phase sequence below is unchanged in content; this re-prioritizes which phases lead.
 >
 > **C2.1 COMPLETE (2026-06-03) — two-ring recall wired live, all three walls down.** The "remaining C2" / open recall-router item is now resolved end-to-end in the live `qwen3_generate_kv` decode path: ±1 projection router + Möbius attention sinks + physical Optane Ring-2 (NO_BUFFERING + IOCP async, 7.57 µs/read) + O(N) quickselect (compute wall) + Ring-1 (sink+W) ring buffer (memory wall, 910× KV-RAM shrink @32k). Gates: GEN_KV bit-parity throughout, NIAH `837492` HIT off Optane, G2 PPL deflection 8× = +0.69% (<2%, N=2k). Honest RAM floor now projk-dominated (~950 MB @32k, int8/int4 router-quant next). Engine `67f4997`→`f8ea920`; full record **CONTRACT-C2 §C2.1** + **STATE §5.05**. *(32k all-walls finale: COMPLETED 2026-06-06 as v5 — verdict **MISS** at the 64× selection budget; infrastructure proven at 16.3 h scale. C2.4 closed on the honest negative; see CONTRACT-C2 §C2.4-CLOSURE + STATE §5.11. R9 is therefore NOT a claim — paper 01 releases on the 512-position-proven Optane HIT.)*

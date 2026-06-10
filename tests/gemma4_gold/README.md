@@ -6,6 +6,14 @@ stack is ~100× broken on this model; these scripts are the reference until
 the forward-vs-conversion fork resolves. See CONTRACT-SPEED §ADDENDUM
 2026-06-07 for the formal amendment and consequence chain.
 
+> **RESOLVED (2026-06-08, kept for the record — the paragraph above is the
+> pre-resolution framing):** the discriminator ran — gold arithmetic over the
+> GGUF's own dequantized tensors REPRODUCES the breakage (pre-fix 271–364;
+> post-June-5 rebuilt GGUF still 192.9) ⇒ the **artifacts are condemned,
+> llama.cpp's forward is exonerated**. The GGUF lane is dead for this model;
+> the trusted weight path is Safetensors Direct (`sp_transcode --st`).
+> Full record: CONTRACT-SPEED (RESOLUTION) + STATE §5.13; public LEDGER 06-R8.
+
 ## Instruments
 
 - `_t2_manual_forward.py` — from-scratch torch forward off the official bf16
