@@ -306,6 +306,18 @@ Cross-config comparisons are within-grid (identical data/split/seeds); the §3i 
 
 Cost: 12 runs ≈ 22 GPU-h ≈ $7.3 (A6000 ×2, per-run upload, clean self-termination both pods).
 
+## 3l. THE DATA ARM — corpus scale at the pinned point (PRE-REGISTERED 2026-06-10, before spend)
+
+**Design:** hold the PINNED operating point — **k=2, λ_read=0.25, d512/L2 (11.3M)** — and vary ONLY data: corpus 16k tokens → **~1.4M tokens** (~85×; wikitext-103-raw-v1 TRAIN split head, fetched on-pod from the public HF dataset — fresh articles, no fixture entanglement), train spans 2,000 → **20,000** (~10×; spans now ~50 tokens apart vs ~8 — the §3f overlap confound structurally collapses), val 100 spans from the disjoint tail (val-frac 0.25, fully unseen articles), 3 epochs (60k steps ≈ 5× prior total optimization), recall-margin early-stop, **×3 seeds {20260609,10,11}**, one seed per pod (A6000 ×3, staggered launches), per-epoch upload, self-terminating, 12 h timeout/run. Yardstick: the §3h λ=0.25 3-seed anchor (recovery median **0.181**, recall 80–84) — same config, old data. Honesty note pre-stated: the anchor itself carried residual train/val context-overlap advantage; the clean-corpus number may shift either way at epoch 0 — the matrix bands below judge, not a single delta.
+
+**PRE-STATED FALSIFICATION MATRIX (locked before spend):**
+- **DATA-WORKS** → 3-seed median recovery (BEST) **≥ 0.25** (clears the calibrated noise bar) with recall median ≥ 75 → data was the binding constraint; next = another data decade or bank the win and proceed to P3/NIGHTSHIFT with the improved adapter.
+- **PARTIAL** → median ∈ (0.20, 0.25] → real lift above the noise band but short of the bar → one more data decade AND begin the contrastive refactor in parallel.
+- **OBJECTIVE-LIMITED** → median ≤ 0.20 → with capacity (§3j) and data both exhausted, the loss itself is the binding constraint → unsheathe **contrastive/InfoNCE** (the §3h-deferred batch-negative refactor of `train_p2b.py`) as the next contract leg.
+- **Recall guard (all branches):** recall median < 75 → the objective is trading the address key for recovery → contrastive becomes mandatory, not optional.
+
+Cost: 3 runs ≈ ~29 GPU-h ≈ **~$10** (A6000 ×3 parallel, ~10 h wall). VERDICT only on STATUS=DONE ×3 (standing rule).
+
 ## 4. Compute plan & receipts
 
 RunPod/Colab A100-class, bf16 HF checkpoint from the proven bucket (the 4.68-gold weights — the ONLY trusted source, STATE doctrine). All cloud runs export: config echo (banner = printed env/args), dataset manifest hashes, loss curves, golden-pair archives. Receipts land in `_xbar/p2b/` + the contract run-record; ledger row only on the agreed gates green. **Ops upgrades banked from the Phase-0 runs:** the pod bootstrap must **periodic-upload its log** (RunPod community API returns no telemetry — flying blind otherwise; the operator had to pull the console log manually); validate the corpus is *coherent before* inverting (greedy 90-tok generation degenerates — use continue-narrative seeds + shorter gen + sampling if a fluent baseline is ever needed).
