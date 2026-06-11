@@ -21,15 +21,26 @@ session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, BEFORE 
 ## 2. The decision queue (locked order — do not reshuffle without the operator)
 
 1. **Horizon verdict** (on hor-s09 DONE) → apply §3m reads.
-2. **Fork-3 conditioning arm** — the KNOWN defect: `Adapter.forward(span_emb)` is context-free
-   while Phase-0 golden targets were context-conditioned (train_p2b.py:179) → one-to-many
-   ceiling. **BUILT + toy-smoked 2026-06-11 (`75f316f`):** `--conditioning` flag (default off =
-   byte-inert), encoder ingests `[ctx ; span]`, +32k params only (7.46→7.49M toy) = INFORMATION
-   not capacity — reconciles capacity-arm(NOT-CAPACITY)+k-sweep(not-k) into the info-limited
-   hypothesis. Spec = CONTRACT-P2b §3n (gate G-P2b-COND + kill condition). LAUNCH only after the
-   horizon read; Colab A100 fits a single prototype seed.
-3. **InfoNCE/contrastive** — if conditioning doesn't close the gap (needs batch-negative
+2. **Fork-4 — contextualized-state input (RUN FIRST; the SP-native fix, operator-driven 2026-06-12)**
+   — instead of learning context (Fork-3's cross-attention), feed the adapter the FROZEN 12B's own
+   context-resolved residual state at the span positions — it already computed the integration; read
+   it, don't re-learn it. **BUILT + toy-smoked 2026-06-12:** `--ctx-state --ctx-layer L` (default off
+   = byte-inert), taps `forward_logits` after layer L, slices span positions `[CTX,CTX+N)`, ZERO new
+   params. Rig ready: `bootstrap_ctxstate.sh` + `launch_pod_ctxstate.py` (context-free baseline + the
+   L-sweep {12,24,36} as a matched pair in one pod, per-run upload, self-terminate). Spec = CONTRACT-P2b
+   **§3o** (gate G-P2b-CTXSTATE: **LIFT = information-limited**, **KILL = k=2 channel-limited** — the
+   clean adjudication §3k left open). Leakage guard = readback primary + prefer earliest-lifting layer.
+   LAUNCH gated on horizon read + an operator budget go (default cheap 16k-corpus fast read ~$2–3;
+   horizon-matched 1.4M corpus is the confirm).
+3. **Fork-3 conditioning** (the dumb-ML baseline, in the chamber) — `--conditioning`, built+smoked
+   `75f316f`, +32k params, CONTRACT-P2b §3n. Fire only if Fork-4's null needs a capacity-bearing
+   cross-check. Then **InfoNCE/contrastive** if neither context play closes the gap (batch-negative
    refactor of train_p2b.py).
+   - **VSA / Harmonic Binding → Ring-3 ONLY** (design banked 2026-06-12, `papers/DESIGN-VSA-ring3-holographic.md`):
+     condemned for Ring-0/1 steering (manifold shock — the 1-vs-6-layer result IS the evidence; exact
+     spectral inverse unstable → use the involution; sm_75 NTT is ALU-bound not TC) and relocated to its
+     native home as the Ring-3 holographic associative-consolidation tier (gate G-R3-VSA: must beat a
+     hash-indexed Ring-2 on capacity-per-byte + partial-cue completion, else retire). Opens with K1/NIGHTSHIFT.
 4. **wd-grok probe** — **CLOSED-as-SHELVED 2026-06-11** (CONTRACT-P2b §3k; receipts HF
    `results_grok/grok/`). Ran the precondition (train-subset vs val on d1024L3 49.9M, bf16 gold,
    3 seeds): **HARD UNDERFIT** — 3-seed median TRAIN recovery 0.203 ≈ VAL 0.175 (delta +0.027,
