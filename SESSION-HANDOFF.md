@@ -32,8 +32,9 @@ session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, BEFORE 
    refactor of train_p2b.py).
 4. **wd-grok probe** — SHELVED unless a train≫val memorization gap shows (wd=0 currently;
    precondition check = train-subset eval).
-5. **P3 ring-on-Exec** — CONTRACT-XBAR-P3 drafted (`aabafec`), awaiting operator ratification;
-   substrate (geom API) landed core `64b698c`.
+5. **P3 ring-on-Exec** — CONTRACT-XBAR-P3 **RATIFIED (operator, 2026-06-11)**; build-ready when it
+   reaches the front (host-router v0, 5-gate ladder P3.0→P3.4, 12B/E2B split). Substrate (geom API)
+   landed core `64b698c`. Launch sequenced behind horizon → Fork-3 → InfoNCE; code may ship per-stage.
 6. **Stage KAIROS** — registered, OPENS ONLY after P2.b/P3 close (`ROADMAP-KAIROS.md`).
 
 ## 3. P2.b state in one breath
