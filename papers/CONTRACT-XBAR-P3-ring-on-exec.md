@@ -92,8 +92,8 @@ Sig (bit-packed) sidecar = `88·P·8` B = 704·P: 1.4 / 2.8 / 5.5 MiB at the sam
 
 ## 5. Run-record
 
-*(empty — receipts land here as stages close; format: gate name, artifact, commits, counts, verdict)*
+*(receipts land here as stages close; format: gate name, artifact, commits, counts, verdict)*
 
 | Date | Stage / gate | Artifact | Receipts |
 |---|---|---|---|
-| | | | |
+| 2026-06-11 | **P3.0 — G-P3-0** (manifest null + determinism) | qwen3-uniform + 12B + E2B fixtures (no model) | **PASS**. New module: `include/sp/xbar_episode.h` + `core/xbar/xbar_episode.c` + standalone gate `tools/curator/xbar_manifest_gate.c` (system `9a2b0a9`, MinGW gcc 15.2 `-Wall -Wextra` clean). Three checks all green: (1) round-trip serialize→deserialize→serialize **byte-exact** + record-field-identical on all 3 fixtures; (2) uniform-null — qwen3 (NL=28, all owners, KVD=1024) reproduces `((L*P)+pos)*1024*4` and the 12B (NL=48, all owners, KVD const 512 = global 1×512 == SWA 2×256) reproduces `((L*P)+pos)*512*4`, **exactly**; (3) jagged — E2B (NL=35, period 5, kvfs=15 → 15 owners/20 sharers, global 512 / SWA 256 owner rows) every `block(L,pos)` matches an INDEPENDENT brute-force prefix-sum + owner-indirection oracle (own[L], owns_kv, off[L], store_bytes all agree). Falsification (offset ≠ legacy on uniform, or ≠ oracle on jagged) not triggered. projk NOT serialized (re-projected from stored K, C1L.0a). Standalone (curator_replay discipline) — no decode wiring; P3.1 consumes this manifest. |

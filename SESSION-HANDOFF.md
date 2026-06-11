@@ -32,9 +32,13 @@ session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, BEFORE 
    refactor of train_p2b.py).
 4. **wd-grok probe** — SHELVED unless a train≫val memorization gap shows (wd=0 currently;
    precondition check = train-subset eval).
-5. **P3 ring-on-Exec** — CONTRACT-XBAR-P3 **RATIFIED (operator, 2026-06-11)**; build-ready when it
-   reaches the front (host-router v0, 5-gate ladder P3.0→P3.4, 12B/E2B split). Substrate (geom API)
-   landed core `64b698c`. Launch sequenced behind horizon → Fork-3 → InfoNCE; code may ship per-stage.
+5. **P3 ring-on-Exec** — CONTRACT-XBAR-P3 **RATIFIED (operator, 2026-06-11)**; 5-gate ladder
+   P3.0→P3.4, host-router v0, 12B/E2B split. Substrate (geom API) landed core `64b698c`.
+   **P3.0 CLOSED GREEN 2026-06-11** (G-P3-0 PASS, system `9a2b0a9`): episode/owner-map manifest
+   (`include/sp/xbar_episode.h` + `core/xbar/xbar_episode.c`) + standalone gate — round-trip
+   byte-exact, uniform-null (qwen3 + 12B KVD-const) == legacy layout, E2B jagged == prefix-sum
+   oracle. Next stage P3.1 (recall router on CUDA decode) is decode-wiring → sequenced behind
+   horizon → Fork-3 → InfoNCE (no launch yet). Code may ship per-stage.
 6. **Stage KAIROS** — registered, OPENS ONLY after P2.b/P3 close (`ROADMAP-KAIROS.md`).
 
 ## 3. P2.b state in one breath
@@ -74,8 +78,9 @@ amortized capture ~19-27% so far. Full chain: CONTRACT-XBAR-P2b §3g→§3m.
 
 ## 5. Open threads (small, don't lose)
 
-- New HF model bucket created by operator 2026-06-11 — **repo id still TBD** (ask; likely
-  DiffusionGemma staging).
+- New HF model bucket (operator 2026-06-11) — **repo id = `KnackAU/sp-diffusion-stage`** (RESOLVED;
+  the air-gap for speculative-decode + MoE / DiffusionGemma prototypes). Push target for the
+  diffusion/spec-decode lane; banked in memory `reference-hf-diffusion-bucket`.
 - `.pre115` backups: D: copies deletable once operator confirms Drive uploads complete.
 - WSL gcloud unauthed (fine; Windows is canonical).
 - **HF-token path fixed 2026-06-11:** the creds-registry restructure MOVED the token into
