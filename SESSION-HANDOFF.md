@@ -8,19 +8,22 @@ session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, BEFORE 
 
 ## 1. IN FLIGHT right now (check these first)
 
-- **hor-s09** — RunPod pod `lej3uuama69mdh` (A6000): P2.b HORIZON ARM seed 20260609, epochs 8,
-  pinned config (k=2, λ_read=0.25, d512/L2), fixed selector (recovery s.t. recall≥75),
-  1.4M-token wikitext-103-train corpus. ~23 h run launched late 2026-06-11 AEST; 30-min salvage
-  uploads to HF `results_horizon/s09/`. **Pull:** `python3 _xbar/p2b/fetch_horizon.py` (WSL).
-  Verdict reads pre-registered in CONTRACT-P2b §3m (ASYMPTOTE-FOUND / STILL-RISING /
-  recall-floor-breach). NOTE: s10/s11 were KILLED at launch (budget); single-seed read =
-  PROVISIONAL by standing rule; 3-seed confirm when RunPod balance refreshes (~$10 left,
-  ~$7.60 committed to s09).
-- Colab lane: idle, zero burn (correct resting state). RunPod: only hor-s09. No schtasks.
+- **hor-s09 — DONE + self-terminated ✓ 2026-06-12** (CONTRACT-P2b §3m HORIZON-ARM VERDICT).
+  **ASYMPTOTE-FOUND ~0.28, DATA-WORKS (PROVISIONAL — single seed; s10/s11 killed at launch).**
+  8-epoch curve plateaued: ep5/6/7 = 0.278/0.282/0.279, recall 87–90, BEST 0.2815/89 (ep6).
+  Data is a confirmed-but-EXHAUSTED lever (0.181 anchor → 0.28 then flat); residual gap to 0.94
+  is Fork-4's (§3o) / k=2-channel's domain. The ~0.28 plateau = Fork-4's matched baseline anchor.
+  Receipts HF `results_horizon/s09/`; cost ~19.5 GPU-h ≈ ~$9.5.
+- **NOTHING in flight. RunPod balance = $1.54** (verified 2026-06-12; s09 consumed the ~$10).
+  Colab lane idle (reserved for Fork-3 interactive prep). No schtasks. **Budget gate:** the full
+  Fork-4 matched sweep (baseline + {12,24,36}, ~$2.4) does NOT fit $1.54 — needs a cheap-signal-first
+  variant (baseline + mid-layer 24, 16k corpus, 3 ep ≈ $0.6) OR an operator top-up. 3-seed horizon
+  confirm also owed on a refresh.
 
 ## 2. The decision queue (locked order — do not reshuffle without the operator)
 
-1. **Horizon verdict** (on hor-s09 DONE) → apply §3m reads.
+1. **Horizon verdict — DONE 2026-06-12: ASYMPTOTE-FOUND ~0.28, DATA-WORKS (provisional/single-seed).**
+   Data lever confirmed + exhausted → Fork-4 (#2) is now unblocked (information-vs-channel). ✓
 2. **Fork-4 — contextualized-state input (RUN FIRST; the SP-native fix, operator-driven 2026-06-12)**
    — instead of learning context (Fork-3's cross-attention), feed the adapter the FROZEN 12B's own
    context-resolved residual state at the span positions — it already computed the integration; read

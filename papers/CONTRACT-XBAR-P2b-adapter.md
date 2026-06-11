@@ -362,6 +362,15 @@ Cost: 3 runs ≈ ~29 GPU-h ≈ **~$10** (A6000 ×3 parallel, ~10 h wall). VERDIC
 
 Cost: 3 × ~23 h ≈ 69 GPU-h ≈ **~$50–60** (L40S/A40-class). VERDICT on STATUS=DONE ×3.
 
+### HORIZON-ARM VERDICT (2026-06-12; s09 DONE, pod self-terminated ✓; SINGLE-SEED ⇒ PROVISIONAL; receipts HF `results_horizon/s09/`) — **ASYMPTOTE-FOUND ~0.28, DATA-WORKS (provisional)**
+
+| epoch | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 (final) |
+|---|---|---|---|---|---|---|---|---|
+| recovery_med | 0.209 | 0.239 | 0.263 | 0.260 | 0.246 | 0.278 | **0.282** | 0.279 |
+| recall (F_beats_null) | 87 | 80 | 86 | 90 | 89 | 90 | 89 | 90 |
+
+BEST (early-stop, ep6) **0.2815 / 89**; FINAL (ep7) 0.2732 / 90. **Read:** doubling the horizon 3→8 epochs lifted the data-arm cutoff to a **flat plateau ~0.28** (epochs 5/6/7 = 0.278/0.282/0.279, Δ<0.004 ⇒ asymptoted); recall held 87–90 throughout (no floor breach). Per §3m = **ASYMPTOTE-FOUND**, and it **clears the DATA-WORKS bar** (≥0.25, recall ≥75). **Data scaling is a CONFIRMED, now-EXHAUSTED lever:** old-corpus anchor 0.181 → 0.28, then flat. **CAVEAT (no spin): single seed** — s10/s11 were killed at launch for budget, so this is PROVISIONAL by the ≥3-seed rule; the 3-seed confirm is owed on a budget refresh. **STRATEGIC READ:** the residual gap to the 0.94 per-span ceiling (~0.66) is NOT closable by more data at this config ⇒ it is the domain of **Fork-4 (§3o, information) vs the k=2 channel**. The horizon plateau (~0.28 on the 1.4M corpus) is now the matched baseline anchor for Fork-4's in-pod comparison. Cost: ~19.5 GPU-h ≈ **~$9.5** (A6000, 30-min salvage uploads, clean self-termination).
+
 ## 3n. FORK-3 — context-conditioning (the INFORMATION-limited hypothesis) [SPEC; build pre-authorized, launch post-horizon]
 
 **The defect (handoff-named, `train_p2b.py:179`).** `Adapter.forward(span_emb)` maps the n span-token embeddings → k pseudo-tokens with **no sight of the injection context**. But the training target is context-dependent: `span_kl` injects `e_hat` *after* `ctx` and scores the continuation, and the Phase-0 golden vectors were inverted *in a specific ctx64*. So span→k is a **one-to-many map** — the same span has different optimal pseudo-tokens under different contexts, and a context-blind adapter can only learn the ctx-averaged target. That is a hard recovery ceiling no amount of training fixes.
