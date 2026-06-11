@@ -23,7 +23,11 @@ session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, BEFORE 
 1. **Horizon verdict** (on hor-s09 DONE) → apply §3m reads.
 2. **Fork-3 conditioning arm** — the KNOWN defect: `Adapter.forward(span_emb)` is context-free
    while Phase-0 golden targets were context-conditioned (train_p2b.py:179) → one-to-many
-   ceiling. Build+toy-smoke allowed anytime; LAUNCH only after the horizon read. Colab A100 fits.
+   ceiling. **BUILT + toy-smoked 2026-06-11 (`75f316f`):** `--conditioning` flag (default off =
+   byte-inert), encoder ingests `[ctx ; span]`, +32k params only (7.46→7.49M toy) = INFORMATION
+   not capacity — reconciles capacity-arm(NOT-CAPACITY)+k-sweep(not-k) into the info-limited
+   hypothesis. Spec = CONTRACT-P2b §3n (gate G-P2b-COND + kill condition). LAUNCH only after the
+   horizon read; Colab A100 fits a single prototype seed.
 3. **InfoNCE/contrastive** — if conditioning doesn't close the gap (needs batch-negative
    refactor of train_p2b.py).
 4. **wd-grok probe** — SHELVED unless a train≫val memorization gap shows (wd=0 currently;
@@ -73,6 +77,11 @@ amortized capture ~19-27% so far. Full chain: CONTRACT-XBAR-P2b §3g→§3m.
   DiffusionGemma staging).
 - `.pre115` backups: D: copies deletable once operator confirms Drive uploads complete.
 - WSL gcloud unauthed (fine; Windows is canonical).
+- **HF-token path fixed 2026-06-11:** the creds-registry restructure MOVED the token into
+  `creds/claude-hf-token.txt`, but `_xbar/p2b` scripts read the old `archive/notes_and_stuff/
+  claude-hf-token.txt` → `fetch_horizon`/etc. were dead. Restored the synced duplicate at the old
+  path (ENVIRONMENT §1's "keep in sync"). DURABLE FIX TODO: repoint scripts to the `creds/` path
+  so a future move can't re-break them.
 - E2B/12B per-stage artifact assignments for P3 are pinned in CONTRACT-P3 §4 — drafting agent
   noted §3b's geometry line conflates the two artifacts.
 - The operator floated zeta-PE / prime-harmonic positional encoding (his CosySim
