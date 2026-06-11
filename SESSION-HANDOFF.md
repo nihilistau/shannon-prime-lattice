@@ -30,8 +30,12 @@ session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, BEFORE 
    horizon read; Colab A100 fits a single prototype seed.
 3. **InfoNCE/contrastive** — if conditioning doesn't close the gap (needs batch-negative
    refactor of train_p2b.py).
-4. **wd-grok probe** — SHELVED unless a train≫val memorization gap shows (wd=0 currently;
-   precondition check = train-subset eval).
+4. **wd-grok probe** — **CLOSED-as-SHELVED 2026-06-11** (CONTRACT-P2b §3k; receipts HF
+   `results_grok/grok/`). Ran the precondition (train-subset vs val on d1024L3 49.9M, bf16 gold,
+   3 seeds): **HARD UNDERFIT** — 3-seed median TRAIN recovery 0.203 ≈ VAL 0.175 (delta +0.027,
+   deltas straddle zero), a third of the 0.60 memorization bar. The adapter cannot memorize its
+   own train set ⇒ no phase-1 ⇒ weight decay has nothing to force. Permanently shelved; confirms
+   NOT-CAPACITY, converges with k-sweep onto Fork-3 (information-limited). $0.16 on the A6000.
 5. **P3 ring-on-Exec** — CONTRACT-XBAR-P3 **RATIFIED (operator, 2026-06-11)**; 5-gate ladder
    P3.0→P3.4, host-router v0, 12B/E2B split. Substrate (geom API) landed core `64b698c`.
    **P3.0 CLOSED GREEN 2026-06-11** (G-P3-0 PASS, system `9a2b0a9`): episode/owner-map manifest

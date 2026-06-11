@@ -306,6 +306,25 @@ Cross-config comparisons are within-grid (identical data/split/seeds); the §3i 
 
 Cost: 12 runs ≈ 22 GPU-h ≈ $7.3 (A6000 ×2, per-run upload, clean self-termination both pods).
 
+## 3k. THE wd-grok DIAGNOSTIC — does the deepest adapter MEMORIZE the train set? (operator-greenlit 2026-06-11, post-capacity)
+
+**Why.** §3j called NOT-CAPACITY and named an "overfit signature" (large adapters peak early, decay on the same 2000 spans). The grokking hypothesis says a no-weight-decay network can sit in phase-1 (memorize) while phase-2 (generalize) is blocked — which would make weight decay a live lever. The clean test: take the deepest/widest capacity checkpoint (**d1024L3, 49.9M**) and ask whether it does markedly better on the spans it directly trained on (train ≫ val ⇒ memorized ⇒ grok-viable) or no better (train ≈ val ⇒ it can't even fit train ⇒ the ceiling is structural, not optimization).
+
+**Method (strict precision parity).** Pure EVAL, no training: each seed's `adapter_best.pt` from `results_cap/b/d1024L3` evaluated under the IDENTICAL bf16-12B gold forward + deterministic split — `evaluate(train[:100])` vs `evaluate(val[100])`. New **byte-inert `--eval-only`/`--load-adapter`** path in `train_p2b.py` (toy-smoked before spend), A6000, ×3 seeds. NOT the local OK_Q4B 12B — a quant swap would shift the NLL readback and pollute the calibrated bars.
+
+**PRE-STATED MATRIX (locked before spend):** Train ≫ Val (train recovery ≥ 0.60, val ~0.16) ⇒ MEMORIZED ⇒ grok-viable. Train ≈ Val ≈ 0.20 ⇒ HARD UNDERFIT ⇒ context-blindness is the irreducible ceiling ⇒ grok permanently shelved.
+
+### VERDICT (2026-06-11; 3/3 DONE, pod self-terminated ✓; receipts HF `results_grok/grok/`) — **HARD UNDERFIT → grok SHELVED**
+
+| seed | TRAIN recovery / recall | VAL recovery / recall | delta (train−val) |
+|---|---|---|---|
+| 20260609 | 0.2296 / 85 | 0.1754 / 78 | +0.054 |
+| 20260610 | 0.1377 / 64 | 0.1888 / 70 | −0.051 |
+| 20260611 | 0.2027 / 83 | 0.1341 / 67 | +0.069 |
+| **median** | **0.2027** | **0.1754** | **+0.027** |
+
+The 49.9M adapter scores ~0.20 recovery on the spans it **directly trained on** — a third of the 0.60 memorization bar, and statistically on top of val (median delta +0.027; the three seed deltas straddle zero: +0.054, −0.051, +0.069; recall shows no train dominance either). **It cannot memorize its own 2000-span train set.** You cannot grok what you cannot first memorize — phase-1 never occurs, so weight decay (the phase-2 forcing knob) has nothing to act on. **wd-grok is permanently shelved.** This independently CONFIRMS §3j NOT-CAPACITY (the "overfit signature" was mild noise, not a lookup table) and converges with the k-sweep (not-k) onto **§3n Fork-3**: the binding constraint is **information** — the context-blind one-to-many map — not parameters, not tokens, not optimization. Cost ≈ 20 GPU-min ≈ **$0.16**.
+
 ## 3l. THE DATA ARM — corpus scale at the pinned point (PRE-REGISTERED 2026-06-10, before spend)
 
 **Design:** hold the PINNED operating point — **k=2, λ_read=0.25, d512/L2 (11.3M)** — and vary ONLY data: corpus 16k tokens → **~1.4M tokens** (~85×; wikitext-103-raw-v1 TRAIN split head, fetched on-pod from the public HF dataset — fresh articles, no fixture entanglement), train spans 2,000 → **20,000** (~10×; spans now ~50 tokens apart vs ~8 — the §3f overlap confound structurally collapses), val 100 spans from the disjoint tail (val-frac 0.25, fully unseen articles), 3 epochs (60k steps ≈ 5× prior total optimization), recall-margin early-stop, **×3 seeds {20260609,10,11}**, one seed per pod (A6000 ×3, staggered launches), per-epoch upload, self-terminating, 12 h timeout/run. Yardstick: the §3h λ=0.25 3-seed anchor (recovery median **0.181**, recall 80–84) — same config, old data. Honesty note pre-stated: the anchor itself carried residual train/val context-overlap advantage; the clean-corpus number may shift either way at epoch 0 — the matrix bands below judge, not a single delta.
@@ -339,7 +358,7 @@ Cost: 3 runs ≈ ~29 GPU-h ≈ **~$10** (A6000 ×3 parallel, ~10 h wall). VERDIC
 - **ASYMPTOTE FOUND:** curves flatten by ~epoch 5–6 → the data-decade question is answered at that level; if the 3-seed median (fixed selector) ≥ 0.25 with recall ≥ 75 → DATA-WORKS retroactively; the next decade of data is then optional, and Fork-3 (conditioning) becomes the lead lever for the remaining gap to 0.94.
 - **STILL RISING at epoch 8:** horizon remains binding → extend again (cheap continuation decision) before touching the objective.
 - **REGRESSION/recall-floor breach:** late-epoch recovery gains that breach the recall floor (selector returns −inf on late epochs) → the recall/recovery tension is real at longer horizons → InfoNCE moves up the queue.
-- Queue unchanged otherwise: **Fork-3 conditioning → InfoNCE → (shelved) wd-grok probe.**
+- Queue unchanged otherwise: **Fork-3 conditioning → InfoNCE.** (The wd-grok probe is no longer "pending shelf" — §3k ran it 2026-06-11 and CLOSED it as permanently shelved: d1024L3 cannot memorize its own train set, so there is no phase-1 for weight decay to force.)
 
 Cost: 3 × ~23 h ≈ 69 GPU-h ≈ **~$50–60** (L40S/A40-class). VERDICT on STATUS=DONE ×3.
 
