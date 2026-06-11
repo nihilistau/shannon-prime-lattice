@@ -109,7 +109,7 @@ Does NOT want: suggestions to wrap up / sleep / "come back fresh" · cross-conta
 
 ## 8. Session start procedure (do it; don't narrate steps 1–4)
 
-1. Read this `prompt.md`.
+1. Read this `prompt.md`, then **`ENVIRONMENT.md`** (the toolbox: lanes, shells, credentials registry, gotchas) and **`SESSION-HANDOFF.md`** (in-flight runs + the decision queue — what is cooking RIGHT NOW).
 2. Read `papers/PPT-LAT-STATE.md` (PROVEN record) + `papers/PPT-LAT-Roadmap.md` (current phase) + the active contract(s).
 3. Read `MEMORY.md` (user feedback + project facts + gotchas).
 4. **Check the tree:** `git status` + `git fetch` + `git log --oneline -15` on each repo you'll touch; reconcile against STATE. Verify, don't assume.
