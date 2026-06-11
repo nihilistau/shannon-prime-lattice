@@ -318,6 +318,31 @@ Cost: 12 runs ≈ 22 GPU-h ≈ $7.3 (A6000 ×2, per-run upload, clean self-termi
 
 Cost: 3 runs ≈ ~29 GPU-h ≈ **~$10** (A6000 ×3 parallel, ~10 h wall). VERDICT only on STATUS=DONE ×3 (standing rule).
 
+### DATA-ARM VERDICT (2026-06-10; 3/3 DONE, self-terminated ✓; receipts HF `results_data/{s09,s10,s11}/`) — **PARTIAL, operator-ratified, with a SELECTOR DEFECT surfaced on the record**
+
+| seed | BEST (early-stop ckpt) | FINAL (ep 2) | curve at 60k-step cutoff |
+|---|---|---|---|
+| s09 (L40S) | 0.271 / 88 | 0.272 / 88 | flat-high |
+| s10 (L40S) | 0.189 / 79 | 0.222 / 81 | RISING (+0.033 final epoch) |
+| s11 (A40) | 0.198 / 84 | 0.214 / 79 | RISING (+0.016 final epoch) |
+| **median** | **0.198** | **0.222** | |
+
+**The defect (surfaced, not absorbed):** the pre-registered statistic was median recovery at BEST, but BEST = the recall-margin early-stop checkpoint, which selected **epoch 0** on s10/s11 — the contrastive margin peaks early (an easier optimization than the reconstruction manifold) while recovery was still climbing. The pre-registered statistic (0.198) and the final-epoch ground truth (0.222) straddle the OBJECTIVE-LIMITED/PARTIAL boundary. Per no-silent-gate-revision this went upstream; **operator ratification 2026-06-10: verdict = PARTIAL** on the physical grounds independent of statistic choice — s09 cleared the WORKS bar outright (0.272/88, first in the campaign), all curves still rising at cutoff, recall guard held everywhere (79–88, no key-blurring), median lift over the 0.181 anchor real under either reading. **Data is a confirmed lever that has not topped out; the 3-epoch horizon was the binding constraint of this run, not the mechanism.**
+
+**Ratified amendment — the selector fix (landed in `train_p2b.py`, receipts now self-describe via a `selector` field):** early-stop selects **max recovery subject to a hard recall floor (F_beats_null ≥ 75/100)**; checkpoints below the floor are ineligible. A selector that aborts a rising primary metric to protect an unthreatened secondary metric is defective.
+
+## 3m. THE HORIZON ARM (PRE-REGISTERED 2026-06-10, operator-greenlit, before spend)
+
+**Design:** identical to §3l (same 1.4M-token wikitext-103-train corpus fetch, same pinned k=2 / λ_read=0.25 / d512L2, 20k/100 spans, disjoint tail val) with TWO changes only: **epochs 3 → 8** (160k steps — the rising curves get room to asymptote) and the **fixed selector** above. ×3 seeds {20260609,10,11}, one per pod, 27 h timeout, and — long-run salvage discipline — a background uploader syncs `job.log` + results to HF **every 30 min** (a 23 h community-pod run must never be all-or-nothing; per-unit-upload rule, horizon edition). Receipts → `results_horizon/{s09,s10,s11}/`.
+
+**PRE-STATED READS (locked before spend):**
+- **ASYMPTOTE FOUND:** curves flatten by ~epoch 5–6 → the data-decade question is answered at that level; if the 3-seed median (fixed selector) ≥ 0.25 with recall ≥ 75 → DATA-WORKS retroactively; the next decade of data is then optional, and Fork-3 (conditioning) becomes the lead lever for the remaining gap to 0.94.
+- **STILL RISING at epoch 8:** horizon remains binding → extend again (cheap continuation decision) before touching the objective.
+- **REGRESSION/recall-floor breach:** late-epoch recovery gains that breach the recall floor (selector returns −inf on late epochs) → the recall/recovery tension is real at longer horizons → InfoNCE moves up the queue.
+- Queue unchanged otherwise: **Fork-3 conditioning → InfoNCE → (shelved) wd-grok probe.**
+
+Cost: 3 × ~23 h ≈ 69 GPU-h ≈ **~$50–60** (L40S/A40-class). VERDICT on STATUS=DONE ×3.
+
 ## 4. Compute plan & receipts
 
 RunPod/Colab A100-class, bf16 HF checkpoint from the proven bucket (the 4.68-gold weights — the ONLY trusted source, STATE doctrine). All cloud runs export: config echo (banner = printed env/args), dataset manifest hashes, loss curves, golden-pair archives. Receipts land in `_xbar/p2b/` + the contract run-record; ledger row only on the agreed gates green. **Ops upgrades banked from the Phase-0 runs:** the pod bootstrap must **periodic-upload its log** (RunPod community API returns no telemetry — flying blind otherwise; the operator had to pull the console log manually); validate the corpus is *coherent before* inverting (greedy 90-tok generation degenerates — use continue-narrative seeds + shorter gen + sampling if a fluent baseline is ever needed).
