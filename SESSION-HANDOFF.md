@@ -1,28 +1,25 @@
 # SESSION-HANDOFF.md — where things stand
 
-**Updated:** 2026-06-11 (the marathon session: k-sweep verdict → capacity arm → data arm →
-horizon arm → KAIROS registration → #115 closed → env build-out). Update this file at every
-session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, BEFORE doing anything.
+**Updated:** 2026-06-12 (the P2.b-close → P3 push: Fork-5 KV-prefix → Fork-6 contrastive →
+P2.b CAMPAIGN CLOSED → P3.1 decode-wiring GREEN → P3.1b-1 serialized-store GREEN). Update this
+file at every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, BEFORE anything.
 
 ---
 
 ## 1. IN FLIGHT right now (check these first)
 
-- **hor-s09 — DONE + self-terminated ✓ 2026-06-12** (CONTRACT-P2b §3m HORIZON-ARM VERDICT).
-  **ASYMPTOTE-FOUND ~0.28, DATA-WORKS (PROVISIONAL — single seed; s10/s11 killed at launch).**
-  8-epoch curve plateaued: ep5/6/7 = 0.278/0.282/0.279, recall 87–90, BEST 0.2815/89 (ep6).
-  Data is a confirmed-but-EXHAUSTED lever (0.181 anchor → 0.28 then flat); residual gap to 0.94
-  is Fork-4's (§3o) / k=2-channel's domain. The ~0.28 plateau = Fork-4's matched baseline anchor.
-  Receipts HF `results_horizon/s09/`; cost ~19.5 GPU-h ≈ ~$9.5.
-- **Fork-4 Path A DONE + self-terminated ✓ 2026-06-12** (§3o FORK-4 VERDICT; HF `results_ctxstate/cs/`).
-  Matched pair (16k/2000/3ep, seed 09, L24 of 48): baseline peak 0.169/recall<75 vs ctxL24 peak
-  0.176/79 → **Δ recovery FLAT (+0.007/−0.007)** ⇒ leans **KILL on recovery: k=2 channel-limited,
-  NOT information-limited.** Readback nuance: ctxL24 cleared the 75 floor (context helps re-identify
-  the span, not steer the continuation). PROVISIONAL (single seed/layer/cheap config).
-- **NOTHING in flight. RunPod balance = $0.48** (verified 2026-06-12; Fork-4 cost ~$1.06). No more
-  RunPod runs possible without a top-up. Colab lane idle = the only free lane left. No schtasks.
-  **Owed:** (a) Colab {12,36} depth sweep + 2nd L24 seed to confirm the Fork-4 KILL before pivoting;
-  (b) 3-seed horizon confirm; both on a budget/Colab refresh.
+- **NOTHING in flight. No leaked VMs/pods/schtasks.** All Colab sessions self-cleaned (stop-verified).
+  RunPod balance $0 (no runs possible). Repos clean; engine + lattice committed (push pending below).
+- **P2.b CAMPAIGN CLOSED ✓ 2026-06-12** (CONTRACT-XBAR-P2b §3p/§3q). GENERATION dead at k=2 (6 forks
+  all convicted: capacity/k-sweep/grok/context/KV-prefix/RoPE — the wall is the objective↔task
+  mismatch, NOT channel width). RECOGNITION real-but-sub-usable (Fork-6 contrastive addressing
+  **top-1 0.462 < 0.50 PASS ⇒ REST**, no goalpost move; 15× chance, beats native 3.3×; top-5 **0.77**
+  = shortlister-not-sniper DOOR → two-stage retrieve-verify is a P3/KAIROS architecture choice, not
+  more epochs). Lane rests; memory cells get a heuristic/two-stage addresser, not a learned sole-top-1.
+- **P3.1 decode-wiring GREEN ✓ + P3.1b-1 serialized-store GREEN ✓ 2026-06-12** (both bit-exact on the
+  real 12B, host 2060). See §2.5 + CONTRACT-XBAR-P3 §P3.1 run-records. Read-path is now: read a mirror
+  through off[L] ✓ → read a serialized episode from disk ✓. Built on the **VS2022/VS18 BuildTools host**
+  (cl 19.50 has `<stdatomic.h>`; VS2019 can't build the CUDA tree). Fresh build dir `build-cuda-vs22`.
 
 ## 2. The decision queue (locked order — do not reshuffle without the operator)
 
@@ -54,23 +51,41 @@ session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, BEFORE 
    deltas straddle zero), a third of the 0.60 memorization bar. The adapter cannot memorize its
    own train set ⇒ no phase-1 ⇒ weight decay has nothing to force. Permanently shelved; confirms
    NOT-CAPACITY, converges with k-sweep onto Fork-3 (information-limited). $0.16 on the A6000.
-5. **P3 ring-on-Exec** — CONTRACT-XBAR-P3 **RATIFIED (operator, 2026-06-11)**; 5-gate ladder
-   P3.0→P3.4, host-router v0, 12B/E2B split. Substrate (geom API) landed core `64b698c`.
-   **P3.0 CLOSED GREEN 2026-06-11** (G-P3-0 PASS, system `9a2b0a9`): episode/owner-map manifest
-   (`include/sp/xbar_episode.h` + `core/xbar/xbar_episode.c`) + standalone gate — round-trip
-   byte-exact, uniform-null (qwen3 + 12B KVD-const) == legacy layout, E2B jagged == prefix-sum
-   oracle. Next stage P3.1 (recall router on CUDA decode) is decode-wiring → sequenced behind
-   horizon → Fork-3 → InfoNCE (no launch yet). Code may ship per-stage.
+5. **P3 ring-on-Exec — NOW THE ACTIVE LANE (P2.b closed).** CONTRACT-XBAR-P3 RATIFIED; 5-gate ladder.
+   **P3.0 CLOSED GREEN** (manifest + standalone gate, system `9a2b0a9`). **P3.1 decode-wiring CLOSED
+   GREEN 2026-06-12** (G-P3-1: `SP_XBAR_RECALL_SELFTEST` off[L] indirection in gemma4 CUDA decode;
+   recall decode seq == legacy, token-identical on real 12B). **P3.1b-1 serialized-store CLOSED GREEN
+   2026-06-12** (G-P3-1b: `xbar_episode.c` linked into `sp_engine_cuda`; `SP_XBAR_RECALL_WRITE/LOAD`
+   serialize→disk→deserialize→mount→decode == legacy, token-identical; caveat = read-only LOAD store
+   must cover the window). Engine `cuda_forward.cu` seam ~2154; contract §P3.1 run-records.
+
+   **▶ NEXT = P3.1b-2 recall-as-history (FRESH SESSION — fatigue-sensitive offset math).** Wire the
+   loaded episode as PREPENDED history the current prompt attends back over (`[episode ++ prompt]`).
+   **THE OFFSET PLAN (operator-specified, bank-don't-touch-tired):** inject a static token-length offset
+   `P_offset = P_episode` into the sequence-position tracker (`dpos`) BEFORE the main prompt decode loop
+   evaluates; inside the decode kernels (`k_attn_decode` + `_win`/`_dyn` variants) shift the linear
+   indexing for positional embeddings (RoPE) and attention-mask lookups so live prompt tokens register
+   at `pos + P_offset`; the read path treats the loaded episode's flat `off[L]` blocks as an absolute
+   historical baseline (positions `[0, P_episode)`), preventing index clashing/overwrites in the active
+   KV-cache. **Claude's added mechanism note:** this is a DUAL-SOURCE read — attention must span
+   `[episode-store(0..P_ep) ++ live-cache(P_ep..)]`, NOT the current pure-redirect (P3.1b-1 replaced ALL
+   reads with the store; recall-as-history reads the store for history AND the live cache for the
+   prompt's own positions). RoPE is coherent for free: the episode's stored K was already roped at its
+   write-time positions `0..P_ep-1`, so a query roped at `pos+P_offset` gives the correct relative phase.
+   GATE = bit-exact vs the monolithic `[episode++prompt]` decode (NOT model-finds-needle — that confounds
+   12B NIAH skill). The needle demo rides on the green gate. Then → P3.2 write/consolidation → P3.2b Ring-1.
 6. **Stage KAIROS** — registered, OPENS ONLY after P2.b/P3 close (`ROADMAP-KAIROS.md`).
 
-## 3. P2.b state in one breath
+## 3. P2.b state in one breath — CLOSED 2026-06-12
 
-Mechanism WORKS (Fork-2 readback-CE, 3-seed). k-sweep: ADAPTER-limited, k RETIRED, knee k=2.
-Capacity arm: NOT-CAPACITY (4.4× params = zero recovery, recall degrades; smallest config
-Pareto-optimal). **Operating point PINNED: k=2, λ_read=0.25, d512/L2 (11.3M).** Data arm:
-PARTIAL (operator-ratified; selector defect surfaced+fixed; s09 hit 0.272/88; curves still
-rising at 3-epoch cutoff) → horizon arm now extends to 8 epochs. Phase-0 per-span ceiling 0.94;
-amortized capture ~19-27% so far. Full chain: CONTRACT-XBAR-P2b §3g→§3m.
+GENERATION dead at k=2 (every arm convicted: capacity/k-sweep/grok/context §3o/KV-prefix §3p/RoPE).
+The wall is the **objective↔task mismatch** (continuation-KL demands a generative sufficient statistic),
+NOT channel width (k-sweep flat). RECOGNITION (Fork-6 §3q contrastive addressing) is real-but-sub-usable:
+32-way top-1 **0.462 < 0.50 PASS ⇒ REST** (pre-registered, no goalpost move); 15× chance, climbs, beats
+native-key 3.3×; **top-5 0.77 = shortlister-not-sniper DOOR**. Lane RESTS; the path is a two-stage
+retrieve-and-verify KAIROS loop (architecture, not more epochs). Full chain: CONTRACT-XBAR-P2b §3g→§3q.
+Trainer `_xbar/p2b/train_p2b.py` (staged HF `KnackAU/xbar-p2b-run`) carries `--contrastive` (AddrAdapter,
+B×B InfoNCE, N-way gate, honest controls); receipts HF `results_contrastive/ct1/`.
 
 ## 4. Landed this session (receipts)
 
