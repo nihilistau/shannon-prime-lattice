@@ -397,6 +397,19 @@ BEST (early-stop, ep6) **0.2815 / 89**; FINAL (ep7) 0.2732 / 90. **Read:** doubl
 
 **Run order.** Fork-4 is cheaper (zero params, reuses the teacher forward) and more SP-native (leverage compute already spent) → **RUN FIRST**. Fork-3 stays in the chamber as the dumb-ML capacity-bearing baseline, fired only if Fork-4's null needs a cross-check. **Status:** build + toy-smoke now (rig-ready, staged to the HF job repo); LAUNCH gated on the horizon read (§3m), one cheap A6000 seed for the L-sweep, scale to 3 seeds on a lift.
 
+### FORK-4 VERDICT (Path A, 2026-06-12; pod self-terminated ✓; SINGLE-SEED + ONE LAYER + cheap config ⇒ PROVISIONAL; receipts HF `results_ctxstate/cs/`) — **leans KILL on recovery (k=2 channel-limited, NOT information-limited)**
+
+Matched pair in one pod (16k corpus, 2000 spans, 3 epochs, seed 20260609, pinned k=2/λ_read=0.25/d512L2), context-free baseline vs ctx-state tapped at **layer 24 of 48** (mid-stack):
+
+| arm | recovery curve (ep0/1/2) | peak | recall (F_beats_null) |
+|---|---|---|---|
+| baseline (context-free) | 0.148 / 0.156 / 0.169 | 0.169 | never cleared 75 (final 72) |
+| ctxL24 (frozen state @ L24) | 0.145 / 0.150 / 0.176 | 0.176 | cleared (79 peak / 75 final) |
+
+**Δ recovery = +0.007 (peak) / −0.007 (final) — FLAT**, nowhere near the +0.10 lift bar ⇒ on the headline metric, **the k=2 steering channel caps recovery regardless of context.** NUANCE (kept, not buried): readback/recall *did* move — ctxL24 cleared the 75 floor (79) where baseline never did (72). Coherent channel-limited reading: context helps the model **re-identify** the span (easy task, recall ↑) but two pseudo-tokens still can't carry enough to **steer the continuation** (hard task, recovery flat). Information isn't useless; the channel is too narrow for what we want.
+
+**CAVEATS (no spin):** single seed, single layer (24), cheap 3-epoch/16k config (both arms ~0.17, below the 0.28 horizon plateau). PROVISIONAL by the ≥3-seed rule; §3o KILL is "no *L* lifts" and only L24 was tested. **CONFIRM BEFORE PIVOT:** a zero-cost Colab {12, 36} depth sweep (an earlier layer is less prediction-collapsed; a different depth might lift) + a 2nd seed at L24 hardens this before convicting the channel. RunPod balance $0.48 ⇒ no more RunPod runs; Colab is the lane. **IF CONFIRMED:** with not-capacity (§3j) + not-k (k-sweep) + not-context (Fork-4), the residual lever is the **injection mechanism** (residual-entry pseudo-tokens) and/or the **loss/objective** — i.e. how the k=2 channel is used, not its width. Fork-3 (learned cross-attention) is now LOW-VALUE (same information premise Fork-4 just failed). Cost ~$1.06 (A6000, 2 runs, self-terminated).
+
 ## 4. Compute plan & receipts
 
 RunPod/Colab A100-class, bf16 HF checkpoint from the proven bucket (the 4.68-gold weights — the ONLY trusted source, STATE doctrine). All cloud runs export: config echo (banner = printed env/args), dataset manifest hashes, loss curves, golden-pair archives. Receipts land in `_xbar/p2b/` + the contract run-record; ledger row only on the agreed gates green. **Ops upgrades banked from the Phase-0 runs:** the pod bootstrap must **periodic-upload its log** (RunPod community API returns no telemetry — flying blind otherwise; the operator had to pull the console log manually); validate the corpus is *coherent before* inverting (greedy 90-tok generation degenerates — use continue-narrative seeds + shorter gen + sampling if a fluent baseline is ever needed).

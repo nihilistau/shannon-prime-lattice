@@ -14,11 +14,15 @@ session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, BEFORE 
   Data is a confirmed-but-EXHAUSTED lever (0.181 anchor → 0.28 then flat); residual gap to 0.94
   is Fork-4's (§3o) / k=2-channel's domain. The ~0.28 plateau = Fork-4's matched baseline anchor.
   Receipts HF `results_horizon/s09/`; cost ~19.5 GPU-h ≈ ~$9.5.
-- **NOTHING in flight. RunPod balance = $1.54** (verified 2026-06-12; s09 consumed the ~$10).
-  Colab lane idle (reserved for Fork-3 interactive prep). No schtasks. **Budget gate:** the full
-  Fork-4 matched sweep (baseline + {12,24,36}, ~$2.4) does NOT fit $1.54 — needs a cheap-signal-first
-  variant (baseline + mid-layer 24, 16k corpus, 3 ep ≈ $0.6) OR an operator top-up. 3-seed horizon
-  confirm also owed on a refresh.
+- **Fork-4 Path A DONE + self-terminated ✓ 2026-06-12** (§3o FORK-4 VERDICT; HF `results_ctxstate/cs/`).
+  Matched pair (16k/2000/3ep, seed 09, L24 of 48): baseline peak 0.169/recall<75 vs ctxL24 peak
+  0.176/79 → **Δ recovery FLAT (+0.007/−0.007)** ⇒ leans **KILL on recovery: k=2 channel-limited,
+  NOT information-limited.** Readback nuance: ctxL24 cleared the 75 floor (context helps re-identify
+  the span, not steer the continuation). PROVISIONAL (single seed/layer/cheap config).
+- **NOTHING in flight. RunPod balance = $0.48** (verified 2026-06-12; Fork-4 cost ~$1.06). No more
+  RunPod runs possible without a top-up. Colab lane idle = the only free lane left. No schtasks.
+  **Owed:** (a) Colab {12,36} depth sweep + 2nd L24 seed to confirm the Fork-4 KILL before pivoting;
+  (b) 3-seed horizon confirm; both on a budget/Colab refresh.
 
 ## 2. The decision queue (locked order — do not reshuffle without the operator)
 
