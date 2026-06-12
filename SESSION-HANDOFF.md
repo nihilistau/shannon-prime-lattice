@@ -1,8 +1,9 @@
 # SESSION-HANDOFF.md — where things stand
 
 **Updated:** 2026-06-12 (the P2.b-close → P3 push: Fork-5 KV-prefix → Fork-6 contrastive →
-P2.b CAMPAIGN CLOSED → P3.1/P3.1b-1/P3.1b-2 READ-PATH COMPLETE → **P3.2-a shadow spill GREEN, write-path
-started**). Update this file at every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, BEFORE anything.
+P2.b CAMPAIGN CLOSED → P3.1/P3.1b-1/P3.1b-2 READ-PATH COMPLETE → **P3.2-a shadow spill GREEN → P3.2-b-1
+paged-read GREEN — the spill∘page closed loop runs, history off disk bit-exact**). Update this file at every
+session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, BEFORE anything.
 
 ---
 
@@ -32,8 +33,20 @@ started**). Update this file at every session end or major handoff. Read AFTER `
   unwritten-slot` confirms the `[0,P-1)` byte law. **PERF CAVEAT:** per-step-sync spill serializes the longer
   decode (the pinned-overlap optimization is a P3.2 follow-on; null/identity-first held). Engine `cuda_forward.cu`,
   all behind `SP_XBAR_SPILL` (byte-inert off). Scratch `_run_p32a.bat`. CONTRACT-XBAR-P3 §P3.2-a run-record.
-  **NEXT = P3.2-b recall + Ring-1 shrink (G-P3-R2.b):** serve an evicted needle off Ring 2 + knobs-off parity;
   device cache shrinks toward sink+W per owner.
+- **P3.2-b-1 PAGED-READ GREEN ✓ 2026-06-12 — the spill∘page CLOSED LOOP runs.** `SP_XBAR_PAGE=dir` (implies spill).
+  Per step: page-in `[0,pos)` from Ring-2 (`read_block(off[L])` → H2D, one read/H2D per owner, `[0,pos)` contiguous)
+  at loop top → layer loop writes `pos` live + attends `[0,pos]` → spill `pos` → **POISON** `[0,pos]` (`cudaMemset 0`)
+  so next step MUST page it back. Gate **G-P3-R2.b-1** (in-engine, `SP_XBAR_PAGE_GATE=1`): legacy full-cache decode vs
+  paged decode → **token-identical, diffs[4..16)=0** (both `2 10 100 1000 497 564 …`), `TEST_EXIT=0`, no leak. The poison
+  is the rigor — the live cache is provably not the source, so every read came off disk through `off[L]`. **The model's
+  whole history lived on disk and fed attention bit-exactly.** **SCOPE (honest, told the operator):** this is the recall
+  READ proof, NOT a VRAM shrink — globals attend ALL positions so they can't drop below `ctx` without *sparse* recall (the
+  router); page-in reconstructs into the full-size cache. Engine `cuda_forward.cu` (page-in + poison, behind `SP_XBAR_PAGE`,
+  byte-inert off). Scratch `_run_p32b.bat`. CONTRACT-XBAR-P3 §P3.2-b-1 run-record.
+  **NEXT = P3.2-b-2 THE SHRINK (G-P3-R2.b-2):** SWA owners alloc'd at sink+W + a two-source attention kernel (window-from-cache
+  + recalled-from-staging); globals get sparse top-k recall via the router (the P2.b §3q two-stage retrieve-verify door) —
+  that's where VRAM finally decouples from context length. This is the real paging win and it needs a kernel change + the router.
 
 ## 2. The decision queue (locked order — do not reshuffle without the operator)
 
