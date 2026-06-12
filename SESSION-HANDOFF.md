@@ -1,8 +1,8 @@
 # SESSION-HANDOFF.md — where things stand
 
 **Updated:** 2026-06-12 (the P2.b-close → P3 push: Fork-5 KV-prefix → Fork-6 contrastive →
-P2.b CAMPAIGN CLOSED → P3.1 decode-wiring GREEN → P3.1b-1 serialized-store GREEN). Update this
-file at every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, BEFORE anything.
+P2.b CAMPAIGN CLOSED → P3.1/P3.1b-1/P3.1b-2 READ-PATH COMPLETE → **P3.2-a shadow spill GREEN, write-path
+started**). Update this file at every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, BEFORE anything.
 
 ---
 
@@ -22,7 +22,18 @@ file at every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMEN
   prompt at `[H,..)`; fix = seed `dpos=H` since the loop-skip bypassed `k_incr_pos`; continuation ==
   monolithic, diffs=0). See CONTRACT-XBAR-P3 §P3.1 run-records (G-P3-1 / G-P3-1b / G-P3-1b-2). Built on the
   **VS2022/VS18 BuildTools host** (cl 19.50 has `<stdatomic.h>`; VS2019 can't build the CUDA tree),
-  `build-cuda-vs22`. **NEXT = P3.2 write/consolidation** (the inverse: spill stale live-cache → episode store).
+  `build-cuda-vs22`.
+- **P3.2-a SHADOW SPILL GREEN ✓ 2026-06-12 — WRITE-PATH STARTED** (the inverse of the read-path).
+  `SP_XBAR_SPILL=dir`: per-step, after the layer loop writes `dKc/dVc[L][pos]` for all owners, batch-async-D2H
+  all owner rows into one pinned buffer + ONE sync + `write_block(off[L]+pos·kvd·4)` through the `sp_arm_ring2_backend`
+  stdio ABI (the CPU `decode.c` Ring-2 twin; owners only, **0 sharer blocks**). Gate **G-P3-R2.a** (in-engine at
+  `download:`): read each spilled block back + memcmp vs final live-cache D2H → **diffs=0** at DEC (P=16, 5.2 MiB)
+  AND the 259-position velocity decode (85.3 MiB), `TEST_EXIT=0`, no leak. Store length = `store_bytes − last-owner
+  unwritten-slot` confirms the `[0,P-1)` byte law. **PERF CAVEAT:** per-step-sync spill serializes the longer
+  decode (the pinned-overlap optimization is a P3.2 follow-on; null/identity-first held). Engine `cuda_forward.cu`,
+  all behind `SP_XBAR_SPILL` (byte-inert off). Scratch `_run_p32a.bat`. CONTRACT-XBAR-P3 §P3.2-a run-record.
+  **NEXT = P3.2-b recall + Ring-1 shrink (G-P3-R2.b):** serve an evicted needle off Ring 2 + knobs-off parity;
+  device cache shrinks toward sink+W per owner.
 
 ## 2. The decision queue (locked order — do not reshuffle without the operator)
 
