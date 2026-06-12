@@ -16,10 +16,13 @@ file at every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMEN
   **top-1 0.462 < 0.50 PASS ⇒ REST**, no goalpost move; 15× chance, beats native 3.3×; top-5 **0.77**
   = shortlister-not-sniper DOOR → two-stage retrieve-verify is a P3/KAIROS architecture choice, not
   more epochs). Lane rests; memory cells get a heuristic/two-stage addresser, not a learned sole-top-1.
-- **P3.1 decode-wiring GREEN ✓ + P3.1b-1 serialized-store GREEN ✓ 2026-06-12** (both bit-exact on the
-  real 12B, host 2060). See §2.5 + CONTRACT-XBAR-P3 §P3.1 run-records. Read-path is now: read a mirror
-  through off[L] ✓ → read a serialized episode from disk ✓. Built on the **VS2022/VS18 BuildTools host**
-  (cl 19.50 has `<stdatomic.h>`; VS2019 can't build the CUDA tree). Fresh build dir `build-cuda-vs22`.
+- **P3.1 + P3.1b-1 + P3.1b-2 ALL GREEN ✓ 2026-06-12 — THE READ-PATH IS COMPLETE** (every rung bit-exact
+  on the real 12B, host 2060). Read-path ladder: off[L] mirror read ✓ → serialized episode from disk ✓ →
+  prepended episode as history ✓ (recall-as-history: pre-load episode into cache front `[0,H)`, decode
+  prompt at `[H,..)`; fix = seed `dpos=H` since the loop-skip bypassed `k_incr_pos`; continuation ==
+  monolithic, diffs=0). See CONTRACT-XBAR-P3 §P3.1 run-records (G-P3-1 / G-P3-1b / G-P3-1b-2). Built on the
+  **VS2022/VS18 BuildTools host** (cl 19.50 has `<stdatomic.h>`; VS2019 can't build the CUDA tree),
+  `build-cuda-vs22`. **NEXT = P3.2 write/consolidation** (the inverse: spill stale live-cache → episode store).
 
 ## 2. The decision queue (locked order — do not reshuffle without the operator)
 
