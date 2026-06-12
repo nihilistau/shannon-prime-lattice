@@ -62,7 +62,7 @@ file at every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMEN
    serialize→disk→deserialize→mount→decode == legacy, token-identical; caveat = read-only LOAD store
    must cover the window). Engine `cuda_forward.cu` seam ~2154; contract §P3.1 run-records.
 
-   **▶ NEXT = P3.1b-2 recall-as-history (FRESH SESSION — fatigue-sensitive offset math).** Wire the
+   **P3.1b-2 recall-as-history — CLOSED GREEN 2026-06-12 (G-P3-1b-2; THE READ-PATH IS COMPLETE). ▶ NEXT = P3.2 write/consolidation** (the inverse: spill stale live-cache → episode store). The design below was the plan; the actual fix was **seed `dpos=H`** (the loop-skip over the pre-loaded episode bypassed `k_incr_pos`, lagging the device position counter the packed embed indexes with — diagnostic-found, not reasoned). Continuation == monolithic, diffs=0 on the 12B. [historical design ↓, now implemented:] Wire the
    loaded episode as PREPENDED history the current prompt attends back over (`[episode ++ prompt]`).
    **THE OFFSET PLAN (operator-specified, bank-don't-touch-tired):** inject a static token-length offset
    `P_offset = P_episode` into the sequence-position tracker (`dpos`) BEFORE the main prompt decode loop
