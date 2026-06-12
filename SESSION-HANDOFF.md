@@ -1,9 +1,9 @@
 # SESSION-HANDOFF.md — where things stand
 
 **Updated:** 2026-06-12 (the P2.b-close → P3 push: Fork-5 KV-prefix → Fork-6 contrastive →
-P2.b CAMPAIGN CLOSED → P3.1/P3.1b-1/P3.1b-2 READ-PATH COMPLETE → **P3.2-a shadow spill GREEN → P3.2-b-1
-paged-read GREEN — the spill∘page closed loop runs, history off disk bit-exact**). Update this file at every
-session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, BEFORE anything.
+P2.b CAMPAIGN CLOSED → P3.1/P3.1b READ-PATH COMPLETE → P3.2-a spill GREEN → P3.2-b-1 paged-read GREEN →
+**P3.2-b-2a SWA RING SHRINK GREEN — the FIRST REAL VRAM WIN, 40/48 layers bit-exact**). Update this file at
+every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, BEFORE anything.
 
 ---
 
@@ -47,6 +47,20 @@ session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, BEFORE 
   **NEXT = P3.2-b-2 THE SHRINK (G-P3-R2.b-2):** SWA owners alloc'd at sink+W + a two-source attention kernel (window-from-cache
   + recalled-from-staging); globals get sparse top-k recall via the router (the P2.b §3q two-stage retrieve-verify door) —
   that's where VRAM finally decouples from context length. This is the real paging win and it needs a kernel change + the router.
+- **P3.2-b-2a SWA RING SHRINK GREEN ✓ 2026-06-12 — the FIRST REAL VRAM WIN, bit-exact on 40/48 layers.**
+  Refinement caught: gemma SWA is a PURE sliding window (no sinks) → the window is always live → nothing to page →
+  the shrink is a `W`-slot RING, not the two-source-with-paging kernel (that's the globals' b-2b). SWA owners (`L<kvfs`,
+  `!global`) alloc `Wring=min(W,P)` slots (globals keep full `P`); live write → `slot pos%Wring` (eviction free); new
+  `k_attn_decode_ring` reads the window in POSITION order `(s0+j)%Wring` → fp reduction byte-identical to the full kernel.
+  Flags `SP_XBAR_SWA_RING` + `SP_XBAR_SWA_W=<w>` (window override for cheap gating). Gate `SP_XBAR_SWA_GATE=1`: full-cache
+  window-4 vs ring-of-4 → **token-identical, diffs[4..16)=0** (P=16 wraps the ring 3×), `TEST_EXIT=0`, no leak. **WHY IT'S
+  THE WIN:** the 40 SWA owners carry the *dominant* kvd=2048 (vs globals' 512) — capping them at `W` turns the ~21 GB-@-32k
+  SWA term CONSTANT (~0.67 GB @ W=1024); only the 8 small globals still scale (~1 GB @ 32k). Engine `cuda_forward.cu`
+  (`k_attn_decode_ring` + ring alloc/write/dispatch, behind the SWA flags, byte-inert off). Scratch `_run_p32b2a.bat`.
+  CONTRACT-XBAR-P3 §P3.2-b-2a. **NEXT = P3.2-b-2b the GLOBAL shrink:** sparse top-k recall on the 8 global owners via the
+  P2.b §3q two-stage retrieve-verify router (the KAIROS plug-in point) — the last context-linear term; this is where the
+  read-path (b-1, proven) + the SWA shrink (b-2a) compose into full VRAM-decoupled-from-context. It is a SEPARATE domain
+  (needs the §3q top-5 shortlister), not substrate-only.
 
 ## 2. The decision queue (locked order — do not reshuffle without the operator)
 
