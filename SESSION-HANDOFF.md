@@ -10,7 +10,21 @@ every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, B
 ## 1. IN FLIGHT right now (check these first)
 
 - **NOTHING in flight. No leaked VMs/pods/schtasks.** All Colab sessions self-cleaned (stop-verified).
-  RunPod balance $0 (no runs possible). Repos clean; engine + lattice committed (push pending below).
+  RunPod balance $0 (no runs possible). Repos clean; engine `1a08d3d` + lattice `27c7579` pushed, `ahead=0`.
+- **▶ NEXT SESSION FOCUS (operator-set 2026-06-12, hard boundary): DRAFT `CONTRACT-XBAR-P3 §P3.2-b-2b` — the
+  global sparse-recall router spec. This is an ANALYTICAL session, NOT a coding session.** The XBAR bare-metal
+  C/CUDA substrate is CLOSED (read-path / write-spill / paged-read / SWA-ring all bit-exact, engine `1a08d3d` =
+  the definitive baseline). b-2b crosses into the KAIROS **policy** domain. **THE DOMAIN TRANSITION (the thing to
+  hold):** the substrate gates were `diffs=0` because they preserved 100% of keys + the exact reduction order;
+  sparse top-k recall DROPS keys by construction → the reduction tree changes, logits drift, **bit-exactness dies
+  by definition.** So the b-2b gate is NOT `diffs=0` — it is a **pre-registered bounded-degradation** gate:
+  (a) PPL-deflection ceiling, (b) needle-HIT retention (HIT off sparse recall where b-1 HIT from full attention),
+  (c) top-1 coherence tolerance. **PRE-REGISTER THE BOUND BEFORE ANY CODE** (the P2.b no-goalpost-move discipline —
+  bind hands before the telemetry lands). The §3q evidence already shapes the answer: top-1 0.462 = sub-usable sole
+  sniper, top-5 0.77 = shortlister → the router MUST be **two-stage retrieve-verify** (top-5 shortlist → verify
+  against the live query), the verify step riding on b-1's proven page-in. Only the 8 global owners (kvd=512) remain
+  context-linear; b-2a already made the 40 SWA owners constant. See [[project_p31_decode_wiring_green]] + CONTRACT-XBAR-P3
+  §P3.2-b-2a + [[feedback_exact_to_heuristic_gate_shift]].
 - **P2.b CAMPAIGN CLOSED ✓ 2026-06-12** (CONTRACT-XBAR-P2b §3p/§3q). GENERATION dead at k=2 (6 forks
   all convicted: capacity/k-sweep/grok/context/KV-prefix/RoPE — the wall is the objective↔task
   mismatch, NOT channel width). RECOGNITION real-but-sub-usable (Fork-6 contrastive addressing
