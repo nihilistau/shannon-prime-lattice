@@ -305,3 +305,40 @@ inverse gate. It claims nothing new about cognition (KAIROS-01 already closed th
 lane (it IS XBAR pointer work). **Next-session first action:** open `cuda_forward.cu` at the SWA-ring
 + `off[L]` seam, cut `gemma4_kv_open/prefill/decode/rewind/pos/close`, gate G-1b-REWIND-NULL FIRST
 (null floor) before wiring the KAIROS loop to it.
+
+### 5.5 KAI-1b CLOSURE — GREEN (2026-06-14, engine 0bb94f1)
+
+The metal eviction is built, bit-exact, and O(1)-proven on the 12B. `gemma4_decode_cuda`
+left BYTE-FOR-BYTE UNTOUCHED (null floor for 06-R10/X-R2/NIAH/KAIROS-01); the resident twin
+`gemma4_kv_open/prefill/decode/rewind/pos/snapshot/close` is the new surface.
+
+**G-1b-REWIND-NULL — GREEN** (`SP_G4_KV_REWIND`, gemma4-12b-b1, RTX 2060): prefill system(24)
+→ snapshot; idle tick prefill frame(12)+decode(8); `rewind(20)`→anchor; snapshot. The [0,24)
+KV region is byte-identical across all 48 owner layers (16.5 MB, **diffs=0**) — rewind is a
+perfect inverse (T8.1 analog on the GPU). **EQUIV gen-reproduce GREEN**: the same idle tick re-run
+after the rewind yields identical tokens (the rewound cache is a flawless re-entry point).
+
+**§5.4 O(actions)→O(1) telemetry — CONFIRMED** (`SP_G4_KV_TELEMETRY`, clocks pinned, min-of-3):
+idle-tick latency vs retained-action count A:
+
+| A | prefix-grow (s) | metal (s) | grow/metal |
+|---|---|---|---|
+| 1 | 2.72 | 0.88 | 3.08× |
+| 2 | 3.59 | 0.89 | 4.03× |
+| 4 | 5.35 | 0.91 | 5.89× |
+| 8 | 8.96 | 0.93 | 9.60× |
+| 16 | 16.58 | 0.99 | 16.70× |
+
+slope d(idle)/dA: prefix-grow **0.924 s/action** vs metal **0.0073 s/action** (127× shallower).
+The prefix-grow recompute tax is linear in retained actions; the crossbar rewind deletes it —
+the resident loop is a flatline. Receipts: `engine/results/kai1b_rewind_null_gate.log` +
+`kai1b_oactions_to_o1_telemetry.log`.
+
+**SCOPE (honest):** full-cache rewind (SWA handled by windowed attention). The metal *idle tick*
+itself carries the real O(context) attention term (constant step count, mild rise: 0.88→0.99 s as
+the resident context 44→344) — that is the per-step attention read, NOT re-prefill; the O(actions)
+elimination is in the **step count** (metal = constant 20 steps/tick; grow = system+A·action+frame
+steps/tick). SWA-ring/slab wrap-aware rewind = follow-on. The telemetry harness measures both modes
+directly (the §5.4 receipt); the full semantic `run_kairos` loop on the metal ABI is a deployment
+follow-on (cognition already closed at KAIROS-01; metal forward bit-exactness proven by EQUIV).
+**KAI-1b CLOSED.**
