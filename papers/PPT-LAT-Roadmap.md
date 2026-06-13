@@ -3,7 +3,7 @@
 **Project:** shannon-prime-lattice
 **Document role:** Operational roadmap. Read by every future session before doing work.
 **Status:** Living document. Mutable. Papers are scaffolding, not artefacts.
-**Last rewrite:** 2026-05-21 · **Last amended:** 2026-06-10 (XBAR status refresh; prior C2.1 + public-launch + XBAR-opening amendments below)
+**Last rewrite:** 2026-05-21 · **Last amended:** 2026-06-13 (XBAR §P3.2-b-2b CLOSED — KV decoupled from context; Phase C alloc-shrink in progress)
 **Authors:** Knack + Claude + Gemini (Shannon-Prime team)
 **Public front door:** [Position Is Arithmetic](https://github.com/nihilistau/Position_Is_Arithmetic) · [live site](https://nihilistau.github.io/Position_Is_Arithmetic/) — receipts-first paper series. **License: MIT (all repos).**
 
@@ -11,9 +11,9 @@
 
 ## AGENT NAVIGATION / CURRENT PHASE (added 2026-06-10 — read this box, then jump; do NOT read this 8,500-line file top-to-bottom)
 
-**Today's forward edge (2026-06-10):**
-- **XBAR P2.b capacity arm IN FLIGHT** (4 configs × 3 seeds, CONTRACT-XBAR-P2b §3j) — no verdict yet; do not pre-claim.
-- **P3 ring-on-gemma4-CUDA** next (G-P3-GEOM substrate landed, core `64b698c`; remaining: decode.c wiring + G-P3-SHARED).
+**Today's forward edge (2026-06-13):**
+- **XBAR P3 ring-on-Exec is the live lane. §P3.2-b-2b GLOBAL SPARSE RECALL CLOSED GREEN on the real 12B:** read-path + write-path (spill/paged-read) bit-exact, SWA ring shrink (40/48 layers), and a trained **512×32 Learned-LSH router wins 8× global compression at +0.47% PPL** (oracle ceiling −0.08% proved it learnable; frozen ±1 was +4.17%). **With SWA capped at W and globals at B, the KV cache is DECOUPLED from context length.** (P2.b is CLOSED — §3q recognition rested at top-1 0.462; the §3q "shortlist" door is now realized as the deployed r-dim LSH router.)
+- **▶ NEXT = Phase C alloc-shrink** (turn the proven selection into realized VRAM): C-a device-select + C-b.1 projected-key sidecar DONE; **C-b.2 compact-slab `B+sink` cut + 32k `nvidia-smi` VRAM flat-line** is the active cut → C-c NIAH-under-poison → P3.3/P3.4.
 - **NIGHTSHIFT v0** (schtasks over the C1-lite loop) · **GNA Stage 3** HW bring-up in reserve (kit staged).
 
 **Where current truth lives — supersession order: STATE > contract run records > the amendment blocks below > this file's body.**
