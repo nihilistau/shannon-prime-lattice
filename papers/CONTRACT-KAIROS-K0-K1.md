@@ -134,10 +134,19 @@ not assumed). The 30 s starting interval is a reference-informed guess, not a me
 
 ## 2a. KAI-1 control-plane spec — `Workflow` / `TaskState` (design; implements §2.5)
 
-Language-agnostic spec the Rust daemon implements. **Note (2026-06-14): the Rust daemon crate is NOT
-in `shannon-prime-repos` (no `Cargo.toml`/`.rs` here) — it is the separate Sprint-K daemon lane
-(`FastRpcSession`/Axum). The struct *design* is pinned here; the impl is cut once that crate is on the
-bench.** The constitutional rule from §2.5: state is COORDINATES, never prose.
+Language-agnostic spec the Rust daemon implements. **CORRECTION (2026-06-14, supersedes the prior
+"crate is not in the tree" note): the Rust daemon crate IS in the tree — it is the mature `sp-daemon`
+at `shannon-prime-system-engine/tools/sp_daemon` (Axum/tokio resident wrapping the frozen L1 C ABI;
+session registry, SSE event loop, PoUW ledger, QUIC Ring-2 mesh, the `mining.rs` yield-to-inference
+background loop, off-by-default WIRE-* features = the null-floor discipline). It was invisible to the
+sandbox mount and surfaced only via PowerShell on the host. KAI-1 therefore EXTENDS `sp-daemon` — the
+control plane is a new feature-gated module `sp_daemon/src/kairos.rs` (the `kairos` cargo feature,
+mirroring `wire_*`), NOT a new crate. This §2a spec is now implemented there: `TaskState` /
+`SessionHandoff` / `Workflow` verbatim, the §2b tape reader, the per-tick receipt log, and the
+heartbeat loop. The model-decode decision seam is `decide_via_model`; the first cut ships a
+deterministic salience-threshold stub decider that proves the loop's nervous system only (§3 scope:
+"claims nothing about autonomy quality").** The constitutional rule from §2.5: state is COORDINATES,
+never prose.
 
 ```
 // the resumable unit of execution
