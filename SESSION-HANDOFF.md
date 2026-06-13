@@ -11,8 +11,17 @@ every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, B
 
 - **NOTHING in flight. No leaked VMs/pods/schtasks.** All Colab sessions self-cleaned (stop-verified).
   RunPod balance $0 (no runs possible). Repos clean; engine `1a08d3d` + lattice `27c7579` pushed, `ahead=0`.
-- **▶ NEXT SESSION FOCUS (operator-set 2026-06-12, hard boundary): DRAFT `CONTRACT-XBAR-P3 §P3.2-b-2b` — the
-  global sparse-recall router spec. This is an ANALYTICAL session, NOT a coding session.** The XBAR bare-metal
+- **▶ §P3.2-b-2b SPEC-LOCKED 2026-06-13 (analytical cycle CLOSED) — NEXT IS THE ENGINEERING CYCLE: cut the v0.**
+  The contract section + 4 immutable parameter locks are in CONTRACT-XBAR-P3 §P3.2-b-2b. v0 = frozen `sp_arm_select_geom`
+  ±1 projection router on the 8 global owners (host shadow-select → `read_block(off[L]+ri[j]·kvd·4)` pages only the
+  selected set → new `k_attn_decode_gather` index-list kernel attends recall-set+sinks+recent-W; SWA keep the b-2a ring;
+  globals alloc `B+sink+W` not `P`). Knobs `SP_ARM_B/W/SINK/R`. Gate `G-P3-R2.b-2b` (NON-bit-exact, the first one):
+  **G1** NIAH needle ≥ full-attention with the live global cache NaN-poisoned (HIT only off Ring-2) + **G2** PPL-deflection
+  **< 2.0%**, both strictly **within ≤ 8× / N ≤ 2k** (32k/64× = ungated, do NOT report past the band — C2.4-cliff lesson);
+  top-1 retention reported non-gating; §3q learned two-stage shortlist→verify is the fallback lever, un-rested ONLY on a
+  v0 breach. Proposed v0 phasing is in the chat log (shadow-select-then-log first, then the gather kernel, then the gate).
+  See [[feedback_exact_to_heuristic_gate_shift]].
+- **(superseded) prior NEXT-SESSION note: DRAFT the spec** — done 2026-06-13. The XBAR bare-metal
   C/CUDA substrate is CLOSED (read-path / write-spill / paged-read / SWA-ring all bit-exact, engine `1a08d3d` =
   the definitive baseline). b-2b crosses into the KAIROS **policy** domain. **THE DOMAIN TRANSITION (the thing to
   hold):** the substrate gates were `diffs=0` because they preserved 100% of keys + the exact reduction order;
