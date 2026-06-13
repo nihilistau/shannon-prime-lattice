@@ -33,12 +33,17 @@ every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, B
   top-B captures 96.7%/92.3% of attention mass at 4×/8× — **gemma globals are DIFFUSE, not concentrated**. Then
   `SP_ARM_ORACLE` (`k_qk_scores` GPU + host min-heap top-B → gather) measured the **on-engine oracle PPL: 8× = 5.1512
   (−0.08%), 4× = 5.1544 (−0.01%)** vs FULL 5.1551 — both GREEN. **8× is NOT information-bounded; the frozen +4.17% is
-  100% router quality** (the diffuse 7.7% dropped mass is noise — C2.1 denoise on real wikitext). **VERDICT: train the
-  §3q per-position addresser** (close the ~4.25pt frozen→oracle gap). **▶▶ NEXT = TRAIN THE HEAD.** The Fork-6 adapter
-  is the WRONG artifact (span-level, hd=256) — build a NEW per-position contrastive head on the `SP_ARM_DUMP` corpus
-  (post-RoPE K/q, target = exact top-B by q·K). Phases: A-parity(done: dump+oracle) → B retrieve-then-verify head →
-  G2 8× gate vs oracle → G1 NaH → alloc-shrink. THEN P3.3 SP_REPLAY → P3.4. Contract: §P3.2-b-2b + G-P3-R2.b-2b-N +
-  -ORACLE run-records. (Dump 1.6 GB stays local/gitignored.)
+  100% router quality** (the diffuse 7.7% dropped mass is noise — C2.1 denoise on real wikitext).
+- **▶ §3q LEARNED-LSH WINS 8× = +0.47% PPL — §P3.2-b-2b CLOSED GREEN (2026-06-13, G-P3-R2.b-2b-LSH, engine `222463a`).**
+  Trained a single shared **512×32 projection R** (forward-KL distillation of the true attention dist + 0.2 hard-neg
+  hinge + learnable τ; `tools/xbar_lsh/train_lsh.py`, GPU 0.8s/ep on the 2060 — **CUDA torch 2.6.0+cu124 now installed**).
+  Deployed via `SP_ARM_LSH=M.bin` (M=R·Rᵀ, select=top-B by (Mq)·K, reuses `k_qk_scores`+`k_apply_M`, **zero new hot-path
+  kernels, cost independent of r**). **G2 8× (N=2048×3): LSH r=32 = 5.1791 = +0.47% GREEN** vs frozen +4.17% RED, oracle
+  −0.08%. **8× won on a 16,384-param matrix at v0 inference cost.** Weight: `tests/fixtures/lsh/lsh_M_r32.bin`. With SWA
+  ring (b-2a) + globals at B, **KV decouples from context.** **▶▶ NEXT = the literal ALLOC-SHRINK** (allocate globals at
+  `B+sink` not `P`, device-side select = the realized VRAM number; v0 still allocs full P + host-selects) → G1 NIAH
+  under NaN-poison with the learned router → P3.3 SP_REPLAY → P3.4 PPL gate. Contract: §P3.2-b-2b + G-P3-R2.b-2b-N +
+  -ORACLE + -LSH run-records. (Dump 1.6 GB local; trained R/M + harness committed to engine.)
 - **(superseded) §P3.2-b-2b SPEC-LOCK note — the spec is now implemented + gated.**
   The contract section + 4 immutable parameter locks are in CONTRACT-XBAR-P3 §P3.2-b-2b. v0 = frozen `sp_arm_select_geom`
   ±1 projection router on the 8 global owners (host shadow-select → `read_block(off[L]+ri[j]·kvd·4)` pages only the
