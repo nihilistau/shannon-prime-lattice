@@ -132,6 +132,66 @@ before any further kernel work.
 may need prompt-contract iteration or a small finetune (the flywheel exists; that lane is named,
 not assumed). The 30 s starting interval is a reference-informed guess, not a measurement.
 
+## 2a. KAI-1 control-plane spec — `Workflow` / `TaskState` (design; implements §2.5)
+
+Language-agnostic spec the Rust daemon implements. **Note (2026-06-14): the Rust daemon crate is NOT
+in `shannon-prime-repos` (no `Cargo.toml`/`.rs` here) — it is the separate Sprint-K daemon lane
+(`FastRpcSession`/Axum). The struct *design* is pinned here; the impl is cut once that crate is on the
+bench.** The constitutional rule from §2.5: state is COORDINATES, never prose.
+
+```
+// the resumable unit of execution
+enum TaskState {
+    Pending,
+    Running   { step_cursor: u64 },        // journaled; resume re-enters here, not from scratch
+    Yielded   { resume: SessionHandoff },   // <eos> -> scheduler; the §2.5 episode pointer, NOT a summary
+    Blocked   { on: GoalCond },             // the independent Goal verifier's unmet exit condition
+    Done      { receipt: ReceiptHash },
+    Failed    { receipt: ReceiptHash },
+}
+
+// SessionHandoff is the §2.5 ABI verbatim — coordinate pointers only
+struct SessionHandoff {
+    episode_manifest: EpisodePtr,   // off[L] owner-resolved byte law + per-owner kvd  (NOT text)
+    episode_store:    Ring2Path,    // {ep.k, ep.v} on disk, post-RoPE K/V, f32-exact -> bit-exact replay
+    ring_coords:      Vec<(u32,u32,u32)>, // (L, pos, owner) the curator promoted (Ring-3 set)
+    fs_pointer:       Vec<NexusPath>,     // human-auditable knowledge/rules/receipts (filesystem tier)
+    priority:         PriorityClass,      // REALTIME | INTERACTIVE | BACKGROUND | BATCH
+    goal:             GoalCond,           // exit condition checked out-of-context before Done
+}
+
+// the deterministic orchestration primitives (MiMo API shape, rebuilt in Rust)
+enum Workflow {
+    Agent    { task: TaskState },
+    Parallel { arms: Vec<Workflow>, barrier: bool },   // `for` won't exit early; barrier won't drop an arm
+    Pipeline { stages: Vec<Workflow> },                // `if` won't forget a branch
+    Sub      { name: WorkflowId },                     // composable; journaled to disk per step
+}
+```
+**Invariants (gated, not assumed):** every `Workflow` step result is journaled to disk before the next
+(crash-resume from log, never re-hydration); a SIGKILL mid-run resumes from `step_cursor` with **no
+duplicated side-effects** (idempotent callbacks); resume is `SP_REPLAY(episode_store)`, never a prose
+rebuild. `TaskState` carries **no tokenized text of the agent's own history** — that is the harness
+regression §2.5 forbids.
+
+## 2b. The deterministic event tape (KAI-1 fixture format)
+
+A scripted, replayable tape so G-KAIROS-1 is deterministic (no live sensors — that's KAI-4). One event
+per line; the tick reads the next line each tick:
+
+```
+# tick_idx   kind            payload                    salience   expect
+0            IDLE            -                          0.00       NOOP
+1            IDLE            -                          0.00       NOOP
+2            EVENT.timer     "build finished"           0.80       ACTION
+3            IDLE            -                          0.00       NOOP
+...
+```
+`salience` feeds the router-tier score; `expect` is the gate oracle (NOOP-vs-ACTION) for the
+false-action / missed-event counters. N salient events sparse among M idle ticks (N≪M). The tape is a
+tracked fixture (`tests/fixtures/kairos/tape_*.txt`); the gate diffs the tick log's decisions against
+`expect`.
+
 ## 3. Scope discipline
 
 K1 proves the LOOP's nervous system on synthetic events. It claims nothing about sensors,
