@@ -3,7 +3,7 @@
 **Project:** shannon-prime-lattice
 **Document role:** Operational roadmap. Read by every future session before doing work.
 **Status:** Living document. Mutable. Papers are scaffolding, not artefacts.
-**Last rewrite:** 2026-05-21 · **Last amended:** 2026-06-13 (XBAR §P3.2-b-2b CLOSED — KV decoupled from context: globals constant at the GQA union `nh·B`, not `B`; Phase C alloc-shrink in progress, C-b.2 mechanics GREEN)
+**Last rewrite:** 2026-05-21 · **Last amended:** 2026-06-14 (XBAR §P3.2-b-2b + Phase C CLOSED GREEN — KV decoupled O(1): 8k↔16k VRAM flat ~50 MiB + C-c NIAH needle survives compaction at 10/50/90% learned-router-only; next = P3.3 → KAIROS)
 **Authors:** Knack + Claude + Gemini (Shannon-Prime team)
 **Public front door:** [Position Is Arithmetic](https://github.com/nihilistau/Position_Is_Arithmetic) · [live site](https://nihilistau.github.io/Position_Is_Arithmetic/) — receipts-first paper series. **License: MIT (all repos).**
 
@@ -13,7 +13,7 @@
 
 **Today's forward edge (2026-06-13):**
 - **XBAR P3 ring-on-Exec is the live lane. §P3.2-b-2b GLOBAL SPARSE RECALL CLOSED GREEN on the real 12B:** read-path + write-path (spill/paged-read) bit-exact, SWA ring shrink (40/48 layers), and a trained **512×32 Learned-LSH router wins 8× global compression at +0.47% PPL** (oracle ceiling −0.08% proved it learnable; frozen ±1 was +4.17%). **With SWA capped at `W` and globals at the GQA union `nh·B` (= 4096, NOT `B` — corrected by C-b.2: the 16 query heads pick near-orthogonal top-B sets on diffuse globals, so the per-step union → `nh·B`, constant in P but 16× the per-head B), the KV cache is DECOUPLED from context length** (both terms O(1); decoupling visible only for N > nh·B). (P2.b is CLOSED — §3q recognition rested at top-1 0.462; the §3q "shortlist" door is now realized as the deployed r-dim LSH router.)
-- **▶ NEXT = Phase C alloc-shrink** (turn the proven selection into realized VRAM): C-a device-select + C-b.1 projected-key sidecar DONE; **C-b.2 compact-slab mechanics output-invariant GREEN at the `nh·B` cap (engine `725058c`, union measured 1511/2048); the 32k `nvidia-smi` VRAM flat-line gate — only visible for N > nh·B = 4096 — is the active cut** → C-c NIAH-under-poison → P3.3/P3.4.
+- **Phase C alloc-shrink CLOSED GREEN (2026-06-14):** C-a device-select + C-b.1 sidecar + C-b.2 compact slab → **O(1) realized (N=8192 vs 16384 VRAM flat ~50 MiB, engine `33ac632`)** + **C-c NIAH retention (needle survives the compaction at depths 10/50/90%, exact & learned-router-only; frozen control MISS; engine `3218d73`).** select → realize → retain, end-to-end on the real 12B. **▶ NEXT = P3.3 SP_REPLAY → P3.4, then the KAIROS harness lane** (time/agency axis; adopt MiMo-Code's deterministic-code orchestration + Goal verifier + semantic memory tiers above the rings).
 - **NIGHTSHIFT v0** (schtasks over the C1-lite loop) · **GNA Stage 3** HW bring-up in reserve (kit staged).
 
 **Where current truth lives — supersession order: STATE > contract run records > the amendment blocks below > this file's body.**
