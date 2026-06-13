@@ -342,3 +342,46 @@ steps/tick). SWA-ring/slab wrap-aware rewind = follow-on. The telemetry harness 
 directly (the §5.4 receipt); the full semantic `run_kairos` loop on the metal ABI is a deployment
 follow-on (cognition already closed at KAIROS-01; metal forward bit-exactness proven by EQUIV).
 **KAI-1b CLOSED.**
+
+## 5.6 KAI-1c — WRAP-AWARE RING REWIND (opener; pre-registered 2026-06-14, code next)
+
+**Why:** KAI-1b proved O(1)-*time* eviction on the FULL cache; X-R2 proved O(1)-*space* on the
+SWA ring/slab. They are not yet unified. The resident edge daemon must evict on the
+*space-optimized* ring — but `rewind` on a ring is not a clean pointer decrement.
+
+**The hazard (surveyed, `cuda_forward.cu` k_attn_decode_ring @271 / pos%Wring write):** the ring
+holds the window `[p-W+1, p]` across `Wring` slots; writing position `p` to slot `p%Wring`
+overwrites position `p-Wring` (correct eviction in steady-state forward — that is why the one-shot
+ring is bit-exact, G-P3-R2.b-2a). Under REWIND it corrupts: an idle tick advancing `[anchor,
+anchor+k)` writes slots that previously held the still-live window positions `[anchor-W, anchor-W+k)`;
+a naive `dpos -= Δ` then leaves those `k-1` window slots holding FUTURE K/V (positions `[anchor+1,
+anchor+k-1]`). The "sheared slots never read" invariant (true on the full cache, slot==pos) FAILS on
+the ring because the tick's writes alias onto live-window slots.
+
+**The fix (design): an undo-journal.** Per SWA-owner step, BEFORE `k_kv_store` overwrites ring slot
+`s = pos%Wring`, copy the slot's current K/V into a per-tick journal keyed by `(L, s)`; on
+`gemma4_kv_rewind`, replay the journal in REVERSE to restore each clobbered slot to its pre-tick
+contents. Journal size = (distinct slots the tick wrote) ≤ min(k, W) per owner — CONSTANT per tick
+(k = frame+decode tokens), independent of retained-action count A ⇒ O(1) time AND O(1) space
+preserved. `gemma4_kv_decode`/`prefill` populate the journal; `rewind` consumes it; `gemma4_kv_open`
+allocates SWA owners at `Wring` slots (not Pmax) — the X-R2 space win, now rewind-safe.
+
+**G-1b-WRAP-NULL (PRE-REGISTERED gate, bit-exact):**
+- **Construction:** small `Wring` (e.g. W=16) so wraps are cheap. Prefill past `W` multiple times
+  (force ≥2 wraps); retain an action (dpos ≫ W); **snapshot the ring's W slots** (the anchor state).
+- **The crucible:** execute an idle tick whose span crosses ≥1 wrap boundary (`anchor%W + k > W`),
+  then issue the **wrap-crossing `rewind(Δ)`**; snapshot the ring again.
+- **The rule (REWIND-NULL on the ring):** the W-slot ring is **byte-identical** before vs after the
+  tick+rewind (D2H memcmp over all SWA-owner rings, diffs=0) — the journal is a perfect inverse
+  across the wrap. PLUS **EQUIV**: a non-wrapped FULL-cache oracle decoded to the same dpos has a
+  window `[anchor-W+1, anchor]` byte-identical to the ring's live window (slot-mapped), and the idle
+  tick re-run after rewind reproduces identical tokens.
+- **Falsification:** any nonzero diff (a clobbered live-window slot not restored, an off-by-one in
+  `(s0+j)%Wring` vs the journal key, a wrap-boundary miscount) ⇒ RED, full-cache rewind remains the
+  shipping primitive until the ring journal is exact. No "close enough."
+
+**Scope:** SWA owners (the dominant kvd=2048 term, 40/48 layers) move to the journaled ring; the 8
+globals stay full-cache (they attend all positions — no window, no ring; their KAI-1b rewind already
+exact). The compact-slab (C-b.2) globals path is a separate follow-on. **Next-session first action:**
+open `cuda_forward.cu`, add the journal to the `gemma4_kv_*` SWA-owner write path, gate
+G-1b-WRAP-NULL (REWIND-NULL ring byte-identity) FIRST before any deploy wiring.
