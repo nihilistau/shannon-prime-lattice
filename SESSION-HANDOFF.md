@@ -11,7 +11,18 @@ every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, B
 
 - **NOTHING in flight. No leaked VMs/pods/schtasks.** All Colab sessions self-cleaned (stop-verified).
   RunPod balance $0 (no runs possible). Repos clean; engine `1a08d3d` + lattice `27c7579` pushed, `ahead=0`.
-- **▶ §P3.2-b-2b SPEC-LOCKED 2026-06-13 (analytical cycle CLOSED) — NEXT IS THE ENGINEERING CYCLE: cut the v0.**
+- **▶ §P3.2-b-2b GLOBAL SPARSE RECALL — MECHANISM CLOSED GREEN 2026-06-13 (engine `a0b8d42`).** Built null-first:
+  Phase 0/1 bit-exact (shadow `sp_arm_select_geom` + projk oracle-parity mism=0, live output unchanged) → G2 PPL
+  deflection 4× −0.31% / 8× −3.21% **inside the locked < 2.0%** (OK_Q4B `-b1` baseline 4.6665 == gold; the plain
+  `gemma4-12b.sp-model` is the coarse QAT variant @ 7.4M PPL — USE `-b1` FOR PPL) → G1 served-off-disk **bit-exact**
+  (`SP_ARM_PAGE`: NaN-poison live globals + sparse page off Ring-2; gather-from-disk == gather-from-live diffs=0).
+  Flags `SP_ARM_SHADOW`/`GATHER`/`PAGE` + `SP_ARM_B/W/SINK/R`, gates `SP_ARM_GATE`/`SP_ARM_PAGE_GATE`, byte-inert off.
+  **FOLLOW-ONS (mechanism ≠ deployment, pick up here):** (1) larger-N G2 on the full wikitext corpus (n_ctx=84 is the
+  noisy small end); (2) the literal alloc-shrink — v0 still allocs globals at full `P` + host-selects; alloc `B+sink+W`
+  + device-side select is the actual VRAM reduction; (3) **M_GEMMA4 mis-registration** — plain model path = coarse QAT
+  variant, oracle 90.72 stale even for the good model; repoint to `-b1`, refresh oracle (a standing red gate). Then
+  P3.3 SP_REPLAY → P3.4 PPL gate. CONTRACT-XBAR-P3 §P3.2-b-2b run-record. (Superseded the spec-lock note below.)
+- **(superseded) §P3.2-b-2b SPEC-LOCK note — the spec is now implemented + gated.**
   The contract section + 4 immutable parameter locks are in CONTRACT-XBAR-P3 §P3.2-b-2b. v0 = frozen `sp_arm_select_geom`
   ±1 projection router on the 8 global owners (host shadow-select → `read_block(off[L]+ri[j]·kvd·4)` pages only the
   selected set → new `k_attn_decode_gather` index-list kernel attends recall-set+sinks+recent-W; SWA keep the b-2a ring;
