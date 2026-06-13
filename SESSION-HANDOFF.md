@@ -26,10 +26,19 @@ every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, B
   `tests/fixtures/ppl/wiki.valid.g4tokens.txt` + bats committed (engine `587c8d7`). (2) the literal alloc-shrink —
   STILL OPEN (v0 allocs globals at full `P` + host-selects; alloc `B+sink+W` + device-side select = the real VRAM cut).
   (3) **M_GEMMA4 mis-registration** — **DONE (engine `51bdb76`):** `test_gemma4_ppl_cuda.c` default → `-b1`, registered
-  `M_GEMMA4_CUDA_PPL` ctest GREEN (SP PPL 4.6665 vs oracle 4.6776, −0.24%). **▶ NEXT = OPEN THE §3q LANE** (take the
-  P2.b 0.77 contrastive adapter, wire it as the global shortlister before a byte-exact verify loop — the two-stage
-  retrieve-verify path that recovers 8×). THEN alloc-shrink → P3.3 SP_REPLAY → P3.4 PPL gate. CONTRACT-XBAR-P3
-  §P3.2-b-2b + G-P3-R2.b-2b-N run-records.
+  `M_GEMMA4_CUDA_PPL` ctest GREEN (SP PPL 4.6665 vs oracle 4.6776, −0.24%).
+- **▶ §3q ORACLE CEILING — 8× IS LEARNABLE (2026-06-13, G-P3-R2.b-2b-ORACLE, engine `dab7d36`).** Before training,
+  measured the selection ceiling. `SP_ARM_DUMP` hook (engine `08d4d79`, reuses the shadow seam) dumped post-RoPE
+  per-position K/q on the 8 globals over the 3 N=2048 windows → offline diagnostic (`_xbar/p2b/phaseA_diag.py`): exact
+  top-B captures 96.7%/92.3% of attention mass at 4×/8× — **gemma globals are DIFFUSE, not concentrated**. Then
+  `SP_ARM_ORACLE` (`k_qk_scores` GPU + host min-heap top-B → gather) measured the **on-engine oracle PPL: 8× = 5.1512
+  (−0.08%), 4× = 5.1544 (−0.01%)** vs FULL 5.1551 — both GREEN. **8× is NOT information-bounded; the frozen +4.17% is
+  100% router quality** (the diffuse 7.7% dropped mass is noise — C2.1 denoise on real wikitext). **VERDICT: train the
+  §3q per-position addresser** (close the ~4.25pt frozen→oracle gap). **▶▶ NEXT = TRAIN THE HEAD.** The Fork-6 adapter
+  is the WRONG artifact (span-level, hd=256) — build a NEW per-position contrastive head on the `SP_ARM_DUMP` corpus
+  (post-RoPE K/q, target = exact top-B by q·K). Phases: A-parity(done: dump+oracle) → B retrieve-then-verify head →
+  G2 8× gate vs oracle → G1 NaH → alloc-shrink. THEN P3.3 SP_REPLAY → P3.4. Contract: §P3.2-b-2b + G-P3-R2.b-2b-N +
+  -ORACLE run-records. (Dump 1.6 GB stays local/gitignored.)
 - **(superseded) §P3.2-b-2b SPEC-LOCK note — the spec is now implemented + gated.**
   The contract section + 4 immutable parameter locks are in CONTRACT-XBAR-P3 §P3.2-b-2b. v0 = frozen `sp_arm_select_geom`
   ±1 projection router on the 8 global owners (host shadow-select → `read_block(off[L]+ri[j]·kvd·4)` pages only the
