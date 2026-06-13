@@ -1,8 +1,9 @@
 # SESSION-HANDOFF.md — where things stand
 
-**Updated:** 2026-06-12 (the P2.b-close → P3 push: Fork-5 KV-prefix → Fork-6 contrastive →
-P2.b CAMPAIGN CLOSED → P3.1/P3.1b READ-PATH COMPLETE → P3.2-a spill GREEN → P3.2-b-1 paged-read GREEN →
-**P3.2-b-2a SWA RING SHRINK GREEN — the FIRST REAL VRAM WIN, 40/48 layers bit-exact**). Update this file at
+**Updated:** 2026-06-13 (… → P3.2-b-2a SWA RING SHRINK GREEN → **§P3.2-b-2b GLOBAL SPARSE RECALL MECHANISM CLOSED**
+→ **M_GEMMA4 hygiene GREEN** (12B CUDA PPL ctest locked to `-b1`, SP PPL 4.6665 vs 4.6776) → **LARGER-N G2 VERDICT:
+4× GREEN +1.65% / 8× RED +4.17% on the frozen router** — small-N deflection was an illusion; W-probe maps the Pareto
+frontier (floor +3.74% @ W=64) → **§3q learned lane OPENS with measured justification**). Update this file at
 every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, BEFORE anything.
 
 ---
@@ -17,11 +18,18 @@ every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, B
   `gemma4-12b.sp-model` is the coarse QAT variant @ 7.4M PPL — USE `-b1` FOR PPL) → G1 served-off-disk **bit-exact**
   (`SP_ARM_PAGE`: NaN-poison live globals + sparse page off Ring-2; gather-from-disk == gather-from-live diffs=0).
   Flags `SP_ARM_SHADOW`/`GATHER`/`PAGE` + `SP_ARM_B/W/SINK/R`, gates `SP_ARM_GATE`/`SP_ARM_PAGE_GATE`, byte-inert off.
-  **FOLLOW-ONS (mechanism ≠ deployment, pick up here):** (1) larger-N G2 on the full wikitext corpus (n_ctx=84 is the
-  noisy small end); (2) the literal alloc-shrink — v0 still allocs globals at full `P` + host-selects; alloc `B+sink+W`
-  + device-side select is the actual VRAM reduction; (3) **M_GEMMA4 mis-registration** — plain model path = coarse QAT
-  variant, oracle 90.72 stale even for the good model; repoint to `-b1`, refresh oracle (a standing red gate). Then
-  P3.3 SP_REPLAY → P3.4 PPL gate. CONTRACT-XBAR-P3 §P3.2-b-2b run-record. (Superseded the spec-lock note below.)
+  **FOLLOW-ONS STATUS:** (1) larger-N G2 — **DONE 2026-06-13 (G-P3-R2.b-2b-N).** Full wikitext-2 val corpus, N=2048×3
+  = 3072 scored positions. The small-N (42-pos) negatives were noise: **4× = +1.65% GREEN, 8× = +4.17% RED**; W-probe
+  {4,64,128} floors at **+3.74% @ W=64** (the frozen ±1 router's 8× Pareto frontier — high-projected-score keys it can't
+  rank, not a window problem). **4× (B=512) is the locked v0 frozen-router operating point at N≤2k; 8× is RED on static
+  geometry → triggers the lock-#4 §3q escalation.** projk oracle-parity bit-exact across 262,016 selections. Fixture
+  `tests/fixtures/ppl/wiki.valid.g4tokens.txt` + bats committed (engine `587c8d7`). (2) the literal alloc-shrink —
+  STILL OPEN (v0 allocs globals at full `P` + host-selects; alloc `B+sink+W` + device-side select = the real VRAM cut).
+  (3) **M_GEMMA4 mis-registration** — **DONE (engine `51bdb76`):** `test_gemma4_ppl_cuda.c` default → `-b1`, registered
+  `M_GEMMA4_CUDA_PPL` ctest GREEN (SP PPL 4.6665 vs oracle 4.6776, −0.24%). **▶ NEXT = OPEN THE §3q LANE** (take the
+  P2.b 0.77 contrastive adapter, wire it as the global shortlister before a byte-exact verify loop — the two-stage
+  retrieve-verify path that recovers 8×). THEN alloc-shrink → P3.3 SP_REPLAY → P3.4 PPL gate. CONTRACT-XBAR-P3
+  §P3.2-b-2b + G-P3-R2.b-2b-N run-records.
 - **(superseded) §P3.2-b-2b SPEC-LOCK note — the spec is now implemented + gated.**
   The contract section + 4 immutable parameter locks are in CONTRACT-XBAR-P3 §P3.2-b-2b. v0 = frozen `sp_arm_select_geom`
   ±1 projection router on the 8 global owners (host shadow-select → `read_block(off[L]+ri[j]·kvd·4)` pages only the
