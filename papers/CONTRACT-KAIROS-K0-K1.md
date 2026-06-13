@@ -1,8 +1,11 @@
 # CONTRACT KAIROS-K0/K1 — reference extraction + the heartbeat null
 
-**Parent:** ROADMAP-KAIROS §5. **Status:** K0 partially RUN (Stage-0 swarm 2026-06-10); K1 SPEC —
-**does not open until the XBAR P2.b/P3 arc closes** (standing sequencing rule; building it early
-is drift).
+**Parent:** ROADMAP-KAIROS §5. **Status:** K0 RUN (Stage-0 swarm 2026-06-10; MiMo external reference
+added 2026-06-14, §1a); K1 SPEC. **Opening condition NOW MET (2026-06-14):** the XBAR P2.b/P3 arc has
+closed — P2.b rested, P3 ring-on-Exec bit-exact end-to-end, **§P3.2-b-2b + Phase C CLOSED GREEN**
+(select → realize O(1) → retain: NIAH needle survives the O(1) compaction at 10/50/90%, learned-router-
+only; CONTRACT-XBAR-P3 G-P3-R2.b-2c-NIAH). KAI-1 may open. (#115 text-in remains the prerequisite for
+the *Exec/12B* repeat; KAI-1/2/3 prove mechanism on the qwen3-CPU substrate first, as designed.)
 **One line:** prove, on the cheap bit-exact qwen3 substrate, that the resident loop's two
 foundations hold — (K0) we have actually read the prior art we own, and (K1) a ticked model can
 hold NO_OP discipline over a persistent session whose idle state does not grow.
@@ -33,6 +36,65 @@ hold NO_OP discipline over a persistent session whose idle state does not grow.
 **Remaining for G-KAIROS-0 (gate):** the §4 adopt/adapt/reject catalog ratified by the operator
 (amendments recorded here), and any item we intend to ADOPT gets one file:line-cited paragraph
 in this contract before its Kairos twin is built. No code import, ever (anti-contamination).
+
+## 1a. KAI-0 — the MiMo-Code external reference (added 2026-06-14)
+
+The internal corpus (CosySim/NEXUS/Project X) is the operator's own harness engineering. **MiMo-Code**
+(Xiaomi, MIT, built on OpenCode; `mimo.xiaomi.com/blog/mimo-code-long-horizon`, read 2026-06-14) is the
+first *external* harness reference — and the most valuable thing it gives us is independent
+corroboration of the §4 adopt/reject lines, plus a clean instance of the pattern we reject. The catch
+that justifies its inclusion: **MiMo's memory architecture IS the harness compensation our substrate is
+built to not need** — they summarize-and-rehydrate because their window is hard-capped on a stock
+engine; we have SP_REPLAY (bit-exact episode resurrection). Adopting their semantic-tier restart would
+discard the physical primitive we just closed.
+
+| MiMo mechanism | Verdict | Lands at | Grounding |
+|---|---|---|---|
+| Deterministic-code orchestration (`agent/parallel/pipeline/workflow`, disk-journaled, crash-resume) | **ADOPT** (rebuilt in Rust, never copied) | Holon plane + KAI-5 scheduler; steal the API *shape* | "`if` won't forget a branch, `for` won't exit early" — validates §4-ADOPT scheduler-daemon shape + the Rust control-plane choice |
+| Independent **Goal** completion verifier (separate context, pre-terminate) | **ADOPT** | KAI-3/KAI-5: hard task-exit gate before arena teardown | task-level twin of our two-stage retrieve-verify; kills "premature optimistic stops" |
+| Tiered priorities (REALTIME/INTERACTIVE/BACKGROUND/BATCH) | **ADOPT** | KAI-5 priority classes | already §4-ADOPT; MiMo corroborates |
+| **Dream** (periodic dedup/compress of memory) | **ADOPT — already exists as NIGHTSHIFT/the curator** | XBAR-N idle job = schedule the C1-lite curator + cold-evict | RFC §3.1/§7 + CONTRACT-XBAR-C1-lite §3a: cold-evict + G-R3-LOSS consolidation **CLOSED GREEN** (T_GENKV_COLD_EVICT 45/45: cold-evict lossless ⇒ promote, hot-evict diverges ⇒ rewind). We *schedule* it; MiMo validates the 7-day cadence |
+| **Distill** (repeated workflows → reusable skills) | **ADOPT — the one genuinely new piece** | KAI-5 flywheel: trace sweep → candidate skill → **held-out gate** → registered skill | no existing analog (the curator consolidates *memory*, not *procedure*); NOT "compile token loops into macros" (overreach) — a governed skill behind a receipted gate |
+| 4-tier **semantic** memory as the cross-session **restart** mechanism | **REJECT (restart); ADAPT (filesystem)** | restart = SP_REPLAY (§2.5); text tiers = the kernel filesystem (Nexus-as-lexical-Ring-3), human-auditable knowledge/rules/receipts, coexisting with the latent rings as the page cache | §4 REJECT "prompt-stuffing as primary context"; SP_REPLAY resurrects post-RoPE K/V **bit-exact** (C1L.0b CLOSED, T_GENKV_REPLAY_NULL 34/34) — we don't summarize for restart, we replay |
+| Max Mode (N=5 sample+judge, 4–5× tokens) | **DEFER** | optional KAI-5 test-time-compute knob | orthogonal compute (decision search), not a harness primitive |
+| Inline tag side-channel / "eternal rolling document" / ungated auto-promotion | **REJECT** | — | detokenize/retokenize loss XBAR deletes; gameable scorer — already §4 REJECT |
+
+**G-KAIROS-0 amendment:** ratify this table (operator sign-off). Net new from MiMo = the orchestration
+API *shape* + the **Distill** procedure-consolidation idea; everything else is corroboration or rejected.
+
+## 2.5. The handoff ABI (the kernel-vs-harness decision, locked BEFORE the Rust structs)
+
+Two distinct objects, never conflated. This section is the contract the Rust control plane implements;
+`struct Workflow` / `enum TaskState` are NOT written until it is operator-ratified.
+
+**(a) Event packet** — the unit a sensor/operator/interrupt delivers. Format (both already minted):
+**k≈2 adapter pseudo-tokens** (P2.b's trained selectable-recall payload) for semantic events, or a
+**Spinor block (63 B + 0xA5 = exactly one cache line**, manifesto trick #9) for KV-class events. An
+event packet is a PROPOSAL through a Ring-2′ gate, never a direct canonical write (RFC §6.2 defense).
+Delivery seam = the proven `SP_XBAR_EMB` pseudo-token / cache-splice path (X-R1, 15/15). KAI-2 measures
+latent-vs-text delivery; here we fix only the format.
+
+**(b) Session resume = `SP_REPLAY`, NOT text summarization.** A session resumes by *replaying its
+episode*:
+
+```
+SessionHandoff := {
+  episode_manifest : ring-2 descriptor (off[L] owner-resolved byte law + per-owner kvd),
+  episode_store    : {ep.k, ep.v} on disk (post-RoPE K/V, f32-exact ⇒ replay is bit-exact),
+  ring_coords      : the (L, pos, owner) the curator promoted (Ring-3 consolidated set),
+  fs_pointer       : Nexus path(s) — human-auditable knowledge/rules/receipts (filesystem tier),
+  task_state       : scheduler bookkeeping (priority class, journaled step cursor, Goal exit-cond)
+}
+```
+
+Resume = `SP_REPLAY` mounts `episode_store` via the read-only load seam (`sp_arm_ring2_stdio_open_ro`,
+truncation-guarded), re-projects stored K to rebuild `projk` (no serialization — G-C1L-0a bit-identical),
+and the loaded K/V flow losslessly into attention (G-C1L-0b 34/34). The Nexus text tier is read for
+human-auditable context ONLY — it is the filesystem, not the memory image. **Therefore `TaskState`
+references an episode manifest + ring coordinates, not a prose summary** — pinning this before the
+structs prevents a silent drift into text-summarization out of habit. **Law:** cross-session state lives
+as an addressable lattice of minted coordinates (the episode) + a lexical filesystem (Nexus), never as a
+tokenized summary round-tripped through the model (RFC §3 rule 4).
 
 ## 2. KAI-1 — the heartbeat null (SPEC; gates named, thresholds telemetry-then-pin)
 
