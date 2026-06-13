@@ -40,10 +40,17 @@ every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, B
   Deployed via `SP_ARM_LSH=M.bin` (M=R·Rᵀ, select=top-B by (Mq)·K, reuses `k_qk_scores`+`k_apply_M`, **zero new hot-path
   kernels, cost independent of r**). **G2 8× (N=2048×3): LSH r=32 = 5.1791 = +0.47% GREEN** vs frozen +4.17% RED, oracle
   −0.08%. **8× won on a 16,384-param matrix at v0 inference cost.** Weight: `tests/fixtures/lsh/lsh_M_r32.bin`. With SWA
-  ring (b-2a) + globals at B, **KV decouples from context.** **▶▶ NEXT = the literal ALLOC-SHRINK** (allocate globals at
-  `B+sink` not `P`, device-side select = the realized VRAM number; v0 still allocs full P + host-selects) → G1 NIAH
-  under NaN-poison with the learned router → P3.3 SP_REPLAY → P3.4 PPL gate. Contract: §P3.2-b-2b + G-P3-R2.b-2b-N +
-  -ORACLE + -LSH run-records. (Dump 1.6 GB local; trained R/M + harness committed to engine.)
+  ring (b-2a) + globals at B, **KV decouples from context.**
+- **▶ §3q Phase C ALLOC-SHRINK in progress (2026-06-13).** **C-a DONE (engine `7195100`):** `SP_ARM_DEVSEL` moves top-B
+  onto the GPU (`k_topb_dev`) — selection-invariant (5.1791==5.1791), severs the host round-trip (unblocks graph capture
+  + C-b). **C-b.1 DONE (engine `7cd7482`):** `SP_ARM_LSH_R=R.bin` projected-key **sidecar** — selection scores the r=32
+  resident `RᵀK` (16× smaller than full K), not full K. The KEY ARCHITECTURE FINDING: you can't rank evicted keys, so the
+  compact-slab shrink REQUIRES this resident r-dim router state. Gate +0.24% (deflection-invariant; sidecar is the truer
+  r-dim form, slightly better than M-path +0.47%). Weight `tests/fixtures/lsh/lsh_R_r32_raw.bin`. **▶▶ NEXT = C-b.2 (the
+  actual VRAM cut):** cap the 8 globals' `dKc/dVc` at `B+sink` slots (not `P`); page the selected union from pinned host
+  RAM (Ring-2 backend, option-a) into compact slots `[0,m)`; remap the gather absolute→compact-slot. Gate = output-invariant
+  + `nvidia-smi` flat-line at 32k. THEN C-c (G1 NIAH under poison w/ learned router) → P3.3/P3.4. Contract: §P3.2-b-2b +
+  -N/-ORACLE/-LSH run-records (Phase C receipts land at C-b.2 VRAM gate).
 - **(superseded) §P3.2-b-2b SPEC-LOCK note — the spec is now implemented + gated.**
   The contract section + 4 immutable parameter locks are in CONTRACT-XBAR-P3 §P3.2-b-2b. v0 = frozen `sp_arm_select_geom`
   ±1 projection router on the 8 global owners (host shadow-select → `read_block(off[L]+ri[j]·kvd·4)` pages only the
