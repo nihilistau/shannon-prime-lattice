@@ -304,3 +304,9 @@ qwen35moe transcode: source (D:, 19.7 GB) → OK_Q4 `.sp-model` (D:, ~20 GB). No
 ## 7. Discipline that is working (keep it)
 
 Clean rewrite · bounded crates + frozen seams · contract system (RFC + C1–C6) · per-cell closure docs · oracle-fingerprint validation · honest PROVEN/TARGET tagging · surface-upstream-never-silently-revise-a-gate · separate worktrees for parallel agents · this STATE ledger updated every session. **This is the structure that finally works. Maintain it. Update this file at the end of every session.**
+
+## KAIROS — the time/agency axis (KAI-1 + KAI-1b CLOSED 2026-06-14)
+
+- **[CLOSED GREEN] KAI-1 heartbeat null** — control-plane mechanism proven on qwen3-0.6B (sp_daemon kairos: cold-evict prune + SALIENCE≥0.5 policy + O(Δ) flat); production cognition+stability proven on gemma4-12B (perfect 24-tick crucible: 21/21 idle→NO_OP, 3/3 salient→coherent ACTION, 0 false/0 missed/0 malformed; tick-5 post-action reversion defeats the 0.6B corruption attractor). Public ledger **KAIROS-01** (Position_Is_Arithmetic). Contract §4.
+- **[CLOSED GREEN] KAI-1b metal eviction** — cold-evict at the XBAR tensor layer: persistent-KV `gemma4_kv_*` + O(1) `rewind(Δ)` in cuda_forward.cu (one-shot `gemma4_decode_cuda` byte-untouched). **G-1b-REWIND-NULL** bit-exact (16.5 MB / 48 layers / diffs=0 + EQUIV gen-reproduce); **O(actions)→O(1)** latency receipt (metal slope 0.0073 vs prefix-grow 0.924 s/action, 127× shallower; 16.7× @ A=16). Engine 0bb94f1, contract §5.5. The crossbar (X-R2 O(1) memory) and the heartbeat (KAIROS-01 agency) are now one system: memory that doesn't grow with context + agency that doesn't spend compute on silence + eviction that is an O(1) coordinate shear.
+- **NEXT:** SWA-ring/slab wrap-aware rewind; full semantic run_kairos_metal loop (deployment); KAI-2 latent interrupt; the ≥24h soak (operational).
