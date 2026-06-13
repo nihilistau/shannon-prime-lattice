@@ -222,3 +222,86 @@ closed) is met.
 **Cognitive threshold:** 0.6B = mechanism-capable but context-unstable; 12B = production-stable. The harness is model-agnostic and bulletproof; parameter density sets the operating model.
 
 **G-KAIROS-1 — functionally PASSED** (discipline: 0 false-action / 0 missed; arithmetic: O(Δ) prefix-flat; crucible: tick-5 reversion). The ≥24 h unattended soak remains an operational telemetry run, NOT a design blocker. Receipt: `engine/results/kairos_12b_pathB_crucible.log`. **KAI-1 CLOSED.**
+
+## 5. KAI-1b — METAL EVICTION (opener; pre-registered 2026-06-14, code next session)
+
+**Why (the O(actions) bleed):** Path B's `SP_G4_KAIROS` proved 12B cognition via a host-layer
+**prefix-grow** hack on the one-shot `gemma4_decode_cuda` — a NO_OP leaves the token prefix
+unchanged, an ACTION appends. This is *flat across idle ticks* but its per-tick prefill cost is
+**O(actions-so-far)**: every tick re-absorbs `[system + all retained actions]` through the forward
+pass. For a daemon meant to run for days that recompute tax is unbounded. The true resident kernel
+must evict at the **tensor-routing layer**: on a null tick, shear the KV write pointer back by Δ —
+a sub-millisecond coordinate op the text tokens never see — so an idle tick costs only
+`frame + decode` (**O(1)**, independent of action history). This is the convergence of the KAIROS
+time-axis with the XBAR memory physics: cold-evict becomes a ring-pointer operation on the same
+`off[L]` structures Phase C built. We are not inventing a memory system; we are plugging the
+heartbeat into the crossbar.
+
+### 5.1 Seam survey (the three pointer-rollback primitives that already exist)
+
+| Seam | Where | Primitive | Reuse for KAI-1b |
+|---|---|---|---|
+| `sp_session_rewind(n)` | daemon L1 (`tools/sp_daemon/src/session.rs` → math-core `sp_session`) | O(1) KV ring-pointer decrement; **Corollary T8.1**: state at P−n after rewind == state at P−n never-visited (byte-identical). Drove Path A (0.6B) cold-evict. | The reference semantics + the proven gate shape. Path B needs the **CUDA twin** of this. |
+| SWA-ring write pointer | `cuda_forward.cu` (P3.2-b-2a) | `slot = pos % Wring`; the window ring already overwrites/evicts the oldest slot every step — eviction IS a pointer op here. | The decrement model: rolling the logical `pos` back by Δ frees the last Δ ring slots with no copy. |
+| `off[L]` + compact slab | `cuda_forward.cu` (P3.0/P3.2 Phase C) | owner-resolved byte law `off[L]=Σ P·kvd·4`; the slab/`off[L]` already addresses KV by `(L,pos,owner)` coordinate. | The truncation target: an evict = lower the per-layer logical length so `[pos−Δ, pos)` is no longer attended/served (globals via slab length, SWA owners via ring wrap). |
+
+**Integration point (the pick):** introduce a single logical decode position `dpos` the CUDA decode
+already tracks; KAI-1b adds `gemma4_kv_rewind(m, Δ)` that (a) decrements `dpos` by Δ, (b) for SWA
+owners rewinds the ring write cursor `pos%Wring` by Δ (slots become free, no memset needed —
+attention reads `[s0, dpos)` in position order), (c) for globals lowers the slab/`off[L]` logical
+length by the Δ owners written since the anchor. No tensor copies; only length/pointer state moves.
+
+### 5.2 Interface — persistent-KV `gemma4_decode_cuda` + `rewind(Δ)` (C-ABI)
+
+Today `gemma4_decode_cuda(m, seq, n_prompt, n_gen, eos)` is **one-shot** (rebuilds KV from
+`seq[0..n_prompt)` each call). KAI-1b splits it into a persistent-session surface so the resident
+loop appends/decodes/rewinds against a live cache:
+
+```
+sp_g4_kv*  gemma4_kv_open(const qwen3_model *m, int max_ctx);     /* alloc resident KV (rings+slab), dpos=0 */
+int        gemma4_kv_prefill(sp_g4_kv *s, const int32_t *toks, int n);  /* append+absorb n; dpos+=n */
+int        gemma4_kv_decode (sp_g4_kv *s, int n_gen, int32_t *out);     /* greedy/argmax; appends gen to cache; dpos+=k */
+int        gemma4_kv_rewind (sp_g4_kv *s, int delta);             /* O(1): dpos-=delta; ring+slab logical truncate */
+int        gemma4_kv_pos    (const sp_g4_kv *s);                  /* current dpos (the flat-vs-grow witness) */
+void       gemma4_kv_close  (sp_g4_kv *s);
+```
+
+KAIROS tick (metal): `anchor=kv_pos()`; `kv_prefill(frame)`; `kv_decode→parse`; **NO_OP ⇒
+`kv_rewind(kv_pos()-anchor)`** (frame+gen sheared, cache resident, no re-prefill); **ACTION ⇒
+keep** (dpos advances; the action stays resident — the tick-5 crucible, now at zero recompute).
+The existing `SP_G4_KAIROS` prefix-grow path stays as the **oracle** for the gate below.
+
+### 5.3 Oracle gate — G-KAIROS-1b (T8.1 analog on the GPU; PRE-REGISTERED, bit-exact)
+
+- **G-1b-REWIND-NULL (the rule):** for any idle tick, the KV state after
+  `kv_prefill(frame)+kv_decode+kv_rewind(Δ)` is **byte-identical** (device D2H memcmp over the live
+  K/V rings + slab, all layers) to the state of a session that **never visited** that frame —
+  i.e. rewind is a perfect inverse. Mirrors `sp_session_rewind`/T8.1 on the CUDA path. **diffs=0.**
+- **G-1b-EQUIV (vs the proven harness):** the full 24-tick smoke tape run through the metal loop
+  produces the **same decisions and same retained-prefix token stream** as the prefix-grow
+  `SP_G4_KAIROS` run (same `noop_ok/action_ok/false_action/missed/malformed`; the kept-action KV
+  matches the re-prefilled KV bit-exact at each ACTION boundary). The host hack is the oracle; the
+  metal must equal it.
+- **Falsification:** if the rewound cache is not bit-identical (RoPE-phase residue, ring-wrap
+  off-by-one, slab length desync), KAI-1b is RED and the prefix-grow path remains the shipping
+  proof until the pointer arithmetic is exact. No "close enough."
+
+### 5.4 Baseline telemetry — the recompute tax we are deleting (PRE-REGISTERED motivation run)
+
+Before/after, same model + tape, clocks pinned: **profile per-idle-tick latency as retained-action
+count A climbs.** Construct a tape with an increasing salient cadence (A = 1,2,4,8,16 actions
+retained), measure idle-tick wall-time at each A.
+- **Prediction (prefix-grow):** idle-tick latency rises ~linearly with A (each idle tick re-prefills
+  `system + A·action_len`).
+- **Prediction (metal rewind):** idle-tick latency is **flat in A** (idle tick = frame+decode only;
+  resident cache untouched).
+The crossover/slope difference is the formal O(actions)→O(1) receipt — the number that justifies the
+engine change. Land both curves in `results/` + a ledger-internal note (no public row until
+G-KAIROS-1b is green).
+
+**Scope discipline:** KAI-1b is engine pointer-arithmetic on the gemma4 CUDA decode + a bit-exact
+inverse gate. It claims nothing new about cognition (KAIROS-01 already closed that); it converts the
+*proven* host-layer eviction into the *resident-kernel* eviction. Lands in the P3.x ring-on-Exec
+lane (it IS XBAR pointer work). **Next-session first action:** open `cuda_forward.cu` at the SWA-ring
++ `off[L]` seam, cut `gemma4_kv_open/prefill/decode/rewind/pos/close`, gate G-1b-REWIND-NULL FIRST
+(null floor) before wiring the KAIROS loop to it.
