@@ -208,3 +208,17 @@ actuators, autonomy quality, or the Exec. No ledger row from this contract befor
 the Exec repeat are both green — and none is expected; this is internal mechanism work. The
 XBAR campaign's docs and gates are untouched by this stage until its opening condition (P2.b/P3
 closed) is met.
+
+## 4. KAI-1 CLOSURE — GREEN end-to-end (2026-06-14)
+
+**The two-leg proof (single-variable isolation throughout):**
+
+**Path A — control-plane MECHANISM (qwen3-0.6B, CPU daemon sp_daemon/src/kairos*.rs):** the loop's nervous system. Cold-evict NO_OP prune (`sp_session_rewind`, O(1), Corollary T8.1) holds idle silence at a flat KV position; the `SALIENCE>=0.5` policy forces the mode switch on the salient tick; O(Δ) flatline demonstrated (per-tick latency DROPPED 90→63 s once pruning stopped cache bloat, vs an unpruned creep 90→115 s). BUT the 0.6B collapsed at the **tick-5 crucible** (idle-after-retained-ACTION → false ACTION + deterministic `NO_克作` corruption attractor) — a cognitive-capacity ceiling, NOT a mechanism flaw.
+
+**Path B — production COGNITION (gemma4-12b-b1 OK_Q4B, RTX 2060 GPU; `SP_G4_KAIROS` in `tests/test_gemma4_cuda.c`):** **PERFECT crucible — `DONE ticks=24 noop_ok=21 action_ok=3 false_action=0 missed=0 malformed=0`.** All 21 idle → NO_OP (KV prefix flat); all 3 salient → CLEAN contextual ACTION (`start` / `clean` / `renew` for build-finished / disk-95% / ttl-expiring); EVERY post-action idle tick (5, 13-15, 21-23) reverted to NO_OP with zero false-fire/drift. ~8-17 s/tick GPU, 10.8 GB resident on a 12 GB card.
+
+**Architecture — prefix-grow = cold-evict on a one-shot decoder:** `gemma4_decode_cuda` rebuilds KV from `seq[0..n_prompt)` each call, so the NO_OP prune is simply "don't grow the persistent prefix" (next idle tick byte-identical to the first ⇒ O(Δ), attractor-proof); an ACTION grows the prefix (the tick-5 retained-action condition). No stateful rewind needed. Tokenizer = the parity-validated `.sp-tokenizer` blob lane (`sp_tokenizer_load_tokfile`/`encode`/`decode`, T_G4_TOK_PARITY 5432/5432) — runtime-encoded, no offline bake.
+
+**Cognitive threshold:** 0.6B = mechanism-capable but context-unstable; 12B = production-stable. The harness is model-agnostic and bulletproof; parameter density sets the operating model.
+
+**G-KAIROS-1 — functionally PASSED** (discipline: 0 false-action / 0 missed; arithmetic: O(Δ) prefix-flat; crucible: tick-5 reversion). The ≥24 h unattended soak remains an operational telemetry run, NOT a design blocker. Receipt: `engine/results/kairos_12b_pathB_crucible.log`. **KAI-1 CLOSED.**

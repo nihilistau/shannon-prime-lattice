@@ -238,3 +238,7 @@ closes — P3 and #115's text-in are the prerequisites that make the Exec reside
   **sp-kernel** (the artifact) · **tick tiers** (GNA/router/Exec) · **event packet** (the
   pseudo-token/Spinor interrupt ABI) · **yield** (eos→scheduler) · **driver** (sensor/actuator
   module). Everything else reuses existing names (NIGHTSHIFT, rings, curator, Exec/Memo).
+
+---
+**KAI-1 CLOSED (2026-06-14):** control-plane mechanism proven on qwen3-0.6B (cold-evict + salience policy + O(Δ)); production cognition+stability proven on gemma4-12B (perfect 24-tick crucible, tick-5 post-action reversion). See CONTRACT-KAIROS-K0-K1.md §4. Prefix-grow architecture + 0.6B-vs-12B cognitive threshold documented. ≥24h soak = pending operational run.
+
