@@ -385,3 +385,33 @@ globals stay full-cache (they attend all positions — no window, no ring; their
 exact). The compact-slab (C-b.2) globals path is a separate follow-on. **Next-session first action:**
 open `cuda_forward.cu`, add the journal to the `gemma4_kv_*` SWA-owner write path, gate
 G-1b-WRAP-NULL (REWIND-NULL ring byte-identity) FIRST before any deploy wiring.
+
+## 5.7 KAI-1c — WRAP-AWARE RING REWIND **CLOSED GREEN** (2026-06-14, engine `d90945f`)
+
+**Implemented** (null-floor held — `gemma4_decode_cuda` BYTE-UNTOUCHED; all edits inside the
+`gemma4_kv_*` twin ABI): `struct sp_g4_kv` extended with `ring_W, Jmax, commit_pos, jcur, jK[], jV[]`.
+`g4_kv_step` SWA-owner write branch (env `SP_G4_KV_RING_W>0`, `!global`): before the ring store at slot
+`s=pos%Wring`, save the slot's current K/V into the per-tick journal at index `j=pos-commit_pos`
+(guard `j<Jmax`), then store the new K/V; ring attention via `k_attn_decode_ring` over window
+`[s0,ctx)` at slot `(s0+j)%Wring`. `gemma4_kv_open` allocs SWA owners at `Wring` slots + `Jmax`-deep
+journals (globals at Pmax, no journal). New `gemma4_kv_commit` clears the journal + sets a new baseline
+(`commit_pos=dpos, jcur=0`) — called on a RETAINED action. `gemma4_kv_rewind(Δ)` (ring mode) walks
+`p=dpos-1 … dpos-Δ` in REVERSE, restoring slot `p%Wring ← journal[p-commit_pos]` for every SWA owner,
+then `dpos-=Δ` (rejects `Δ>dpos-commit_pos` — a rewind may not cross a commit). `gemma4_kv_snapshot`
+sizes the D2H copy to `Wring` slots for SWA owners (was Pmax — OOB fix).
+
+**G-1b-WRAP-NULL GREEN** (`SP_G4_KV_WRAP=1 SP_G4_KV_RING_W=16 SP_G4_KV_JMAX=64`, gemma4-12b-b1 OK_Q4B,
+RTX 2060, clocks pinned): sys prefill 50 (wraps the W=16 ring 3×) → **commit** → snapshot ring →
+idle tick (prefill frame 12 + decode 8, span 20 > W, anchor%W=2 ⇒ slot index wraps 15→0) → **mid
+snapshot** → wrap-crossing `rewind(20)` → snapshot ring. Result: `anchor=50 after=70 wraps_crossed=1
+clobbered_owners=40` — the tick overwrote live-window slots in **all 40 SWA owners** (non-vacuity
+proven: pre≠mid) — and post-rewind **swa-ring-diffs=0** (byte-identical across all 40 owner rings) +
+**EQUIV** gen-reproduce GREEN (re-run idle tick → identical tokens `[107 236743 107 236743 …]`). The
+undo-journal is a perfect inverse across the wrap. Harness: `run_kv_wrap()` in `tests/test_gemma4_cuda.c`
+(`SP_G4_KV_WRAP` dispatch); driver `_run_kv_wrap.bat`. Receipt: `results/kai1c_wrap_null_gate.log`.
+
+**Unification achieved:** O(1)-*time* eviction (KAI-1b rewind) now runs on the O(1)-*space* SWA ring
+(X-R2). The resident edge daemon can cold-evict an idle tick on the space-optimized ring with a
+constant-size journal (≤min(k,W) per owner per tick, independent of retained-action count A).
+**Follow-ons:** compact-slab (C-b.2) globals wrap-aware rewind; full semantic `run_kairos_metal` loop
+on the journaled ring; ≥24h soak (G-KAIROS-1).
