@@ -415,3 +415,40 @@ undo-journal is a perfect inverse across the wrap. Harness: `run_kv_wrap()` in `
 constant-size journal (≤min(k,W) per owner per tick, independent of retained-action count A).
 **Follow-ons:** compact-slab (C-b.2) globals wrap-aware rewind; full semantic `run_kairos_metal` loop
 on the journaled ring; ≥24h soak (G-KAIROS-1).
+
+## 5.8 KAI-1c — JOURNALED-RING O(1) TELEMETRY (#219) + SEMANTIC LOOP (#221) **CLOSED GREEN** (2026-06-14)
+
+**§219 Journaled-ring O(1) telemetry** (engine `f201bf3`): idle-tick-latency-vs-A swept through the
+journal path with **commit-per-action** (journal only ever holds one tick's span ⇒ A-invariant by
+construction). **T1 (O(1)) CONFIRMED:** ring slope **0.00365** s/action ≈ full-cache **0.00371** —
+both flat, ~270× under the prefix-grow 0.924; the undo-journal adds NO asymptotic cost in retained-
+action count A. The fine-grained ring−full D2D **tax is below the wall-clock noise floor on this card**:
+the 2060 **cannot lock its memory clock** (`nvidia-smi` "not supported"), and bandwidth-bound decode
+jitters ±~12%, swamping the ~1-3% journal cost (produced physically-impossible −137ms "taxes", cv 210%
+— pure inter-leg mem-clock drift, not journal behaviour). The within-leg slope (T1) survives because
+it is computed inside one leg. Tax is structurally fixed (`min(k,W)·40·2` D2D copies/tick) ≈ low-tens-
+of-ms ≈ 1-3% of a ~1s tick; exact drift-immune figure deferred to cudaEvent instrumentation (#220).
+Harness `run_kv_ring_telemetry` (`SP_G4_KV_RING_TEL`); receipt `results/kai1c_ring_telemetry.log`.
+
+**§221 Semantic loop on the metal — THE OPERATIONAL UNIFICATION** (engine `d0a6717`): `run_kairos_metal`
+(`SP_G4_KAIROS_METAL`) wires the KAI-1 SALIENCE≥0.5 NO_OP/ACTION decider onto the persistent journaled-
+ring `gemma4_kv_*` ABI. Open(ring) → prefill SYS → **commit** (anchor); per tick prefill(frame)+decode →
+**NO_OP/malformed ⇒ `gemma4_kv_rewind(pos−anchor)`** (journaled cold-evict to anchor) / **ACTION ⇒
+`gemma4_kv_commit`** (retain frame+gen, journal cleared, anchor advances). Pos-discipline is itself a
+gate. **CRUCIBLE GREEN** (24-event §2b smoke tape, 12B OK_Q4B, RTX 2060, ring_W=1024): `noop_ok=21
+action_ok=3 false_action=0 missed=0 malformed=0 pos_violations=0`. The 3 salient ticks produced
+coherent context-correct imperatives — tick 4 `<ACTION>start</ACTION>` (build finished), tick 12
+`clean` (disk 95%), tick 20 `renew` (ttl expiring) — each committed (anchor 135→195→258→318); **every
+post-action idle tick (5,13,21) cleanly reverted to NO_OP via rewind to the new anchor, pos flat, zero
+drift** — the tick-5 post-action crucible that broke the 0.6B is defeated on the metal ring. `gemma4_
+decode_cuda` BYTE-UNTOUCHED. (Parse is boundary-tolerant for the `gemma4_kv_decode` first-token
+convention vs the one-shot path — cosmetic, reconcile filed #222.) Harness `run_kairos_metal`; driver
+`_run_kairos_metal.bat`; receipt `results/kai1c_kairos_metal.log`.
+
+**Note on wrap during cognition:** the 24-tick faithful run (ring_W=1024 = true SWA window) does not
+wrap the ring — resident_pos stays <1024 (a wrap needs >~50 retained actions, or a window<1024 which
+would lobotomise SWA cognition). Wrap-correctness is proven *in isolation* by G-1b-WRAP-NULL (§5.7,
+clobbered_owners=40, diffs=0); semantic correctness is proven here on the faithful ring. The two are
+orthogonal and each tested cleanly. **KAI-1c CLOSED. The crossbar substrate (time ⊗ space ⊗ cognition)
+is a unified whole — ready for the ≥24h soak (G-KAIROS-1).** Remaining hygiene: #220 cudaEvent tax,
+#222 kv_decode boundary, compact-slab globals wrap-rewind.
