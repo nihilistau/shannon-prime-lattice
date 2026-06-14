@@ -23,9 +23,14 @@ receipts-first front door: **[Position Is Arithmetic](https://github.com/nihilis
 Discord: [Shannon-Prime-Lattice](https://discord.gg/rre9XZmvV)
 License: MIT. See `LICENSE`.
 
+**New here (human or agent)? Read [`CURRENT-STATE-OF-PROJECT.md`](CURRENT-STATE-OF-PROJECT.md)** —
+a single human-readable synthesis of where the project stands: the XBAR latent crossbar, the
+O(1) rewind, the KAIROS resident loop, the headline numbers, and the tests that prove each
+(and why they can be trusted). It is the fastest way to get oriented.
+
 **If you are a coding agent opening a session: read `prompt.md` first, then
-`papers/PPT-LAT-STATE.md` (the proven record). This README is the 2-minute
-orientation; those are the operating documents.**
+`CURRENT-STATE-OF-PROJECT.md` (the synthesis) and `papers/PPT-LAT-STATE.md` (the proven
+record). This README is the 2-minute orientation; those are the operating documents.**
 
 ---
 
