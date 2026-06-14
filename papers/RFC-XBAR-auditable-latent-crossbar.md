@@ -151,7 +151,7 @@ Honest constraint carried forward: the NIAH budget ladder broke at 16×–32× s
 | gemma4 tokenizer dispatch (#115) blocks 12B text-in (daemon/interactive Exec) | SPEC'D, unbuilt | SPEC-gemma4-tokenizer-dispatch; required before any interactive XBAR demo (fixtures carry everything until then) |
 | Semantically-wrong-but-valid blocks undetectable by the substrate | DOCTRINE (§4) | the coherence gate is load-bearing on every promotion, forever |
 | Ring 3 consolidation is IRREVERSIBLE (raw source evicted) — a bad gist can't be rewound | DESIGN (§3.1) | G-R3-LOSS runs BEFORE eviction; loss bounded + fact-survival probe; un-compressible episodes stay verbatim in Ring 2 (valid outcome) |
-| Dual-store recall doubles routing scan + adds a second fetch | DESIGN (§3.1) | G-R3-DUALROUTE: empty-Ring3 parity null + measured cost; reuse C2.2 split-device `read_batch2` overlap |
+| Dual-store recall doubles routing scan + adds a second fetch | DESIGN (§3.1) | G-R3-DUALROUTE: empty-Ring3 parity null + measured cost; reuse C2.2 split-device `read_batch2` overlap. **Sequencing: DEFERRED to P3.4+ (after the global-recall PPL gates close); the empty-Ring-3 parity-null can be re-greened anytime, so this is not a current blocker.** |
 | Host memory wedge after big bakes (32 GB box, driver-pinned pages) | KNOWN | budget a reboot into post-bake plans; stream big models per-layer |
 | No PERMISSIONS model on Ring 2/3 writes (gap named via §6.1 taxonomy audit) | OPEN/BACKLOG | who/what may propose+promote to the canonical/consolidated rings — access control is unspecified; fine while Memo is the sole writer, must be specified before multi-writer / networked curators |
 

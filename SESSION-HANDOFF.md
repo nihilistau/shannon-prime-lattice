@@ -1,6 +1,8 @@
 # SESSION-HANDOFF.md — where things stand
 
-**Updated:** 2026-06-13 (… → P3.2-b-2a SWA RING SHRINK GREEN → **§P3.2-b-2b GLOBAL SPARSE RECALL MECHANISM CLOSED**
+**Updated:** 2026-06-14 (XBAR P3 + Phase C CLOSED → **KAI-1 / 1b / 1c CLOSED GREEN** (heartbeat NO_OP, O(1) bit-exact
+rewind, wrap-aware journaled ring, semantic crucible) → **G-KAIROS-1 ≥24h soak RUNNING** (PID 16412) → doc audit +
+keystone + public papers 07-10 staged. Prior: P3.2-b-2a SWA RING SHRINK GREEN → **§P3.2-b-2b GLOBAL SPARSE RECALL MECHANISM CLOSED**
 → **M_GEMMA4 hygiene GREEN** (12B CUDA PPL ctest locked to `-b1`, SP PPL 4.6665 vs 4.6776) → **LARGER-N G2 VERDICT:
 4× GREEN +1.65% / 8× RED +4.17% on the frozen router** — small-N deflection was an illusion; W-probe maps the Pareto
 frontier (floor +3.74% @ W=64) → **§3q learned lane OPENS with measured justification**). Update this file at
@@ -10,8 +12,23 @@ every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, B
 
 ## 1. IN FLIGHT right now (check these first)
 
-- **NOTHING in flight. No leaked VMs/pods/schtasks.** All Colab sessions self-cleaned (stop-verified).
-  RunPod balance $0 (no runs possible). Repos clean; engine `1a08d3d` + lattice `27c7579` pushed, `ahead=0`.
+- **▶ G-KAIROS-1 ≥24h SOAK IS RUNNING (launched 2026-06-14 ~11:11, `test_gemma4_cuda.exe` PID 16412).**
+  `run_kairos_soak` (SP_G4_KAIROS_SOAK) loops the deterministic 24-event tape on the journaled-ring metal
+  with per-loop re-anchor (bounded state), streamed/flushed telemetry, and in-process hard tripwires
+  (CUDA / semantic-safety / pos / 3-consec-malformed / 5-consec-latency / VRAM-leak >256MiB / thermal >87C).
+  **NO VERDICT FROM A MID-RUN LOG.** Monitor: `Get-Content shannon-prime-system-engine\results\kairos_soak.log -Tail 5`.
+  Kill if GPU needed: `Stop-Process -Id 16412` then `nvidia-smi --reset-gpu-clocks`. **Watch item:** a slow VRAM
+  creep (+59 MiB by loop 84) — either a per-loop close/reopen leak (the VRAM tripwire fires a clean abort ~loop 360/~6h)
+  or cross-process nvidia-smi noise. Clocks: core pinned 1680; **the 2060 cannot lock its memory clock** (unsupported).
+- **KAI-1 / 1b / 1c CLOSED GREEN this session** (engine through `b0d2bf6`, lattice `f3ab5be`): KAI-1 heartbeat NO_OP
+  discipline; KAI-1b O(1) bit-exact rewind (G-1b-REWIND-NULL, metal 0.0073 vs prefix-grow 0.924 s/action);
+  KAI-1c wrap-aware journaled ring (G-1b-WRAP-NULL byte-exact, 40 owners clobbered diffs=0) + journaled-ring O(1)
+  telemetry + the `run_kairos_metal` semantic crucible (24 ticks: 0 false / 0 missed / 0 drift). Contract §5.5-5.8.
+- **Doc audit + rewrite (2026-06-14):** new keystone `CURRENT-STATE-OF-PROJECT.md`; engine README promoted KAIROS into
+  current-state; public `Position_Is_Arithmetic` surfaces refreshed + papers 07-10 staged (operator-signed-off, pushed).
+  No leaked VMs/pods/schtasks; RunPod balance $0.
+- **Open hygiene (non-blocking):** #220 cudaEvent journal-tax; #222 `gemma4_kv_decode` first-token boundary; compact-slab
+  globals wrap-rewind; optional `papers/` archive reorg (~130 SESSION-CLOSED files).
 - **▶ §P3.2-b-2b GLOBAL SPARSE RECALL — MECHANISM CLOSED GREEN 2026-06-13 (engine `a0b8d42`).** Built null-first:
   Phase 0/1 bit-exact (shadow `sp_arm_select_geom` + projk oracle-parity mism=0, live output unchanged) → G2 PPL
   deflection 4× −0.31% / 8× −3.21% **inside the locked < 2.0%** (OK_Q4B `-b1` baseline 4.6665 == gold; the plain

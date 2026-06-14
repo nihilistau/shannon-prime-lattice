@@ -3,7 +3,7 @@
 **Project:** shannon-prime-lattice
 **Document role:** Operational roadmap. Read by every future session before doing work.
 **Status:** Living document. Mutable. Papers are scaffolding, not artefacts.
-**Last rewrite:** 2026-05-21 · **Last amended:** 2026-06-14 (XBAR §P3.2-b-2b + Phase C CLOSED GREEN — KV decoupled O(1): 8k↔16k VRAM flat ~50 MiB + C-c NIAH needle survives compaction at 10/50/90% learned-router-only; next = P3.3 → KAIROS)
+**Last rewrite:** 2026-05-21 · **Last amended:** 2026-06-14 (XBAR P3 + Phase C CLOSED GREEN — KV decoupled O(1); **then KAIROS time-axis CLOSED: KAI-1 heartbeat NO_OP discipline + KAI-1b O(1) bit-exact rewind + KAI-1c wrap-aware journaled ring + the `run_kairos_metal` semantic crucible (24 ticks, 0 fault)** → **G-KAIROS-1 ≥24h endurance soak RUNNING** (PID 16412). New human+agent keystone: [`CURRENT-STATE-OF-PROJECT.md`](../CURRENT-STATE-OF-PROJECT.md).)
 **Authors:** Knack + Claude + Gemini (Shannon-Prime team)
 **Public front door:** [Position Is Arithmetic](https://github.com/nihilistau/Position_Is_Arithmetic) · [live site](https://nihilistau.github.io/Position_Is_Arithmetic/) — receipts-first paper series. **License: MIT (all repos).**
 
@@ -11,7 +11,8 @@
 
 ## AGENT NAVIGATION / CURRENT PHASE (added 2026-06-10 — read this box, then jump; do NOT read this 8,500-line file top-to-bottom)
 
-**Today's forward edge (2026-06-13):**
+**Today's forward edge (2026-06-14):**
+- **▶ KAIROS time/agency axis CLOSED GREEN, ≥24h soak RUNNING.** The crossbar substrate is now unified across **space ⊗ time ⊗ cognition** on the 12B/12GB: KAI-1 (resident heartbeat holds NO_OP discipline), KAI-1b (O(1) bit-exact KV rewind — metal 0.0073 vs prefix-grow 0.924 s/action), KAI-1c (wrap-aware journaled ring uniting O(1)-time with O(1)-space SWA ring, byte-exact across a forced wrap), and `run_kairos_metal` (the semantic loop: commit-on-action/rewind-on-idle, 24-tick tape 0 false / 0 missed / 0 drift). The **G-KAIROS-1 ≥24h endurance soak is in flight** (see SESSION-HANDOFF §1). Contract: `CONTRACT-KAIROS-K0-K1.md` §5.5-5.8. **For the full human-readable synthesis of the week (XBAR + rewind + KAIROS + the methodology), read [`CURRENT-STATE-OF-PROJECT.md`](../CURRENT-STATE-OF-PROJECT.md).**
 - **XBAR P3 ring-on-Exec is the live lane. §P3.2-b-2b GLOBAL SPARSE RECALL CLOSED GREEN on the real 12B:** read-path + write-path (spill/paged-read) bit-exact, SWA ring shrink (40/48 layers), and a trained **512×32 Learned-LSH router wins 8× global compression at +0.47% PPL** (oracle ceiling −0.08% proved it learnable; frozen ±1 was +4.17%). **With SWA capped at `W` and globals at the GQA union `nh·B` (= 4096, NOT `B` — corrected by C-b.2: the 16 query heads pick near-orthogonal top-B sets on diffuse globals, so the per-step union → `nh·B`, constant in P but 16× the per-head B), the KV cache is DECOUPLED from context length** (both terms O(1); decoupling visible only for N > nh·B). (P2.b is CLOSED — §3q recognition rested at top-1 0.462; the §3q "shortlist" door is now realized as the deployed r-dim LSH router.)
 - **Phase C alloc-shrink CLOSED GREEN (2026-06-14):** C-a device-select + C-b.1 sidecar + C-b.2 compact slab → **O(1) realized (N=8192 vs 16384 VRAM flat ~50 MiB, engine `33ac632`)** + **C-c NIAH retention (needle survives the compaction at depths 10/50/90%, exact & learned-router-only; frozen control MISS; engine `3218d73`).** select → realize → retain, end-to-end on the real 12B. **▶ NEXT = P3.3 SP_REPLAY → P3.4, then the KAIROS harness lane** (time/agency axis; adopt MiMo-Code's deterministic-code orchestration + Goal verifier + semantic memory tiers above the rings).
 - **NIGHTSHIFT v0** (schtasks over the C1-lite loop) · **GNA Stage 3** HW bring-up in reserve (kit staged).

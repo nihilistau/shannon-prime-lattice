@@ -53,7 +53,7 @@ discard the physical primitive we just closed.
 | Deterministic-code orchestration (`agent/parallel/pipeline/workflow`, disk-journaled, crash-resume) | **ADOPT** (rebuilt in Rust, never copied) | Holon plane + KAI-5 scheduler; steal the API *shape* | "`if` won't forget a branch, `for` won't exit early" — validates §4-ADOPT scheduler-daemon shape + the Rust control-plane choice |
 | Independent **Goal** completion verifier (separate context, pre-terminate) | **ADOPT** | KAI-3/KAI-5: hard task-exit gate before arena teardown | task-level twin of our two-stage retrieve-verify; kills "premature optimistic stops" |
 | Tiered priorities (REALTIME/INTERACTIVE/BACKGROUND/BATCH) | **ADOPT** | KAI-5 priority classes | already §4-ADOPT; MiMo corroborates |
-| **Dream** (periodic dedup/compress of memory) | **ADOPT — already exists as NIGHTSHIFT/the curator** | XBAR-N idle job = schedule the C1-lite curator + cold-evict | RFC §3.1/§7 + CONTRACT-XBAR-C1-lite §3a: cold-evict + G-R3-LOSS consolidation **CLOSED GREEN** (T_GENKV_COLD_EVICT 45/45: cold-evict lossless ⇒ promote, hot-evict diverges ⇒ rewind). We *schedule* it; MiMo validates the 7-day cadence |
+| **Dream** (periodic dedup/compress of memory) | **ADOPT (mechanism) — already exists as the C1-lite curator / NIGHTSHIFT; MiMo's cadence validates our idle-consolidation window choice (structural match, not implementation-identical)** | XBAR-N idle job = schedule the C1-lite curator + cold-evict | RFC §3.1/§7 + CONTRACT-XBAR-C1-lite §3a: cold-evict + G-R3-LOSS consolidation **CLOSED GREEN** (T_GENKV_COLD_EVICT 45/45: cold-evict lossless ⇒ promote, hot-evict diverges ⇒ rewind). We *schedule* it; MiMo validates the 7-day cadence |
 | **Distill** (repeated workflows → reusable skills) | **ADOPT — the one genuinely new piece** | KAI-5 flywheel: trace sweep → candidate skill → **held-out gate** → registered skill | no existing analog (the curator consolidates *memory*, not *procedure*); NOT "compile token loops into macros" (overreach) — a governed skill behind a receipted gate |
 | 4-tier **semantic** memory as the cross-session **restart** mechanism | **REJECT (restart); ADAPT (filesystem)** | restart = SP_REPLAY (§2.5); text tiers = the kernel filesystem (Nexus-as-lexical-Ring-3), human-auditable knowledge/rules/receipts, coexisting with the latent rings as the page cache | §4 REJECT "prompt-stuffing as primary context"; SP_REPLAY resurrects post-RoPE K/V **bit-exact** (C1L.0b CLOSED, T_GENKV_REPLAY_NULL 34/34) — we don't summarize for restart, we replay |
 | Max Mode (N=5 sample+judge, 4–5× tokens) | **DEFER** | optional KAI-5 test-time-compute knob | orthogonal compute (decision search), not a harness primitive |
@@ -76,6 +76,8 @@ latent-vs-text delivery; here we fix only the format.
 
 **(b) Session resume = `SP_REPLAY`, NOT text summarization.** A session resumes by *replaying its
 episode*:
+
+*(The block below is a language-neutral IDL — its realized form is the Rust `struct SessionHandoff` in `sp_daemon/src/kairos.rs`, compiled when the `kairos` cargo feature is built; see §2a.)*
 
 ```
 SessionHandoff := {
