@@ -12,7 +12,13 @@ every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, B
 
 ## 1. IN FLIGHT right now (check these first)
 
-- **▶ G-KAIROS-1 ≥24h SOAK IS RUNNING (launched 2026-06-14 ~11:11, `test_gemma4_cuda.exe` PID 16412).**
+- **▶ G-KAIROS-1 ≥24h SOAK v2 RUNNING (relaunched 2026-06-14 ~21:55 post-reboot, `test_gemma4_cuda.exe` PID 19916).**
+  v1 (PID 16412) aborted at ~3.6h/5016 ticks on a per-loop close/reopen VRAM leak (kv_open OOM) — mechanism was
+  flawless (0 faults). FIXED (engine `73b4461`): one resident kv session + in-place `gemma4_kv_reset` + cudaMemGetInfo
+  tripwire. Smoke (10 loops) GREEN with free VRAM DEAD-FLAT (547-567 MiB) ⇒ leak gone. 24h relaunched on fresh metal.
+  Monitor `shannon-prime-system-engine\results\kairos_soak.log -Tail 5`; kill `Stop-Process -Id 19916`. **NO VERDICT
+  FROM A MID-RUN LOG.** On GREEN 24h: flip paper 09 to released + add a KAIROS endurance row.
+- _(superseded)_ **▶ G-KAIROS-1 ≥24h SOAK v1 (launched 2026-06-14 ~11:11, `test_gemma4_cuda.exe` PID 16412).**
   `run_kairos_soak` (SP_G4_KAIROS_SOAK) loops the deterministic 24-event tape on the journaled-ring metal
   with per-loop re-anchor (bounded state), streamed/flushed telemetry, and in-process hard tripwires
   (CUDA / semantic-safety / pos / 3-consec-malformed / 5-consec-latency / VRAM-leak >256MiB / thermal >87C).
