@@ -509,6 +509,21 @@ post-embed/pre-layer point in `g4_kv_step` (off-by-default flags; one-shot `gemm
 capture the model's own post-embed residual at a position, rewind, re-inject it → decode **byte-identical**
 (genA==genB == 258882, KV diffs=0 across all owners) — the inject seam is bit-exact inert when fed identity.
 **Non-vacuous:** a perturbed residual changes **all 48 owner layers' KV** (the seam is live, not skipped).
-The instrument-is-inert prerequisite is met. **NEXT:** the latent-vs-text A/B — deliver the same salient
-event as (A) `gemma4_kv_inject` of the event embeddings vs (B) a text frame, measure incorporation latency
-(steps-to-pivot via `SP_XBAR_RANKS` on the action token) + selectivity (2×2 salient/idle × pivot/NO_OP).
+The instrument-is-inert prerequisite is met.
+
+**§6.2 LATENT-VS-TEXT A/B — HONEST NEGATIVE on untrained compression (2026-06-15, engine `bbf85a5`,
+`SP_G4_KAIROS_INTERRUPT`).** Crux first: the self-null proved `inject(token-embedding) == text`, so a
+raw-embedding latent arm is **provably identical to text** (vacuous). A latency win can therefore come
+**only from compression** (fewer vectors than tokens). With the trained adapter deferred (phase 2), the
+honest non-vacuous baseline is **untrained mean-pool**. Result on the 12B (event = a 44-token salience
+frame): **Arm A (text)** pivots — reads the 44-token frame, emits `ACTION` in 1 decode step ⇒ **total 45
+steps**. **Arm B (untrained k=1 mean-pool, injected in 1 step)** does **NOT** pivot — the pooled vector
+produced incoherent output (`" <start_of_turn>user <EVENT"`), no action. **Verdict: the latent interrupt
+SEAM works (§6.1), but naive mean-pool compression destroys the event structure the model needs to
+recognise salience and act.** This is the roadmap's pre-stated outcome (latent-not-better-than-text on the
+naive packet ⇒ the trained packet is required). **The prize is now quantified:** text spends **44 delivery
+steps before the model can decide**; a working compressed packet collapses that to ~1 — a ~44× delivery-
+latency reduction is the phase-2 target. **NEXT (KAI-2 phase 2):** resurrect the P2.b adapter line with a
+*concrete* target — train a k≈1–2 event→residual packet (contrastive on action-pivot, not generation) so
+the injected vector pivots the resident in ≤2 steps; the seam + instrument are ready, only the packet is
+missing. Exploratory harness `run_kairos_interrupt` (returns 0 — measurement, not pass/fail).
