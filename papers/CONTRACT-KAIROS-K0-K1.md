@@ -502,3 +502,13 @@ instrument (`SP_XBAR_RANKS`/`SP_XBAR_TOKENS`, cuda_forward.cu:3096-3117):
 **Next-session first action:** wire `gemma4_kv_inject` (residual-entry, null-floor additive) into `g4_kv_step`;
 add the `SP_G4_KAIROS_INTERRUPT` A/B harness mode (latent vs text, rank-telemetry on the action token);
 run **G-KAIROS-2 self-null FIRST** (bit-exact) before any latency/selectivity claim.
+
+**§6.1 SELF-NULL GREEN (2026-06-15, engine `8f3caa0`).** `gemma4_kv_inject`/`gemma4_kv_capture` wired at the
+post-embed/pre-layer point in `g4_kv_step` (off-by-default flags; one-shot `gemma4_decode_cuda` AND
+`gemma4_kv_decode` BYTE-UNTOUCHED = null floor). **G-KAIROS-2 self-null GREEN** (`SP_G4_KV_INJECT_NULL`):
+capture the model's own post-embed residual at a position, rewind, re-inject it → decode **byte-identical**
+(genA==genB == 258882, KV diffs=0 across all owners) — the inject seam is bit-exact inert when fed identity.
+**Non-vacuous:** a perturbed residual changes **all 48 owner layers' KV** (the seam is live, not skipped).
+The instrument-is-inert prerequisite is met. **NEXT:** the latent-vs-text A/B — deliver the same salient
+event as (A) `gemma4_kv_inject` of the event embeddings vs (B) a text frame, measure incorporation latency
+(steps-to-pivot via `SP_XBAR_RANKS` on the action token) + selectivity (2×2 salient/idle × pivot/NO_OP).
