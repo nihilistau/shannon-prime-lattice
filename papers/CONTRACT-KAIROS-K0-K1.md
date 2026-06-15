@@ -554,7 +554,20 @@ captured **no audio/vision projection tensors** (grep: only the text `embedding_
 the audio-projector linears live in the HF safetensors, **not** in our artifact. Using the native path
 requires extracting them + the exact waveform→640→3840 front-end. This is the real cost; pre-registered below.
 
-**Two grounded routes (Route A is the operator's direction; B is the §6.2 `event_resampler.py` fallback):**
+**TENSOR-VERIFIED (2026-06-15, local bf16 `gemma-4-12b-bucket/model.safetensors`, 677 tensors):**
+the native audio projector is a **single linear** `model.embed_audio.embedding_projection.weight`
+bf16 **[3840, 640]** (weight only, **no bias**); `processor_config.json`: `audio_samples_per_token=640`,
+`audio_ms_per_token=40`, `sampling_rate=16000`, `feature_size=640`, `audio_seq_length=750` (=30 s @
+25 tok/s). So 640 raw samples (40 ms) → `nn.Linear(640→3840)` → residual. No pooler, no middleman.
+**Consequence (adopted, supersedes the Perceiver):** the KAI-2 codec is a **single `nn.Linear`**
+mapping a fixed-width raw-event vector → `k·3840` → reshape to k soft vectors at the inject seam —
+mirroring the native projector exactly; the Perceiver `event_resampler.py` is demoted to fallback.
+The native [3840,640] tensor is **extractable** (warm-start option). Runner (built + logic-verified:
+byte front-end, k×H reshape, KAI2 packet format `'KAI2'|u32 k|u32 hidden|k·H f32`=61452B@k4, fwd-KL
+all pass in pure-Python; the torch teacher loop runs on the cloud lane): `engine/tools/kai2_codec/
+train_kai2_codec.py` (`--smoke` CPU sanity; `--model <id|bucket>` real; `--export` writes packets).
+
+**Two grounded routes (Route A is the operator's direction; B is now a SINGLE-LINEAR codec, not a Perceiver):**
 - **Route A — native-audio mimic (strongest; leverages joint training, possibly ZERO training).** Extract the
   audio module + audio→text projector from `google/gemma-4-12B` safetensors; deliver the event AS audio —
   either TTS the event text (≤30 s) through the real front-end, or synthesize 640-sample frames — to obtain
