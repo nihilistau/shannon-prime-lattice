@@ -12,12 +12,14 @@ every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, B
 
 ## 1. IN FLIGHT right now (check these first)
 
-- **▶ G-KAIROS-1 ≥24h SOAK v2 RUNNING (relaunched 2026-06-14 ~21:55 post-reboot, `test_gemma4_cuda.exe` PID 19916).**
-  v1 (PID 16412) aborted at ~3.6h/5016 ticks on a per-loop close/reopen VRAM leak (kv_open OOM) — mechanism was
-  flawless (0 faults). FIXED (engine `73b4461`): one resident kv session + in-place `gemma4_kv_reset` + cudaMemGetInfo
-  tripwire. Smoke (10 loops) GREEN with free VRAM DEAD-FLAT (547-567 MiB) ⇒ leak gone. 24h relaunched on fresh metal.
-  Monitor `shannon-prime-system-engine\results\kairos_soak.log -Tail 5`; kill `Stop-Process -Id 19916`. **NO VERDICT
-  FROM A MID-RUN LOG.** On GREEN 24h: flip paper 09 to released + add a KAIROS endurance row.
+- **■ G-KAIROS-1 ≥24h SOAK — NOT IN FLIGHT. Operator decision (2026-06-15): not pursued further; move on.**
+  Substrate + leak-fix PROVEN; the formal 24h endurance gate is set aside (not failed — un-pursued). Best run:
+  v2 ran CLEAN 377 loops / 9072 ticks / 6.5h (0 faults, free VRAM dead-flat 540-570 MiB), false-aborted on operator
+  GPU contention (global-free tripwire); v1 (5016 ticks) hit the now-fixed close/reopen leak. Harness hardened:
+  engine `73b4461` (one resident kv session + `gemma4_kv_reset`) + `3946d18` (consec-loop tripwire, no over-claim).
+  Paper 09 / LEDGER KAIROS-01/02/03 = mechanism proven + citable; paper 09 full release stays "held on the soak"
+  (accurate — hold is simply not being lifted). To resume later if wanted: `_run_kairos_soak.bat [SP_SOAK_MAXLOOPS]`
+  on a free/uninterrupted GPU until a clean GREEN verdict. **No active run; no relaunch queued.**
 - _(superseded)_ **▶ G-KAIROS-1 ≥24h SOAK v1 (launched 2026-06-14 ~11:11, `test_gemma4_cuda.exe` PID 16412).**
   `run_kairos_soak` (SP_G4_KAIROS_SOAK) loops the deterministic 24-event tape on the journaled-ring metal
   with per-loop re-anchor (bounded state), streamed/flushed telemetry, and in-process hard tripwires
