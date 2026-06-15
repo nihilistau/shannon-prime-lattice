@@ -527,3 +527,62 @@ latency reduction is the phase-2 target. **NEXT (KAI-2 phase 2):** resurrect the
 *concrete* target — train a k≈1–2 event→residual packet (contrastive on action-pivot, not generation) so
 the injected vector pivots the resident in ≤2 steps; the seam + instrument are ready, only the packet is
 missing. Exploratory harness `run_kairos_interrupt` (returns 0 — measurement, not pass/fail).
+
+## 6.3 KAI-2 PHASE-2 CODEC — grounded on the NATIVE AUDIO port (opener; pre-registered 2026-06-15, code next)
+
+**The find (verified against `google/gemma-4-12B` repo card + `config.json`, not blogs).** Our frozen artifact
+is **Gemma 4 12B "Unified"** — `model_type: gemma4_unified`, class `Gemma4UnifiedForConditionalGeneration`,
+the 5th Gemma-4 size (the generic core model card lists only four and omits it). It is **encoder-free and
+natively multimodal incl. AUDIO**: per the repo card it *"projects raw image patches and audio waveforms
+directly into the LLM's embedding space through lightweight linear layers."* This corrects an earlier
+working assumption (Gemma-3 / SigLIP vision) — **wrong model; the real one has a native audio path**, and it
+lands at exactly the port `gemma4_kv_inject` writes to (post-embed residual). The operator's "inject in the
+audio format" instinct is therefore not an analogy — it is *how the frozen model already ingests events.*
+
+**The native audio injection protocol (from `config.json`, tensor-level):**
+- `audio_config`: `model_type gemma4_unified_audio`, `audio_embed_dim = hidden_size = output_proj_dims = 640`,
+  **no transformer layers** (the thin encoder-free projector; the ~300M USM encoder is the E2B/E4B path only).
+- `audio_samples_per_token = 640` ⇒ at 16 kHz, **40 ms/frame ≈ 25 audio tokens/sec** (≤30 s audio max).
+- **Injection = soft-token substitution** (identical to vision): placeholder `audio_token_id = 258881` whose
+  embedding is REPLACED by the projected audio-frame vector, bracketed by `boa = 256000` / `eoa = 258883`.
+  Audio module emits 640-dim frames → a projector lifts to the text residual width `hidden_size = 3840`.
+- Text geometry confirms our artifact == this model: E=3840, 48 layers, 16 heads, hd 256, KV 8 / global-KV 1,
+  SWA-1024 with every 6th layer global, p-RoPE θ 1e6 (global) / 1e4 (SWA), softcap 30, `attention_k_eq_v`.
+
+**Caveat that sets the work (verified locally).** Our `.sp-model` is **text-only**: `sp_transcode --st`
+captured **no audio/vision projection tensors** (grep: only the text `embedding_length_per_layer_input`). So
+the audio-projector linears live in the HF safetensors, **not** in our artifact. Using the native path
+requires extracting them + the exact waveform→640→3840 front-end. This is the real cost; pre-registered below.
+
+**Two grounded routes (Route A is the operator's direction; B is the §6.2 `event_resampler.py` fallback):**
+- **Route A — native-audio mimic (strongest; leverages joint training, possibly ZERO training).** Extract the
+  audio module + audio→text projector from `google/gemma-4-12B` safetensors; deliver the event AS audio —
+  either TTS the event text (≤30 s) through the real front-end, or synthesize 640-sample frames — to obtain
+  *real* audio-soft-token vectors, inject them at `audio_token_id` positions via `gemma4_kv_inject`. The frozen
+  model natively "hears" the event; no LLM training, and (TTS route) possibly no adapter training at all.
+- **Route B — trained resampler distill (no audio weights needed).** Perceiver `EventResampler` (k≤4 soft
+  vectors) trained by forward-KL distillation from the working text path (`tools/kai2_codec/event_resampler.py`,
+  the won-LSH recipe). Simpler; does not exploit native audio, but the audio path PROVES the target manifold
+  exists and is natively injectable.
+
+**The decisive cheap first experiment (no-regret, serves A and informs B) — `G-KAIROS-2-NATIVE`:**
+run the HF bf16 12B *once* (cloud, P2.b lane) on a real ≤30 s wav of the event (e.g. *"build complete, all
+tests passed"*) through its processor; **dump the projected audio-soft-token embedding vectors** at the
+`audio_token_id` slots; transfer that `.bin`; on our engine inject those exact vectors via `gemma4_kv_inject`
+and free-decode. If the resident pivots to the correct `<ACTION>` with **no training**, native audio delivery
+is proven end-to-end and Route A is the path. The HF model is needed only to *generate* the embeddings once —
+inference stays on our engine.
+
+**PRE-REGISTERED GATE G-KAIROS-2 (phase 2), thresholds BEFORE code:**
+1. **Null floor preserved** — one-shot `gemma4_decode_cuda` AND `gemma4_kv_decode` BYTE-UNTOUCHED; all phase-2
+   work behind off-by-default flags (any non-zero diff on the null path = hard fail).
+2. **Pivot latency** — the injected event packet (native dump, Route A; or trained k≤4, Route B) pivots the
+   resident to the correct `<ACTION>` in **≤2 decode steps** (vs the §6.2 measured 44 text-delivery steps).
+3. **Selectivity held** — an idle / low-salience event packet must NOT pivot (emit `NO_OP`); a salient one
+   must. Report the 2×2 (salient/idle × action/no-op); both off-diagonals must be empty.
+4. Latency timing obeys the clock-pin discipline (interleaved or cudaEvent; never difference two wall series).
+
+**OPEN — operator route call (cloud spend gate):** (a) `G-KAIROS-2-NATIVE` dump-and-inject probe [cheapest,
+most decisive, training-free], (b) full Route-A audio-projector extraction + engine wiring, or (c) Route-B
+resampler training. Recommendation: **(a) first** — it is the smallest experiment that can falsify or confirm
+the entire native-audio thesis before any extraction or training spend.
