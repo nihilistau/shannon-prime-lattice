@@ -454,3 +454,51 @@ clobbered_owners=40, diffs=0); semantic correctness is proven here on the faithf
 orthogonal and each tested cleanly. **KAI-1c CLOSED. The crossbar substrate (time ⊗ space ⊗ cognition)
 is a unified whole — ready for the ≥24h soak (G-KAIROS-1).** Remaining hygiene: #220 cudaEvent tax,
 #222 kv_decode boundary, compact-slab globals wrap-rewind.
+
+## 6. KAI-2 — THE LATENT INTERRUPT (opener; pre-registered 2026-06-15, code next)
+
+**Why.** KAI-1 gave the resident daemon a *heartbeat* — it ticks, reads a TEXT frame, decides. But a true
+resident must be **interruptible**: an event must be deliverable *now*, mid-idle, without waiting for the
+next polled text tick, and ideally as a *compact latent packet* rather than a verbose prompt. This is the
+X-R1 latent-write mechanism (15/15 incorporation, 15/15 selectivity, self-null 7/7 bit-identical — ledger
+X-R1) **promoted from a probe into a delivery path**: an event written directly into the resident KV
+stream. The roadmap names this KAI-2 (ROADMAP-KAIROS §5 row).
+
+**The seam (surveyed `cuda_forward.cu`).** The clean delivery is **residual-entry injection**, the proven
+`SP_XBAR_EMB` path (cuda_forward.cu:2673-2675 in the one-shot decode): overwrite the device residual
+`s->dx` (E floats, f32) *after* `k_embed_scale` and *before* the layer stack, at the live `dpos`. Because
+the position is the live `dpos`, **RoPE phase is correct by construction** and the forward mints the
+event's K/V natively — no phase-mismatch risk (unlike the KV-splice path, which needs `SP_XBAR_POSFREE`).
+The new ABI surface is **`gemma4_kv_inject(s, emb, n_rows)`** wired into `g4_kv_step` at the post-embed /
+pre-layer point (cuda_forward.cu ~3337-3351): for the injected step(s) the residual is taken from the
+supplied packet instead of the token-embedding lookup, then the normal step writes K/V into the resident
+ring/cache and the daemon decodes its response. The one-shot `gemma4_decode_cuda` AND `gemma4_kv_decode`
+stay **byte-untouched** (inject is an additive, off-by-default entry — the null floor holds).
+
+**Phase scope (honest).** Phase 1 proves the **delivery mechanism**, not compression: the latent packet is
+the event's *real* token embeddings (from the model's embedding table), delivered via residual-entry vs
+the text-append baseline. The **k≈2 compressed pseudo-token packet** (§2.5 format, the P2.b adapter) is a
+separate, harder claim — P2.b recognition rested sub-usable (top-1 0.462) — and is **deferred to KAI-2
+phase 2**; we do not gate compression here, only that latent delivery works and is no worse than text.
+
+**G-KAIROS-2 (PRE-REGISTERED gate).** A/B on the resident 12B (`run_kairos_metal` lineage): the SAME salient
+event delivered as **(A) latent** — `gemma4_kv_inject` of the event embeddings mid-idle — vs **(B) text** —
+the event appended as a `<start_of_turn>` frame (today's path). Three sub-gates, reusing the X-R1 rank
+instrument (`SP_XBAR_RANKS`/`SP_XBAR_TOKENS`, cuda_forward.cu:3096-3117):
+- **Incorporation latency (steps-to-pivot):** the gen-step at which the decoded response's argmax pivots to
+  the correct `<ACTION>` (rank of the action token → 1). **PASS = latent latency ≤ text latency** (the
+  interrupt is at least as fast); the headline is *fewer steps* for latent.
+- **Selectivity:** the pivot is to the **right** action for the injected event and **not** triggered by a
+  null/idle packet — a 2×2 (salient-vs-idle packet × pivot-vs-NO_OP), the X-R1 double-dissociation reused.
+  **PASS = salient→ACTION, idle→NO_OP, both clean (no false-fire from the injection itself).**
+- **Self-injection null (bit-exact):** capture the resident residual at `dpos` (`SP_XBAR_EMB_CAPTURE`) and
+  re-inject it — the decode must be **byte-identical** to no injection (the instrument-is-inert proof, the
+  X-R1 G0 analog on the persistent ABI). **PASS = diffs=0 + identical tokens.**
+- **Falsification (pre-stated):** if latent delivery is **slower or less selective** than text on the 12B,
+  the latent-interrupt thesis is falsified for this substrate and ships as an honest negative (the roadmap's
+  named fallback: re-test the mechanism, do not retreat silently). The self-null is a hard gate — any nonzero
+  diff means the injection seam perturbs the resident state and KAI-2 does not open until it's exact.
+
+**Next-session first action:** wire `gemma4_kv_inject` (residual-entry, null-floor additive) into `g4_kv_step`;
+add the `SP_G4_KAIROS_INTERRUPT` A/B harness mode (latent vs text, rank-telemetry on the action token);
+run **G-KAIROS-2 self-null FIRST** (bit-exact) before any latency/selectivity claim.
