@@ -598,4 +598,221 @@ tests passed"*) through its processor; **dump the projected audio-soft-token emb
 `audio_token_id` slots; transfer that `.bin`; on our engine inject those exact vectors via `gemma4_kv_inject`
 and free-decode. If the resident pivots to the correct `<ACTION>` with **no training**, native audio delivery
 is proven end-to-end and Route A is the path. The HF model is needed only to *generate* the embeddings once —
-inference sta
+inference stays on our engine.
+
+**PRE-REGISTERED GATE G-KAIROS-2 (phase 2), thresholds BEFORE code:**
+1. **Null floor preserved** — one-shot `gemma4_decode_cuda` AND `gemma4_kv_decode` BYTE-UNTOUCHED; all phase-2
+   work behind off-by-default flags (any non-zero diff on the null path = hard fail).
+2. **Pivot latency** — the injected event packet (native dump, Route A; or trained k≤4, Route B) pivots the
+   resident to the correct `<ACTION>` in **≤2 decode steps** (vs the §6.2 measured 44 text-delivery steps).
+3. **Selectivity held** — an idle / low-salience event packet must NOT pivot (emit `NO_OP`); a salient one
+   must. Report the 2×2 (salient/idle × action/no-op); both off-diagonals must be empty.
+4. Latency timing obeys the clock-pin discipline (interleaved or cudaEvent; never difference two wall series).
+
+**OPEN — operator route call (cloud spend gate):** (a) `G-KAIROS-2-NATIVE` dump-and-inject probe [cheapest,
+most decisive, training-free], (b) full Route-A audio-projector extraction + engine wiring, or (c) Route-B
+resampler training. Recommendation: **(a) first** — it is the smallest experiment that can falsify or confirm
+the entire native-audio thesis before any extraction or training spend.
+
+## 6.4 KAI-2 phase-2 — CLOUD PIPELINE GREEN; the G-KAIROS-2 GATE is PENDING (2026-06-16, engine `dd035b8` lineage)
+
+**Status (use verbatim wherever KAI-2 is referenced): "phase-2 cloud pipeline GREEN; G-KAIROS-2 pivot/selectivity
+gate PENDING."** This is NOT "KAI-2 closed" and NOT "pivot proven."
+
+The Colab-G4 lane now runs the codec distillation end-to-end (recipe `_xbar/p2b/colab.md`). On the **real bf16
+`google/gemma-4-12B`** (G4 = RTX PRO 6000 Blackwell 96GB):
+- **transformers-HEAD LOADED the brand-new `gemma4_unified` arch with no parser crash** — the first live load of the
+  unified arch on a stock transformers head.
+- the **`inputs_embeds` inject seam RAN the distillation** (the trainer fed the packet through the residual entry, not
+  a token path).
+- the **single-linear `KAI2Codec`** (raw-event `640→3840·k`, mirroring the native `embed_audio` projector §6.3) trained
+  via **forward-KL distillation from the 12B text teacher**.
+- exported **8 packets + a checkpoint → 10 files** on HF `KnackAU/xbar-p2b-run` path `results_kai2/kai2_k4/`
+  (`STATUS = "DONE rc=0"`).
+
+**CAVEAT (load-bearing, state it plainly): `rc=0` means the distillation LOOP completed — it does NOT prove the trained
+packet pivots the model.** The per-epoch KL lived on the ephemeral cloud VM and is gone; **codec quality is UNVERIFIED.**
+The pipeline working (load → inject seam → train → export) is a real GREEN; the codec doing its job is a separate,
+un-run claim.
+
+**PENDING — G-KAIROS-2 (the actual gate; the immediate next step).** Pull the trained packets → inject via
+`gemma4_kv_inject` on the engine → measure the §6 pre-registered sub-gates on the resident 12B:
+- **Pivot latency ≤2 decode steps** to the correct `<ACTION>` (vs the §6.2-measured **44** text-delivery steps).
+- **Selectivity 2×2** — idle/low-salience packet → `NO_OP`, salient packet → `ACTION`; both off-diagonals empty.
+- Null floor preserved (one-shot `gemma4_decode_cuda` AND `gemma4_kv_decode` byte-untouched) + clock-pin timing discipline.
+
+**Until G-KAIROS-2 passes there is NO "pivot proven" / "latent interrupt works" claim.** The seam (§6.1 self-null GREEN)
+and the instrument are ready; the pipeline now produces packets; what is unmeasured is whether an injected packet pivots
+the resident in ≤2 steps. That measurement is the next action.
+
+---
+
+## §6.5 — KAI-2 VERDICT (2026-06-16): delivery seam GREEN; learned codec hits the off-manifold wall
+
+G-KAIROS-2 was RUN on the resident 12B (OK_Q4B, RTX 2060, `SP_G4_KAI2_PACKET` harness in
+`tests/test_gemma4_cuda.c`, with two added controls: an **EMB** real-token-embedding arm and an `SP_KAI2_EMBK`
+capacity cap). Verdict splits the §6 phases cleanly:
+
+**Phase 1 — LATENT DELIVERY: GREEN (2/2 on metal).** The EMB control injects the event's REAL token
+embeddings (`sp_arena_dequant_row(token_embd)·√E`) through `gemma4_kv_inject`: salient→`ACTION`,
+idle→`NO_OP`. The residual-entry seam delivers; the §6.1 null floor holds (both decoders byte-untouched).
+Architecture note (corrects the §6 framing): gemma-4-12B has **no AltUp / no per-layer-embeddings**
+(`hidden_size_per_layer_input=0`); its native audio is a `masked_scatter` of raw features into
+`inputs_embeds` — i.e. exactly the `gemma4_kv_inject` residual seam.
+
+**Capacity floor (new sub-result).** EMB capped to the first *k* real embeddings: salient pivots at
+**k=16/25, not at k=4/8**. The model's residual-stream information floor for a ~25-token event is ~16
+positions; k=4 is below it ⇒ no codec can win at k=4 regardless of training.
+
+**Phase 2 — LEARNED COMPRESSION CODEC: MISS, mechanism identified (NOT quantization).** Four distillation
+cycles (t4 bypass-k4, t5 Option-2-hook-k4, t6 `--fakeq`-OK_Q4B-k4, t7 `--fakeq`-k16) all produced packets
+that decode `NO_OP` on metal while EMB passes. Offline cosine diagnostic (`_xbar/p2b/_cos_diag.py`): the
+t7 k=16 codec vectors have **max cosine 0.078 to ANY of the 262144 embedding rows vs a random-vector
+baseline of 0.070** — statistically indistinguishable from noise w.r.t. the embedding manifold. The single
+`nn.Linear`, distilling forward-KL-at-decision over **8 events**, found a **degenerate off-manifold
+shortcut** (low training KL = overfit, not learning); the metal forward — which operates on the learned
+manifold — shears those noise vectors to nothing. This is the mechanism behind P2.b's "sub-usable"
+(recognition top-1 0.462) compression result, now precisely located.
+
+**§6.5 FIX (pre-registered for the next pass — training-side only; engine/harness are verified assets,
+do NOT touch):**
+- **Manifold-anchor loss:** `L = L_KL + λ·L_anchor`, `L_anchor = (1/k)Σ_i min_j (1 − cos(C_i, E_j))` over
+  the event's real token embeddings `E_j`; high λ early to pull on-manifold first, anneal to fine-tune the
+  action pivot.
+- **Corpus expansion:** 8 → ~512 events (template grammar: type × fields × salience), 80/20 split.
+- **New gate (G-KAIROS-2 v2):** pivot + 2×2 selectivity on **held-out** events (not the train set), plus a
+  manifold check (`_cos_diag.py` max-cos ≫ random baseline). k≥16 (above the capacity floor).
+- Receipts this session: `_xbar/p2b/{kai2_t7.log, kai2_embk.log, _cos_diag.py output}`; engine harness
+  controls in `test_gemma4_cuda.c` (EMB arm + `SP_KAI2_EMBK`/`SP_KAI2_CAL` knobs, null-floor off by default).
+
+## §6.6 — KAI-2 FINAL VERDICT (2026-06-16): G-KAIROS-2 v2 CLOSED — Phase-1 GREEN, Phase-2 BOUNDED
+
+The §6.5 FIX was executed in full (t8→t10) and the G-KAIROS-2 v2 gate was run on the resident 12B. The
+fix **solved the off-manifold degeneracy** and exposed a deeper, structural wall. **This closes KAI-2.**
+
+**t10 — the maximally-constrained packet.** k=16 (above the capacity floor), `--fakeq` OK_Q4B teacher,
+**on-manifold softmax head** over an N=158 event-vocab subset (`softmax(P/τ)·W_sub`, `W_sub` = real
+embedding rows ×√H), KL-only objective, 80/20 held-out split, sharp head temperature **τ=0.2** (the t9
+soft-blend bug `tau=args.tau`→`tau=args.head_tau` fixed in `train_kai2_codec.py`). Receipts: HF
+`results_kai2/kai2_k16_t10/` (STATUS rc=0; train.log; 8 held-out packets), local `_xbar/p2b/kai2_t10_gate.log`.
+- **Manifold gate: `val mean max-cos to embed table = 0.9913`** (random ~0.07; t9 0.70). The §6.5
+  noise-vector pathology (cos 0.078) is eliminated — the codec emits near-discrete on-manifold tokens.
+- **Held-out `BEST val_KL = 0.9157 @ epoch 6`**, plateaus there (never < ~0.92 over 10 epochs). The
+  plateau is the in-training signature of the structural wall: the head fits the manifold (cos→0.99) but
+  cannot move the teacher's decision distribution onto the salient pivot.
+
+**G-KAIROS-2 v2 metal gate (held-out EVAL_EVENTS, clocks 1680, `SP_CUDA_DECODE_INT8=1`):**
+```
+case=salient  TEXT->ACTION [sel] | EMB(n=25)->ACTION [PASS] | PACKET(k=16)->NO_OP [miss]
+case=idle     TEXT->NO_OP  [sel] | EMB(n=16)->NO_OP  [PASS] | PACKET(k=16)->NO_OP [PASS]
+PHASE-1 EMB-DELIVERY: 2/2 PASS     G-KAIROS-2 PACKET: 1/2     KAI2_GATE_EXIT=3
+```
+
+**VERDICT (use verbatim wherever KAI-2 is referenced):**
+- **Phase 1 (latent delivery seam `gemma4_kv_inject`) — GREEN / verified production asset.** Proven on
+  metal: a continuous raw-vector injection at the Layer-0 residual forces a 12B dense model to pivot its
+  full execution path, **provided the injected vectors preserve sequence integrity** (EMB 2/2).
+- **Phase 2 (learned fixed-width single-event codec `KAI2Codec`) — BOUNDED / research frontier closed.**
+  The strongest possible packet (sharp τ=0.2, on-manifold cos 0.9913, above-capacity k=16) failed the
+  salient pivot. **The wall is sequence-positional, not manifold-distance and not capacity:** a static
+  fixed-width linear packet compresses out the per-position directional variance the attention heads use
+  to compute the decision shift. Same mechanism as the P2.b k=2 generation wall (recognition top-1 0.462).
+
+**FREEZE.** The injection harness — `test_gemma4_cuda.c run_kai2_packet_gate`, the `gemma4_kv_inject` seam,
+`SP_XBAR_EMB`, and the `SP_KAI2_*` knobs — is **frozen as a verified asset**. No further codec-compression
+training cycles.
+
+**PIVOT (the path that inherits the Phase-1 GREEN).** Replace the artificial k=16 bottleneck with gemma-4's
+native continuous-modality port: stream sequential **40ms / 640-float / 16kHz frames** through the
+`audio_token_id=258881` mask (`masked_scatter` into `inputs_embeds`, raw/unscaled). This delivers the
+downstream GNA/CNN front-end an **uncompressed, sequential feature tape** — the exact structure the EMB
+control proves passes — rather than a compressed packet the codec proves does not. New work item:
+**KAI-3 audio-port frame projector** (GNA/CNN feature tape → 640-float frames → `audio_token_id` sequence).
+
+---
+
+## §7 — KAI-3 AUDIO-PORT FRAME PROJECTOR (opener; pre-registered 2026-06-16, code next)
+
+**Premise (inherited from §6.6, not re-litigated).** Phase-1 delivery is GREEN: a sequence of raw E-float
+residual vectors injected at consecutive positions through `gemma4_kv_inject` pivots the resident 12B
+exactly as ordered real-token embeddings do (EMB n=25 → ACTION, n=16 → NO_OP). The §6.6 wall is specific
+to *fixed-width compression*; the audio port never compresses — it streams sequential 40ms frames, each
+occupying one `audio_token_id=258881` position, preserving the per-position structure attention routes on.
+
+This is gemma-4's native continuous-modality path: `inputs_embeds.masked_scatter(audio_mask, audio_features)`
+at `audio_token_id=258881`, **raw/unscaled** (the LM is called with `inputs_embeds=`, bypassing
+`embed_scale=√H`). The engine seam (`gemma4_kv_inject` overwrites the post-embed residual raw, no
+`embscale`) is the per-position twin of that scatter. KAI-3 = (a) a sequence wrapper over that seam, then
+(b) the 640-float→E projector that fills the sequence.
+
+### §7.1 — Engine ABI: `gemma4_kv_inject_seq` (Edit 1, the only engine surface)
+
+Strict loop over the **frozen, verified** `gemma4_kv_inject` + `gemma4_kv_prefill` primitives. No new
+tensor routing; the null floor is preserved (off unless called). Signature:
+
+```c
+/* KAI-3: inject a SEQUENCE of n_frames raw E-float residual vectors at n_frames consecutive
+ * positions, each minted at a placeholder token (audio_token_id=258881). Each frame i is staged
+ * via gemma4_kv_inject(embs + i*E) then consumed by gemma4_kv_prefill(&ph,1) — the exact per-
+ * position loop the Phase-1 EMB control (test_gemma4_cuda.c run_kai2_packet_gate, L981-986) ran
+ * 2/2 on metal. embs = row-major [n_frames][E], raw (caller applies any scale). Advances dpos by
+ * n_frames. Returns 0 on success, -1 on any inject/prefill failure. */
+extern "C" int gemma4_kv_inject_seq(sp_g4_kv *s, const float *embs, int n_frames, int ph_token);
+```
+
+Implementation is a `for i in [0,n_frames): inject(embs+i*E); prefill(&ph_token,1)` loop. `ph_token` is
+passed by the caller (= 258881 for the audio port); the wrapper hardcodes nothing.
+
+### §7.2 — G-KAIROS-3-NULL (pre-registered null-floor gate; the FIRST run, no new training)
+
+**Claim under test:** the engine wrapper `gemma4_kv_inject_seq` is byte-faithful to the proven inline
+per-position loop — moving the loop from the harness into the engine changes nothing.
+
+**Method.** New additive harness mode `SP_G4_INJ_SEQ=1` (does NOT touch the frozen `run_kai2_packet_gate`).
+Replicates the Phase-1 EMB path through the new wrapper: for each of the two soak cases, prefill the SYS
+scaffold + commit (anchor), encode the event text → token ids, dequantize each token's embedding row ×√E
+into a contiguous `[en][E]` buffer, `prefill(uopen)`, `gemma4_kv_inject_seq(s, embs, en, 258881)`,
+`prefill(uclose)`, decode, parse the decision. Same model (12B OK_Q4B `-b1`), clocks pinned 1680,
+`SP_CUDA_DECODE_INT8=1`.
+
+**STRICT SUCCESS CRITERIA (binding, pre-registered):**
+1. **Pivot parity (the gate):** EMB-via-seq must reproduce the Phase-1 EMB result **exactly** —
+   salient case → `ACTION`, idle case → `NO_OP`, **2/2**. This is the identical behavioral pivot §6.6
+   recorded for the inline loop. Anything less than 2/2 fails the gate (the wrapper introduced a defect).
+2. **Token identity (the receipt):** the decoded decision strings from `gemma4_kv_inject_seq` must be
+   **byte-identical** to those the inline EMB loop produces on the same build/inputs (`ACTION>...` /
+   `_OP<end_of_turn`). Sequence-of-N through the wrapper == sequence-of-N inline.
+3. **Null floor intact:** with `SP_G4_INJ_SEQ` unset, the build is byte-identical to the frozen tree
+   (the new function is dead code unless the new mode is selected).
+
+**On PASS:** the multi-position delivery path is locked as a verified asset; KAI-3 proceeds to §7.3 (the
+640→E projector) with the delivery mechanism already proven — exactly as Phase-1 isolated delivery from
+the codec. **On FAIL:** the wrapper has a defect (loop bound, dpos advance, ph token); fix engine-side and
+re-gate before any projector work. No training is introduced until G-KAIROS-3-NULL is GREEN.
+
+### §7.3 — Frame projector + G-KAIROS-3 — GREEN 8/8 (2026-06-16, engine e35a227)
+
+640-float (40ms/16kHz) frame → E=3840 residual vector on the gemma-4 manifold. Architecture (verified with
+the operator): per-position MLP `640→V_sub` logits → **on-manifold binder** `softmax(logits/τ)·W_sub`
+(W_sub = real OK_Q4B embed rows ×√H), trained with **dense per-position cross-entropy** (frame_i→token_i)
+— the structural fix for the t10 sparse-gradient plateau; the pivot is a consequence, never the train signal.
+
+**Done LOCAL, no cloud.** The cloud lane was premised on "real tokenizer blocked locally" — false: the engine
+owns the gemma tokenizer (`sp_tokenizer`, the metal gates' own). Added `SP_G4_TOK_DUMP` (engine-tokenizer id
+dump) → trained the projector on REAL token-id sequences → `SP_G4_KAI3` manifest gate. A G4 for a tiny MLP
+would have been over-provisioning (banked lesson).
+
+- **Synthetic ladder (architecture proof, `tools/audio_port/`):** noise_rel=0.1 (2.5× noise:signal) →
+  held-out per-position top1 **1.000**, CE→0, manifold cos **0.9998**, KAI2-format export. Binder is
+  noise-independent (cos ~0.98 even at top1 0.03) ⇒ emits on-manifold-but-wrong under stress, never the
+  t10 off-manifold noise. (`KAI3-LADDER-RESULTS.md`.)
+- **Real-token train:** V_sub=60 (template event vocab), held-out top1 **0.931**, manifold cos **0.9937**.
+- **G-KAIROS-3 metal gate (12B OK_Q4B, 2060, clocks 1680, `SP_G4_KAI3`):** projected frame sequences →
+  `gemma4_kv_inject_seq` → **8/8 PASS**, SEMANTICALLY (salient→event-specific ACTION: "Restart the build
+  process", "Check disk status and run SMART", "Authenticate user…"; idle→NO_OP). `KAI3_GATE_EXIT=0`,
+  receipt `_xbar/p2b/kai3_gate.log`.
+
+**This inverts the §6.6 KAI-2 verdict on the same substrate:** compressed fixed-width packet = 1/2 (sequence
+info compressed out); projected N-frame sequence = 8/8 (sequence preserved, per-position CE recovers it).
+The audio-port thesis — continuous frames can drive the 12B's execution path — is proven. NEXT: swap the
+synthetic anchor matrix for real GNA/CNN features (task #154); the delivery + projection architecture is locked.
