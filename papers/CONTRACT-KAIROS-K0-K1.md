@@ -728,3 +728,72 @@ native continuous-modality port: stream sequential **40ms / 640-float / 16kHz fr
 downstream GNA/CNN front-end an **uncompressed, sequential feature tape** — the exact structure the EMB
 control proves passes — rather than a compressed packet the codec proves does not. New work item:
 **KAI-3 audio-port frame projector** (GNA/CNN feature tape → 640-float frames → `audio_token_id` sequence).
+
+---
+
+## §7 — KAI-3 AUDIO-PORT FRAME PROJECTOR (opener; pre-registered 2026-06-16, code next)
+
+**Premise (inherited from §6.6, not re-litigated).** Phase-1 delivery is GREEN: a sequence of raw E-float
+residual vectors injected at consecutive positions through `gemma4_kv_inject` pivots the resident 12B
+exactly as ordered real-token embeddings do (EMB n=25 → ACTION, n=16 → NO_OP). The §6.6 wall is specific
+to *fixed-width compression*; the audio port never compresses — it streams sequential 40ms frames, each
+occupying one `audio_token_id=258881` position, preserving the per-position structure attention routes on.
+
+This is gemma-4's native continuous-modality path: `inputs_embeds.masked_scatter(audio_mask, audio_features)`
+at `audio_token_id=258881`, **raw/unscaled** (the LM is called with `inputs_embeds=`, bypassing
+`embed_scale=√H`). The engine seam (`gemma4_kv_inject` overwrites the post-embed residual raw, no
+`embscale`) is the per-position twin of that scatter. KAI-3 = (a) a sequence wrapper over that seam, then
+(b) the 640-float→E projector that fills the sequence.
+
+### §7.1 — Engine ABI: `gemma4_kv_inject_seq` (Edit 1, the only engine surface)
+
+Strict loop over the **frozen, verified** `gemma4_kv_inject` + `gemma4_kv_prefill` primitives. No new
+tensor routing; the null floor is preserved (off unless called). Signature:
+
+```c
+/* KAI-3: inject a SEQUENCE of n_frames raw E-float residual vectors at n_frames consecutive
+ * positions, each minted at a placeholder token (audio_token_id=258881). Each frame i is staged
+ * via gemma4_kv_inject(embs + i*E) then consumed by gemma4_kv_prefill(&ph,1) — the exact per-
+ * position loop the Phase-1 EMB control (test_gemma4_cuda.c run_kai2_packet_gate, L981-986) ran
+ * 2/2 on metal. embs = row-major [n_frames][E], raw (caller applies any scale). Advances dpos by
+ * n_frames. Returns 0 on success, -1 on any inject/prefill failure. */
+extern "C" int gemma4_kv_inject_seq(sp_g4_kv *s, const float *embs, int n_frames, int ph_token);
+```
+
+Implementation is a `for i in [0,n_frames): inject(embs+i*E); prefill(&ph_token,1)` loop. `ph_token` is
+passed by the caller (= 258881 for the audio port); the wrapper hardcodes nothing.
+
+### §7.2 — G-KAIROS-3-NULL (pre-registered null-floor gate; the FIRST run, no new training)
+
+**Claim under test:** the engine wrapper `gemma4_kv_inject_seq` is byte-faithful to the proven inline
+per-position loop — moving the loop from the harness into the engine changes nothing.
+
+**Method.** New additive harness mode `SP_G4_INJ_SEQ=1` (does NOT touch the frozen `run_kai2_packet_gate`).
+Replicates the Phase-1 EMB path through the new wrapper: for each of the two soak cases, prefill the SYS
+scaffold + commit (anchor), encode the event text → token ids, dequantize each token's embedding row ×√E
+into a contiguous `[en][E]` buffer, `prefill(uopen)`, `gemma4_kv_inject_seq(s, embs, en, 258881)`,
+`prefill(uclose)`, decode, parse the decision. Same model (12B OK_Q4B `-b1`), clocks pinned 1680,
+`SP_CUDA_DECODE_INT8=1`.
+
+**STRICT SUCCESS CRITERIA (binding, pre-registered):**
+1. **Pivot parity (the gate):** EMB-via-seq must reproduce the Phase-1 EMB result **exactly** —
+   salient case → `ACTION`, idle case → `NO_OP`, **2/2**. This is the identical behavioral pivot §6.6
+   recorded for the inline loop. Anything less than 2/2 fails the gate (the wrapper introduced a defect).
+2. **Token identity (the receipt):** the decoded decision strings from `gemma4_kv_inject_seq` must be
+   **byte-identical** to those the inline EMB loop produces on the same build/inputs (`ACTION>...` /
+   `_OP<end_of_turn`). Sequence-of-N through the wrapper == sequence-of-N inline.
+3. **Null floor intact:** with `SP_G4_INJ_SEQ` unset, the build is byte-identical to the frozen tree
+   (the new function is dead code unless the new mode is selected).
+
+**On PASS:** the multi-position delivery path is locked as a verified asset; KAI-3 proceeds to §7.3 (the
+640→E projector) with the delivery mechanism already proven — exactly as Phase-1 isolated delivery from
+the codec. **On FAIL:** the wrapper has a defect (loop bound, dpos advance, ph token); fix engine-side and
+re-gate before any projector work. No training is introduced until G-KAIROS-3-NULL is GREEN.
+
+### §7.3 — Frame projector (deferred until §7.2 GREEN; pre-registered target, not yet specified in full)
+
+640-float (40ms/16kHz) frame → E=3840 residual vector, landing on the same manifold the EMB sequence
+occupies. Two artifacts from one definition: `tools/audio_port/frame_projector.py` (train/export) + a
+serve-side `k_frame_project` kernel. The GNA/CNN front-end (Stage-2 work) produces the frame tape this
+consumes. Gate (G-KAIROS-3, future): a projected frame sequence steers the decode the way the EMB token
+sequence does — pre-registered when §7.2 closes and the projector target space is fixed.
