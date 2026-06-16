@@ -1,9 +1,17 @@
 # SESSION-HANDOFF.md — where things stand
 
-**Updated:** 2026-06-16 (**two overnight runs landed: G-KAIROS-1 6h SOAK = GREEN** (351 loops / ~8,400 ticks / 6h01m,
-0 false / 0 missed / 0 malformed / 0 pos-violation, on the dedicated 2060) **+ KAI-2 phase-2 CLOUD PIPELINE = GREEN, gate
-PENDING** (Colab-G4 lane end-to-end on real bf16 gemma-4-12B; trained KAI2Codec packets on HF — but rc=0 ≠ pivot proven;
-G-KAIROS-2 is the actual gate). Prior 2026-06-14: XBAR P3 + Phase C CLOSED → **KAI-1 / 1b / 1c CLOSED GREEN** (heartbeat
+**Updated:** 2026-06-16 (**KAI-2 CLOSED, BOUNDED** (engine `c5628e4`, contract §6.6 `2675c79`): Phase-1 seam
+`gemma4_kv_inject` GREEN / frozen asset (EMB control 2/2), Phase-2 static `KAI2Codec` MISSED the pivot —
+sequence-positional wall, not capacity; no more codec-compression cycles) **+ KAI-3 AUDIO-PORT CLOSED GREEN**
+(engine `e35a227`, contract §7.3 `e826950`): the inverse — `gemma4_kv_inject_seq` injects N projected frames 1:1
+with positions (no compression); G-KAIROS-3 metal **8/8 semantic pivots** on the 12B, synthetic top-1 1.000 /
+real-token 0.931. **NEXT = GNA Stage 2 (#154)** — swap the synthetic anchor for the real GNA/CNN audio front-end
+(the GNA "EAR" line; KAI-3 architecture LOCKED), then **pivot back to XBAR (KAIROS latent memory)**.
+**FRAMING (hold it):** KAIROS = the latent-interrupt / agency-time axis = the BASIS OF THE XBAR latent memory;
+the GNA "EAR" line is a SEPARATE-but-related sibling program (real audio in/out via the always-on NUC GNA 2.0) that
+shares the same `gemma4_kv_inject` seam — KAI-3 is the bridge into it, NOT a replacement for KAIROS. Earlier 2026-06-16:
+G-KAIROS-1 6h SOAK = GREEN (351 loops / ~8,400 ticks / 6h01m, 0 false / 0 missed / 0 malformed / 0 pos-violation,
+on the dedicated 2060). Prior 2026-06-14: XBAR P3 + Phase C CLOSED → **KAI-1 / 1b / 1c CLOSED GREEN** (heartbeat
 NO_OP, O(1) bit-exact rewind, wrap-aware journaled ring, semantic crucible) → doc audit + keystone + public papers 07-10
 staged. Earlier: P3.2-b-2a SWA RING SHRINK GREEN → **§P3.2-b-2b GLOBAL SPARSE RECALL MECHANISM CLOSED**
 → **M_GEMMA4 hygiene GREEN** (12B CUDA PPL ctest locked to `-b1`, SP PPL 4.6665 vs 4.6776) → **LARGER-N G2 VERDICT:
@@ -24,20 +32,30 @@ every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, B
   was contention-aborted — a harness/contention issue, NOT a substrate failure). The formal ≥24h gate remains
   un-pursued by operator choice (NOT failed). Logs `shannon-prime-system-engine\results\{soak_console.log,
   kairos_soak_detail.log}`.
-- **✓ KAI-2 phase-2 CLOUD PIPELINE = GREEN, but the GATE is PENDING (2026-06-16).**
-  **Status string (use verbatim everywhere): "phase-2 cloud pipeline GREEN; G-KAIROS-2 pivot/selectivity gate
-  PENDING".** The Colab-G4 lane now works end-to-end (recipe `_xbar/p2b/colab.md`). On the real bf16
-  `google/gemma-4-12B` (G4 = RTX PRO 6000 Blackwell 96GB): transformers-HEAD LOADED the brand-new `gemma4_unified`
-  arch with no parser crash; the `inputs_embeds` inject seam RAN the distillation; the single-linear KAI2Codec
-  (raw-event 640→3840·k) trained via forward-KL distillation from the 12B text teacher; exported 8 packets + a
-  checkpoint → 10 files on HF `KnackAU/xbar-p2b-run` path `results_kai2/kai2_k4/` (STATUS = "DONE rc=0").
-  **CAVEAT (state plainly wherever KAI-2 is mentioned): rc=0 means the distillation LOOP completed; it does NOT
-  prove the trained packet pivots the model. The per-epoch KL was on the ephemeral VM and is gone; codec quality is
-  UNVERIFIED.** Do NOT call KAI-2 "closed/proven".
-- **▶▶ NEXT ACTION — run G-KAIROS-2 with the trained packets** (the actual gate; the immediate next step): pull the
-  trained packets → inject via `gemma4_kv_inject` on the engine → measure ≤2-step pivot (vs the contract §6.2-measured
-  44 text-delivery steps) + selectivity 2×2 (idle→NO_OP, salient→ACTION). Until this passes there is NO "pivot proven"
-  claim. CONTRACT-KAIROS-K0-K1 §6.4 carries the run-record.
+- **✓ KAI-2 CLOSED, BOUNDED (2026-06-16, engine `c5628e4`, contract §6.6 `2675c79`).** Two findings, both on the record:
+  (1) **Phase-1 latent-delivery seam `gemma4_kv_inject` = GREEN / frozen verified asset** — EMB control 2/2 on the 12B
+  OK_Q4B / RTX 2060 (a real-token embedding SEQUENCE pivots salient→ACTION, idle→NO_OP); this seam is now the load-bearing
+  asset KAI-3 + the GNA EAR line build on. (2) **Phase-2 learned compressed single-event codec `KAI2Codec` = BOUNDED** —
+  the maximally-constrained `t10` packet (k=16, on-manifold cos 0.9913, sharp τ=0.2, held-out `val_KL` plateau 0.9157)
+  MISSED the salient pivot (PACKET 1/2). The wall is **SEQUENCE-POSITIONAL** (a fixed-width static packet compresses out
+  the per-position directional variance attention routes on; NOT manifold-distance, NOT capacity). **No more codec-compression
+  cycles.** KAI-2 is closed (bounded), not "pending".
+- **✓ KAI-3 AUDIO-PORT CLOSED GREEN (2026-06-16, engine `e35a227`, contract §7.3 `e826950`)** — the inverse of KAI-2 +
+  the BRIDGE into the GNA "EAR" line. Inject a SEQUENCE of N projected frames (1:1 with positions, no compression). New
+  engine ABI `gemma4_kv_inject_seq` (strict loop over the frozen inject+prefill primitives; **G-KAIROS-3-NULL 2/2
+  byte-identical** to the inline EMB loop). Projector `tools/audio_port/{gen_synth_frames,frame_projector,emit_corpus}.py`
+  = per-position MLP 640→V_sub + on-manifold binder softmax(logits/τ)·W_sub (W_sub = real embed rows×√H), trained with
+  **DENSE PER-POSITION cross-entropy** (the fix for the t10 sparse-gradient plateau; the pivot is a consequence, never the
+  train signal). Done **LOCAL / NO CLOUD** — the engine owns the gemma tokenizer (new `SP_G4_TOK_DUMP` mode); a cloud G4
+  for a tiny MLP would be over-provisioning. Synthetic ladder noise_rel=0.1 (2.5× noise:signal) → held-out per-position
+  top-1 **1.000**, manifold cos **0.9998** (binder noise-independent); real-token train V_sub=60 → top-1 **0.931**, cos
+  **0.9937**. **G-KAIROS-3 metal gate** (`SP_G4_KAI3` manifest): **8/8 SEMANTIC pivots** on the resident 12B
+  (salient→event-specific ACTION like "Restart the build process" / "Check disk status and run SMART"; idle→NO_OP),
+  `KAI3_GATE_EXIT=0`. Receipts `_xbar/p2b/kai3_gate.log`, `tools/audio_port/KAI3-LADDER-RESULTS.md` (engine repo).
+- **▶▶ NEXT ACTION — GNA Stage 2 (task #154):** replace the synthetic anchor matrix `A` with the real GNA/CNN audio
+  front-end (live audio/telemetry → 40ms / 640-float / 16kHz frames; `audio_token_id=258881`). The KAI-3 delivery +
+  projection architecture is **LOCKED**. This is the GNA "EAR" line (a separate-but-related sibling of KAIROS, NOT a
+  replacement); after the EAR lands, **pivot back to XBAR (KAIROS latent memory)**.
 
 - **■ G-KAIROS-1 ≥24h SOAK — NOT IN FLIGHT. Operator decision (2026-06-15): not pursued further; move on.**
   Substrate + leak-fix PROVEN; the formal 24h endurance gate is set aside (not failed — un-pursued). Best run:
@@ -245,50 +263,4 @@ B×B InfoNCE, N-way gate, honest controls); receipts HF `results_contrastive/ct1
 
 ## 4. Landed this session (receipts)
 
-- **#115 CLOSED + 12B text-in LIVE**: GEMMA4_BPE dispatch 5432/5432 both lanes, roundtrip 60/60
-  (engine `3457a41..3253a82`, core `9d3cc72`); blob regen + SHA re-pair all four 12B pairs +
-  `T_G4_TOK_12B_PAIRED` + B1 GPU decode smoke 6/6 (engine `d8ba947`). Gold `.pre115` backups →
-  `G:\My Drive\shannon-prime-cold\pre115-2026-06-10\`.
-- **G-P3-GEOM substrate** (core `64b698c`): sp_arm_*_geom API, legacy delegates, T_ARM_GEOM
-  26/26. + gemma4.c owner bounds guard, standalone frobenius link fix, T_FRO_5 v2 align
-  (core `c608b2f`). Suite restocked green from H:\ (E_CPU_9 disposition: AVX2 reassociation
-  `5e443c9` → scalar pin `5cd5870`).
-- **CONTRACT-XBAR-P3 drafted** (`aabafec`) + §3b audit corrections (V-less IS real on the 12B;
-  KVD-const is 12B-only) — pointer in C1-lite §3b (`3d42477`).
-- **Stage KAIROS registered** (`ROADMAP-KAIROS.md` + `CONTRACT-KAIROS-K0-K1.md`, `a4d8f71`):
-  the sp-kernel thesis (turn = memory artifact; tick/interrupt/yield mapped to gated SP
-  primitives), CosySim/NEXUS/Project X = KAI-0 reference corpus (adopt/adapt/reject done).
-- **DESIGN-diffusion-lane** (`038dd0d`): T8 drafter = headline; recall-time gist upsampling
-  FORBIDDEN; consolidation-time ε-instrument; Exec stays AR.
-- **Doc fleet**: all four repo READMEs modernized; public site's stale 32k-HIT hero CORRECTED
-  (PIA `1d52e85`); Roadmap agent-nav box; engine root swept to `_bake/` (`7914429`) +
-  `.gitattributes` line-ending physics (`7ab91a7`); `shannon-prime-papers` repo DELETED
-  (PIA is the only series repo).
-- **Environment build-out**: Colab CLI lane live (T4 smoke green); gws + gcloud installed and
-  authed (project `sp-ppt-arm-lat`, Drive smoke green); credentials registry created
-  (`ENVIRONMENT.md` §1); ecosystem = HF PRO + Colab Pro + GitHub Pro + RunPod + Drive 5TB +
-  GCloud.
-
-## 5. Open threads (small, don't lose)
-
-- New HF model bucket (operator 2026-06-11) — **repo id = `KnackAU/sp-diffusion-stage`** (RESOLVED;
-  the air-gap for speculative-decode + MoE / DiffusionGemma prototypes). Push target for the
-  diffusion/spec-decode lane; banked in memory `reference-hf-diffusion-bucket`.
-- `.pre115` backups: D: copies deletable once operator confirms Drive uploads complete.
-- WSL gcloud unauthed (fine; Windows is canonical).
-- **HF-token path fixed 2026-06-11:** the creds-registry restructure MOVED the token into
-  `creds/claude-hf-token.txt`, but `_xbar/p2b` scripts read the old `archive/notes_and_stuff/
-  claude-hf-token.txt` → `fetch_horizon`/etc. were dead. Restored the synced duplicate at the old
-  path (ENVIRONMENT §1's "keep in sync"). DURABLE FIX TODO: repoint scripts to the `creds/` path
-  so a future move can't re-break them.
-- E2B/12B per-stage artifact assignments for P3 are pinned in CONTRACT-P3 §4 — drafting agent
-  noted §3b's geometry line conflates the two artifacts.
-- The operator floated zeta-PE / prime-harmonic positional encoding (his CosySim
-  `apps/prime_encoding` research) as a future lattice-native experiment — parked, unbanked
-  beyond this line.
-
-## 6. Standing watch procedure
-
-`check_pods.py` (any pods?) → `fetch_horizon.py` (receipts/STATUS) → verdict ONLY on
-STATUS=DONE (no reads from partial logs — the §3g lesson) → §3m matrix → contract run-record +
-STATE line + memory + commit/push. The watch holds. ⬢
+- **#115 CLOSED + 12B text-in LIVE

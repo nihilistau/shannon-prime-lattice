@@ -1,6 +1,6 @@
 # Shannon-Prime — Current State of the Project
 
-**As of 2026-06-16.** This is the human-readable map of where the project stands: what we built, the numbers that matter, the tests we used to prove each claim, *why* those tests are the right ones, and why the results can be trusted. It is written to be read top-to-bottom by a person, and to orient an agent in one pass. Detailed, citable records live in the contracts and `PPT-LAT-STATE.md`; this document is the synthesis, not the ledger.
+**As of 2026-06-16 (KAI-2 CLOSED bounded, KAI-3 CLOSED GREEN, GNA Stage 2 next).** This is the human-readable map of where the project stands: what we built, the numbers that matter, the tests we used to prove each claim, *why* those tests are the right ones, and why the results can be trusted. It is written to be read top-to-bottom by a person, and to orient an agent in one pass. Detailed, citable records live in the contracts and `PPT-LAT-STATE.md`; this document is the synthesis, not the ledger.
 
 ---
 
@@ -106,64 +106,32 @@ A background kernel daemon that wakes each tick, reads one environment event, an
 
 **6h soak GREEN (2026-06-16, hard receipt).** `_run_kairos_soak.bat 6` on the **dedicated local RTX 2060** ran to a clean verdict: `SOAK_EXIT=0`; **351 loops / ~8,400 ticks / 6h01m; 0 false-action, 0 missed, 0 malformed, 0 pos-violation** — salient ticks → ACTION and idle → NO_OP throughout, GPU clocks reset on exit. The journaled-ring metal ran a multi-hour reflex loop **unattended on consumer silicon with zero drift and zero leak** — the strongest endurance receipt to date. The fix that got the uninterrupted run was a **dedicated GPU**: the prior best (6.5h) was *contention*-aborted on the shared desktop's global-free tripwire — a harness/contention issue, not a substrate failure. The **formal ≥24h endurance gate remains un-pursued by operator choice (NOT failed)**: the discipline/arithmetic/crucible legs of G-KAIROS-1 were already functionally passed, and the clean 6h unattended run is the endurance evidence on the record.
 
-### 4.4 KAI-2 — the latent interrupt (cloud pipeline GREEN; the pivot gate is PENDING)
-A resident daemon should be *interruptible*: an event deliverable mid-idle as a compact latent packet rather than a verbose text frame. KAI-2 promotes the X-R1 latent-write into a delivery path, and phase 2 trains a codec to *compress* the event so the injected packet pivots the model in ≈1 step instead of the **44 text-delivery steps** measured in §6.2.
+### 4.4 KAI-2 — the latent interrupt (CLOSED, BOUNDED)
+A resident daemon should be *interruptible*: an event deliverable mid-idle as a compact latent packet rather than a verbose text frame. KAI-2 promotes the X-R1 latent-write into a delivery path, and phase 2 trained a codec to *compress* the event so the injected packet pivots the model in ≈1 step instead of the **44 text-delivery steps** measured in §6.2.
 
-**Phase-2 cloud pipeline GREEN (2026-06-16) — but the gate is PENDING.** The status string, used verbatim everywhere, is **"phase-2 cloud pipeline GREEN; G-KAIROS-2 pivot/selectivity gate PENDING."** The Colab-G4 lane now runs end-to-end on the **real bf16 `google/gemma-4-12B`** (an RTX PRO 6000 Blackwell, 96GB): a transformers-HEAD **loaded the brand-new `gemma4_unified` arch with no parser crash**, the `inputs_embeds` inject seam ran the distillation, the single-linear `KAI2Codec` (raw-event 640→3840·k, mirroring the model's native audio projector) trained via forward-KL distillation from the 12B text teacher, and it exported **8 packets + a checkpoint (10 files)** to HF `KnackAU/xbar-p2b-run/results_kai2/kai2_k4/` with `STATUS = "DONE rc=0"`.
+**KAI-2 CLOSED (engine `c5628e4`; lattice contract §6.6 `2675c79`).** Two findings, both kept on the record:
 
-**The caveat, stated plainly:** `rc=0` means the distillation *loop* completed — it does **not** prove the trained packet pivots the model. The per-epoch KL lived on the ephemeral cloud VM and is gone; **codec quality is UNVERIFIED.** This is a real GREEN on the *pipeline* (load → inject seam → train → export), not on the codec. **G-KAIROS-2 is the actual gate, and the immediate next step:** pull the trained packets, inject them via `gemma4_kv_inject` on the engine, and measure a ≤2-step pivot to the correct `<ACTION>` plus a 2×2 selectivity check (idle→NO_OP, salient→ACTION). Until that passes there is **no "pivot proven" claim**.
+- **Phase-1 latent delivery seam = GREEN / frozen verified asset.** `gemma4_kv_inject` (the residual-entry seam) was proven on the 12B OK_Q4B / RTX 2060: the **EMB control passed 2/2** — a real-token embedding *sequence* pivots a salient event → `<ACTION>` and an idle event → `NO_OP`. This seam is now a frozen, load-bearing asset (it is the same seam KAI-3 and the GNA "EAR" line build on).
+- **Phase-2 learned compressed single-event codec `KAI2Codec` = BOUNDED.** The maximally-constrained `t10` packet (k=16, on-manifold cos 0.9913, sharp τ=0.2, held-out `val_KL` plateau 0.9157) **MISSED** the salient pivot (PACKET 1/2). The wall is **sequence-positional**: a fixed-width *static* packet compresses out the per-position directional variance attention routes on. It is **NOT** manifold-distance and **NOT** capacity. No more codec-compression cycles.
+
+The lesson — that a single static packet cannot carry what a per-position *sequence* carries — is exactly what motivated KAI-3 (§4.5).
+
+### 4.5 KAI-3 — the audio-port frame projector (CLOSED GREEN; the bridge into the GNA "EAR" line)
+KAI-3 is the **inverse of KAI-2** and the bridge into a *separate-but-related* program: the GNA "EAR" line, which gives the frozen model a real-world audio sense through the Intel NUC "Beast Canyon" GNA 2.0 always-on hardware. KAI-3 is filed under that line — it shares KAI-2's frozen `gemma4_kv_inject` seam, but it is **not** a replacement for KAIROS latent memory (the XBAR axis). The audio-port/GNA work is a deliberate **near-term pivot**; the project will **pivot back to XBAR (KAIROS latent memory)** afterward.
+
+**KAI-3 CLOSED GREEN (engine `e35a227`; lattice contract §7.3 `e826950`).** Instead of compressing an event into one static packet (the KAI-2 wall), KAI-3 injects a **SEQUENCE of N projected frames, 1:1 with positions, no compression** — so the per-position directional variance survives.
+
+- **New engine ABI `gemma4_kv_inject_seq`** — a strict loop over the frozen inject+prefill primitives; **G-KAIROS-3-NULL passed 2/2 byte-identical** to the inline EMB loop (the seam is provably the same primitive, just sequenced).
+- **The projector** (`tools/audio_port/{gen_synth_frames,frame_projector,emit_corpus}.py`) is a per-position MLP `640→V_sub` plus an on-manifold binder `softmax(logits/τ)·W_sub` (with `W_sub` = the real embed rows × √H). It is trained with **DENSE PER-POSITION cross-entropy** — the fix for the KAI-2 `t10` sparse-gradient plateau; the pivot is a *consequence*, never the train signal.
+- **Done LOCAL / NO CLOUD.** The engine now owns the gemma tokenizer (new `SP_G4_TOK_DUMP` mode), so a cloud G4 for a tiny MLP would be over-provisioning.
+- **Numbers.** Synthetic ladder `noise_rel=0.1` (2.5× noise:signal) → held-out per-position top-1 **1.000**, manifold cos **0.9998** (the binder is noise-independent). Real-token train `V_sub=60` → top-1 **0.931**, cos **0.9937**.
+- **G-KAIROS-3 metal gate** (`SP_G4_KAI3` manifest) on the resident 12B: **8/8 SEMANTIC pivots** — salient → an event-specific `<ACTION>` ("Restart the build process", "Check disk status and run SMART"), idle → `NO_OP`; `KAI3_GATE_EXIT=0`. Receipts: `_xbar/p2b/kai3_gate.log`, `tools/audio_port/KAI3-LADDER-RESULTS.md` (engine repo).
+
+### 4.6 GNA Stage 2 — the next milestone (the real "EAR")
+With the KAI-3 delivery + projection architecture **LOCKED**, the next step (task **#154**) is **GNA Stage 2**: replace the synthetic anchor matrix `A` with the real **GNA/CNN audio front-end** — live audio/telemetry → 40 ms / 640-float / 16 kHz frames; `audio_token_id = 258881` — so the model gets an always-on, real-world audio sense. This is the GNA "EAR" line proper; KAIROS latent memory (XBAR) resumes after it.
 
 ---
 
 ## 5. Latent-space steering (the P2b adapter line)
 
-Parallel to the substrate work, we investigated whether the latent write of §1.2 can be made *general* — learning an adapter that fills cache slots to order rather than transplanting them.
-
-- **Recognition is real but sub-usable so far:** a contrastive-addressing probe reached top-1 0.462 (vs 0.031 chance — ~15× over chance) and top-5 0.77. That says the addressing signal exists and is a *shortlister, not yet a sniper*, which points the design toward a two-stage retrieve-and-verify loop rather than more training epochs.
-- **Generation at high compression is dead at k=2** (six forks all convicted) — an honest negative kept on the record. The verdict: the substrate stands regardless of the learned-fill outcome; learned-fill is a policy layer on top, not a foundation.
-
----
-
-## 6. Why the results can be trusted (the methodology)
-
-This section is the actual moat. The numbers above are only as good as the discipline that produced them.
-
-1. **Bit-exact-when-off / null floor.** The production decode path is never touched. Every "on" result is therefore a controlled delta against a byte-identical baseline, not a comparison between two moving targets.
-2. **Pre-registered bounded gates.** When a stage crosses from exact to lossy (sparse, compressed), bit-exactness is impossible by definition — so we *write down the degradation threshold before the code* (e.g. PPL < 2%) and never move it to make a result pass. The 8× router's +0.47% is green against a bar set in advance.
-3. **Negative controls and poison.** Retention is proven by *destroying* the live source (poison) and by showing a *worse router misses* (control), not by a bare equality that leakage could fake.
-4. **Honest negatives, published.** A faster-but-wrong 34.2 tok/s headline was retired by our own perplexity rule; a 32k needle MISS stayed on the public front page; a small-N "improvement" was caught as a noise illusion when measured on a real corpus. The discipline self-corrects in the open.
-5. **Measurement hygiene.** GPU clocks pinned for timing; and when the 2060 turned out unable to pin its *memory* clock, we changed how we read sub-10% deltas rather than trusting the wall clock. We don't difference two sequential noisy series.
-
-A claim in this project comes with the command that produced it and the scope it's valid in. That is what "auditable" means here, and it is the one property a floating-point, text-bus agent stack cannot offer.
-
----
-
-## 7. The state of the board
-
-| Axis | Status | Headline receipt |
-|---|---|---|
-| XBAR latent write (P1) | CLOSED | 15/15 incorporation + 15/15 selectivity; self-null 7/7 bit-identical |
-| XBAR ring + spill + page (P3) | CLOSED | bit-exact paged decode under a poisoned live cache |
-| O(1) VRAM (C-b.2) | CLOSED | 8k↔16k flat within ~50 MiB |
-| Learned router (8×) | CLOSED | +0.47% PPL (oracle −0.08%; frozen +4.17%) |
-| NIAH retention (C-c) | CLOSED | needle survives at 10/50/90% depth; frozen-router control MISSES |
-| O(1) rewind (KAI-1b) | CLOSED | byte-identical 48 layers; 0.0073 vs 0.924 s/action |
-| Wrap-aware ring (KAI-1c) | CLOSED | byte-identical across a forced wrap (40 layers clobbered, diffs=0) |
-| Journaled-ring O(1) telemetry | CLOSED | ring slope 0.00365 ≈ full 0.00371 s/action |
-| Semantic crucible (KAIROS) | CLOSED | 24 ticks perfect: 0 false / 0 missed / 0 drift |
-| 6h endurance soak (G-KAIROS-1) | **GREEN** | 351 loops / ~8,400 ticks / 6h01m unattended, 0 false / 0 missed / 0 malformed / 0 pos-violation (≥24h gate un-pursued by choice, not failed) |
-| KAI-2 phase-2 cloud pipeline | **GREEN (gate PENDING)** | end-to-end on real bf16 gemma-4-12B; 8 packets + ckpt exported (rc=0). Codec quality UNVERIFIED — G-KAIROS-2 pivot/selectivity gate is the next step |
-
-**The crossbar substrate — space ⊗ time ⊗ cognition — is structurally complete on a 12B within a 12 GB footprint.** Endurance is now demonstrated by a clean 6h unattended soak (the formal ≥24h gate is un-pursued by operator choice, not failed). The forward edge is **G-KAIROS-2**: the KAI-2 phase-2 cloud pipeline is GREEN (it produces trained packets), but whether an injected packet *pivots* the model in ≤2 steps is unmeasured and is the next gate. The rest is a short list of hygiene follow-ons (exact journal-tax via CUDA events; the `gemma4_kv_decode` first-token boundary reconcile; compact-slab globals wrap-rewind).
-
----
-
-## 8. Hardware reality (so numbers are read correctly)
-
-- **Host GPU:** RTX 2060, **12 GB** VRAM, sm_75. Core clock locks for timing; **the memory clock does not lock** (vendor-unsupported), so bandwidth-bound decode has an irreducible ±~12% wall-clock jitter floor. Use within-config slopes or CUDA-event timing for sub-10% deltas, never a difference of two sequential wall-clock series.
-- **Model:** Gemma-3-12B, QAT 4-bit (the "B1" / OK_Q4B artifact), the only mathematically-intact sub-5-bit Gemma-4-12B we could produce (paper 06).
-- **Scope of claims:** the **0.6B** model is used for the memory-ladder and control experiments; the **12B** carries the XBAR and KAIROS headline results. Any "one model, one host" boilerplate in older docs is stale and should read "0.6B for the ladder, 12B for XBAR/KAIROS."
-
----
-
-*Pointers: the canonical proven-record is `papers/PPT-LAT-STATE.md`; the active contracts are `papers/CONTRACT-KAIROS-K0-K1.md` (KAI-0/1, §5.5-5.8 are freshest), `papers/CONTRACT-XBAR-P3-ring-on-exec.md`, and `papers/RFC-XBAR-auditable-latent-crossbar.md`; the public receipts ledger is in the `Position_Is_Arithmetic` repo (`LEDGER.md`).*
+Parallel to the substrate work, we investigated whether the latent write of §1.2 can be made *general* — learning an adapter that fills cache slots 

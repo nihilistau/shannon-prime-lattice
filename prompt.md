@@ -2,7 +2,7 @@
 
 You are Claude (Shannon-Prime hat on, no spin), opening a session on **Shannon-Prime**. Read this file, then the live-state docs it points to, then **check the code, the commits, and `git status` before you trust anything**. Memory and summaries prime you; the tree is ground truth.
 
-Last rewritten: 2026-06-09 (XBAR campaign; C1-lite complete; P2.b recall operating-point decided).
+Last rewritten: 2026-06-09 (XBAR campaign; C1-lite complete; P2.b recall operating-point decided). Current-state addendum 2026-06-16 — see §2.
 
 ---
 
@@ -17,6 +17,8 @@ Last rewritten: 2026-06-09 (XBAR campaign; C1-lite complete; P2.b recall operati
 ---
 
 ## 2. Where we are (verify against STATE + LEDGER + commits; don't trust this list blind)
+
+**CURRENT EDGE (2026-06-16) — the near-term pivot, hold the framing:** XBAR P3 + Phase C are CLOSED (KV decoupled O(1)) and KAIROS time/agency axis is CLOSED (KAI-1/1b/1c + the `run_kairos_metal` crucible + a 6h soak GREEN). **KAI-2 (latent interrupt) is CLOSED, BOUNDED** (engine `c5628e4`): the Phase-1 delivery seam `gemma4_kv_inject` is a frozen GREEN asset (EMB 2/2), but a single *static* compressed `KAI2Codec` packet MISSED the pivot — a **sequence-positional** wall, not capacity. That motivated **KAI-3 (audio-port frame projector), now CLOSED GREEN** (engine `e35a227`): the inverse — `gemma4_kv_inject_seq` injects a *sequence* of N projected frames 1:1 with positions (no compression); G-KAIROS-3 metal **8/8 semantic pivots** on the 12B. **NEXT = GNA Stage 2 (#154):** replace the synthetic anchor with the real GNA/CNN audio front-end (40ms/640-float/16kHz frames; `audio_token_id=258881`). **FRAMING (load-bearing):** KAIROS = the latent-interrupt / agency-time axis = the BASIS OF THE XBAR latent memory; the **GNA "EAR" line** (real audio in/out via the always-on NUC "Beast Canyon" GNA 2.0) is a **separate-but-related sibling** sharing the same inject seam — KAI-3 is the *bridge* into it, NOT a replacement for KAIROS. The audio/GNA work is a deliberate near-term pivot; **the project pivots BACK to XBAR (KAIROS latent memory)** afterward. (The PROVEN/OPEN lists below are the older XBAR-campaign snapshot — still accurate, but read the edge above first.)
 
 PROVEN / citable:
 - **gemma-4-12B: 26.1 tok/s @ wikitext PPL 5.12 on one RTX 2060-12GB** (ledger 06-R10) — a point no other stack occupies on this model at any speed.
@@ -102,17 +104,4 @@ Does NOT want: suggestions to wrap up / sleep / "come back fresh" · cross-conta
 
 1. **Anti-contamination.** Do NOT copy code/designs from `shannon-prime/` or `shannon-prime-engine/` (the old layered repos), and don't leak current work back into them. Reference the *math* in `papers/PPT-ARM/*.md` conceptually only. The operator has had this conversation 10+ times; don't make it 11.
 2. **Contracts.** Each XBAR/C2/SPEED phase carries a contract with named gates + run records. Discover a need outside the contract → **amend the contract first**, then build. No silent scope expansion.
-3. **Closure paperwork.** Land results in the relevant CONTRACT/STATE/LEDGER + bank a memory; commit + push.
-4. **Terminology (load-bearing, keep distinct):** Lattice (the one prime-factored math object) · ⪯_d (dominance order, Friedman–Kruskal embedding) · KSTE (tree encoding) · ARM (Algebraic Resonance Memory — the two-ring KV core) · CRT-NTT (sharding primitive) · Spinor block (63 B, 0xA5 sentinel — the frozen KV/wire record) · Frobenius lift (Q4/Q8 packed-weight scale) · OK_Q4B (per-32-block-scaled Q4, the 12B GPU vehicle) · Exec/Memo/Ring 1/2/2′/3 (the XBAR hierarchy). Don't invent new names or collapse two into one.
-
----
-
-## 8. Session start procedure (do it; don't narrate steps 1–4)
-
-1. Read this `prompt.md`, then **`ENVIRONMENT.md`** (the toolbox: lanes, shells, credentials registry, gotchas) and **`SESSION-HANDOFF.md`** (in-flight runs + the decision queue — what is cooking RIGHT NOW).
-2. Read `papers/PPT-LAT-STATE.md` (PROVEN record) + `papers/PPT-LAT-Roadmap.md` (current phase) + the active contract(s).
-3. Read `MEMORY.md` (user feedback + project facts + gotchas).
-4. **Check the tree:** `git status` + `git fetch` + `git log --oneline -15` on each repo you'll touch; reconcile against STATE. Verify, don't assume.
-5. Confirm the phase / next falsifiable step (recommend one); then execute, test as you go, commit + push per milestone, write closure paperwork + bank memory at the end.
-
-Style: terse, no emoji unless asked, code/receipts over prose, cite the gate + commit when reporting ("G-C1L-2 Step 2 PASS 45/45, system b2d672b"), absolute paths.
+3. **Closure paperwork.** Land results in the relevant CONTRACT/S
