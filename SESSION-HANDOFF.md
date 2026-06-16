@@ -1,8 +1,11 @@
 # SESSION-HANDOFF.md — where things stand
 
-**Updated:** 2026-06-14 (XBAR P3 + Phase C CLOSED → **KAI-1 / 1b / 1c CLOSED GREEN** (heartbeat NO_OP, O(1) bit-exact
-rewind, wrap-aware journaled ring, semantic crucible) → **G-KAIROS-1 ≥24h soak RUNNING** (PID 16412) → doc audit +
-keystone + public papers 07-10 staged. Prior: P3.2-b-2a SWA RING SHRINK GREEN → **§P3.2-b-2b GLOBAL SPARSE RECALL MECHANISM CLOSED**
+**Updated:** 2026-06-16 (**two overnight runs landed: G-KAIROS-1 6h SOAK = GREEN** (351 loops / ~8,400 ticks / 6h01m,
+0 false / 0 missed / 0 malformed / 0 pos-violation, on the dedicated 2060) **+ KAI-2 phase-2 CLOUD PIPELINE = GREEN, gate
+PENDING** (Colab-G4 lane end-to-end on real bf16 gemma-4-12B; trained KAI2Codec packets on HF — but rc=0 ≠ pivot proven;
+G-KAIROS-2 is the actual gate). Prior 2026-06-14: XBAR P3 + Phase C CLOSED → **KAI-1 / 1b / 1c CLOSED GREEN** (heartbeat
+NO_OP, O(1) bit-exact rewind, wrap-aware journaled ring, semantic crucible) → doc audit + keystone + public papers 07-10
+staged. Earlier: P3.2-b-2a SWA RING SHRINK GREEN → **§P3.2-b-2b GLOBAL SPARSE RECALL MECHANISM CLOSED**
 → **M_GEMMA4 hygiene GREEN** (12B CUDA PPL ctest locked to `-b1`, SP PPL 4.6665 vs 4.6776) → **LARGER-N G2 VERDICT:
 4× GREEN +1.65% / 8× RED +4.17% on the frozen router** — small-N deflection was an illusion; W-probe maps the Pareto
 frontier (floor +3.74% @ W=64) → **§3q learned lane OPENS with measured justification**). Update this file at
@@ -11,6 +14,30 @@ every session end or major handoff. Read AFTER `prompt.md` + `ENVIRONMENT.md`, B
 ---
 
 ## 1. IN FLIGHT right now (check these first)
+
+- **✓ G-KAIROS-1 6h SOAK = GREEN (2026-06-16, hard receipt — the strongest endurance receipt to date).**
+  `_run_kairos_soak.bat 6` on the **DEDICATED local RTX 2060** (`test_gemma4_cuda.exe`, SP_G4_KAIROS_SOAK,
+  ring_W=1024 Jmax=160, clocks pinned 1680): **SOAK_EXIT=0; 351 loops / ~8,400 ticks / 6h01m; 0 false-action,
+  0 missed, 0 malformed, 0 pos-violation** — salient ticks → ACTION and idle → NO_OP throughout; GPU clocks reset
+  on exit. The journaled-ring KAIROS metal ran a multi-hour reflex loop UNATTENDED on consumer silicon with zero
+  drift/leak. The dedicated GPU gave the uninterrupted run the shared desktop kept false-aborting (prior best 6.5h
+  was contention-aborted — a harness/contention issue, NOT a substrate failure). The formal ≥24h gate remains
+  un-pursued by operator choice (NOT failed). Logs `shannon-prime-system-engine\results\{soak_console.log,
+  kairos_soak_detail.log}`.
+- **✓ KAI-2 phase-2 CLOUD PIPELINE = GREEN, but the GATE is PENDING (2026-06-16).**
+  **Status string (use verbatim everywhere): "phase-2 cloud pipeline GREEN; G-KAIROS-2 pivot/selectivity gate
+  PENDING".** The Colab-G4 lane now works end-to-end (recipe `_xbar/p2b/colab.md`). On the real bf16
+  `google/gemma-4-12B` (G4 = RTX PRO 6000 Blackwell 96GB): transformers-HEAD LOADED the brand-new `gemma4_unified`
+  arch with no parser crash; the `inputs_embeds` inject seam RAN the distillation; the single-linear KAI2Codec
+  (raw-event 640→3840·k) trained via forward-KL distillation from the 12B text teacher; exported 8 packets + a
+  checkpoint → 10 files on HF `KnackAU/xbar-p2b-run` path `results_kai2/kai2_k4/` (STATUS = "DONE rc=0").
+  **CAVEAT (state plainly wherever KAI-2 is mentioned): rc=0 means the distillation LOOP completed; it does NOT
+  prove the trained packet pivots the model. The per-epoch KL was on the ephemeral VM and is gone; codec quality is
+  UNVERIFIED.** Do NOT call KAI-2 "closed/proven".
+- **▶▶ NEXT ACTION — run G-KAIROS-2 with the trained packets** (the actual gate; the immediate next step): pull the
+  trained packets → inject via `gemma4_kv_inject` on the engine → measure ≤2-step pivot (vs the contract §6.2-measured
+  44 text-delivery steps) + selectivity 2×2 (idle→NO_OP, salient→ACTION). Until this passes there is NO "pivot proven"
+  claim. CONTRACT-KAIROS-K0-K1 §6.4 carries the run-record.
 
 - **■ G-KAIROS-1 ≥24h SOAK — NOT IN FLIGHT. Operator decision (2026-06-15): not pursued further; move on.**
   Substrate + leak-fix PROVEN; the formal 24h endurance gate is set aside (not failed — un-pursued). Best run:

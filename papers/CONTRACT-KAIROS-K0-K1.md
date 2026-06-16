@@ -455,6 +455,20 @@ orthogonal and each tested cleanly. **KAI-1c CLOSED. The crossbar substrate (tim
 is a unified whole — ready for the ≥24h soak (G-KAIROS-1).** Remaining hygiene: #220 cudaEvent tax,
 #222 kv_decode boundary, compact-slab globals wrap-rewind.
 
+## 5.9 G-KAIROS-1 — 6h SOAK GREEN (2026-06-16, hard receipt; ≥24h gate un-pursued by operator choice)
+
+`_run_kairos_soak.bat 6` on the **DEDICATED local RTX 2060** (`SP_G4_KAIROS_SOAK`, ring_W=1024 Jmax=160, clocks pinned
+1680) ran to a clean verdict: **`SOAK_EXIT=0`; 351 loops / ~8,400 ticks / 6h01m; 0 false-action, 0 missed, 0 malformed,
+0 pos-violation** — salient ticks → ACTION and idle → NO_OP throughout; GPU clocks reset on exit. The journaled-ring
+KAIROS metal (§5.8 `run_kairos_metal` on the persistent `gemma4_kv_*` ABI) ran a multi-hour reflex loop UNATTENDED on
+consumer silicon with **zero drift / zero leak** — the strongest endurance receipt to date.
+
+**The dedicated GPU was the fix:** it gave the uninterrupted run that the shared desktop kept false-aborting (prior best
+6.5h was contention-aborted on the global-free tripwire — a **harness/contention issue, NOT a substrate failure**). The
+**formal ≥24h gate remains un-pursued by operator choice (NOT failed)** — §2 G-KAIROS-1's discipline/arithmetic/crucible
+legs were already functionally PASSED (§4), and the 6h clean unattended run is the endurance evidence. Logs:
+`engine/results/{soak_console.log, kairos_soak_detail.log}`.
+
 ## 6. KAI-2 — THE LATENT INTERRUPT (opener; pre-registered 2026-06-15, code next)
 
 **Why.** KAI-1 gave the resident daemon a *heartbeat* — it ticks, reads a TEXT frame, decides. But a true
@@ -599,3 +613,34 @@ inference stays on our engine.
 most decisive, training-free], (b) full Route-A audio-projector extraction + engine wiring, or (c) Route-B
 resampler training. Recommendation: **(a) first** — it is the smallest experiment that can falsify or confirm
 the entire native-audio thesis before any extraction or training spend.
+
+## 6.4 KAI-2 phase-2 — CLOUD PIPELINE GREEN; the G-KAIROS-2 GATE is PENDING (2026-06-16, engine `dd035b8` lineage)
+
+**Status (use verbatim wherever KAI-2 is referenced): "phase-2 cloud pipeline GREEN; G-KAIROS-2 pivot/selectivity
+gate PENDING."** This is NOT "KAI-2 closed" and NOT "pivot proven."
+
+The Colab-G4 lane now runs the codec distillation end-to-end (recipe `_xbar/p2b/colab.md`). On the **real bf16
+`google/gemma-4-12B`** (G4 = RTX PRO 6000 Blackwell 96GB):
+- **transformers-HEAD LOADED the brand-new `gemma4_unified` arch with no parser crash** — the first live load of the
+  unified arch on a stock transformers head.
+- the **`inputs_embeds` inject seam RAN the distillation** (the trainer fed the packet through the residual entry, not
+  a token path).
+- the **single-linear `KAI2Codec`** (raw-event `640→3840·k`, mirroring the native `embed_audio` projector §6.3) trained
+  via **forward-KL distillation from the 12B text teacher**.
+- exported **8 packets + a checkpoint → 10 files** on HF `KnackAU/xbar-p2b-run` path `results_kai2/kai2_k4/`
+  (`STATUS = "DONE rc=0"`).
+
+**CAVEAT (load-bearing, state it plainly): `rc=0` means the distillation LOOP completed — it does NOT prove the trained
+packet pivots the model.** The per-epoch KL lived on the ephemeral cloud VM and is gone; **codec quality is UNVERIFIED.**
+The pipeline working (load → inject seam → train → export) is a real GREEN; the codec doing its job is a separate,
+un-run claim.
+
+**PENDING — G-KAIROS-2 (the actual gate; the immediate next step).** Pull the trained packets → inject via
+`gemma4_kv_inject` on the engine → measure the §6 pre-registered sub-gates on the resident 12B:
+- **Pivot latency ≤2 decode steps** to the correct `<ACTION>` (vs the §6.2-measured **44** text-delivery steps).
+- **Selectivity 2×2** — idle/low-salience packet → `NO_OP`, salient packet → `ACTION`; both off-diagonals empty.
+- Null floor preserved (one-shot `gemma4_decode_cuda` AND `gemma4_kv_decode` byte-untouched) + clock-pin timing discipline.
+
+**Until G-KAIROS-2 passes there is NO "pivot proven" / "latent interrupt works" claim.** The seam (§6.1 self-null GREEN)
+and the instrument are ready; the pipeline now produces packets; what is unmeasured is whether an injected packet pivots
+the resident in ≤2 steps. That measurement is the next action.

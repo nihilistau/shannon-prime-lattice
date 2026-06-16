@@ -28,6 +28,12 @@ a single human-readable synthesis of where the project stands: the XBAR latent c
 O(1) rewind, the KAIROS resident loop, the headline numbers, and the tests that prove each
 (and why they can be trusted). It is the fastest way to get oriented.
 
+**Latest (2026-06-16):** the KAIROS resident loop passed a **6h unattended soak GREEN** (351 loops /
+~8,400 ticks / 6h01m, 0 false / 0 missed / 0 pos-violation; the formal ≥24h gate is un-pursued by
+operator choice, not failed), and the **KAI-2 latent-interrupt codec cloud lane is GREEN end-to-end**
+on the real bf16 gemma-4-12B — though its pivot/selectivity gate (G-KAIROS-2) is **PENDING** (the
+pipeline trains + exports packets; whether a packet pivots the model is not yet measured).
+
 **If you are a coding agent opening a session: read `prompt.md` first, then
 `CURRENT-STATE-OF-PROJECT.md` (the synthesis) and `papers/PPT-LAT-STATE.md` (the proven
 record). This README is the 2-minute orientation; those are the operating documents.**

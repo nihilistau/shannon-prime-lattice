@@ -1,6 +1,6 @@
 # Shannon-Prime — Current State of the Project
 
-**As of 2026-06-14.** This is the human-readable map of where the project stands: what we built, the numbers that matter, the tests we used to prove each claim, *why* those tests are the right ones, and why the results can be trusted. It is written to be read top-to-bottom by a person, and to orient an agent in one pass. Detailed, citable records live in the contracts and `PPT-LAT-STATE.md`; this document is the synthesis, not the ledger.
+**As of 2026-06-16.** This is the human-readable map of where the project stands: what we built, the numbers that matter, the tests we used to prove each claim, *why* those tests are the right ones, and why the results can be trusted. It is written to be read top-to-bottom by a person, and to orient an agent in one pass. Detailed, citable records live in the contracts and `PPT-LAT-STATE.md`; this document is the synthesis, not the ledger.
 
 ---
 
@@ -101,8 +101,17 @@ A background kernel daemon that wakes each tick, reads one environment event, an
 - **The negative control that proves it's capacity, not plumbing:** the identical harness collapses a 0.6B model into a deterministic corruption attractor (it starts emitting garbage like `NO_克作` and false-fires after a retained action). The 12B holds. So the discipline is a property of model capacity exercised through correct machinery — both halves proven.
 - **Why "pos-discipline" is a gate, not just a log line:** by asserting that idle ticks return the position exactly to the anchor and action ticks advance it, the test fails loudly if the rewind/commit math is off by even one — so the semantic pass and the metal correctness are checked simultaneously.
 
-### 4.3 The endurance soak (in-flight — no verdict yet)
-`run_kairos_soak` loops the deterministic tape with a per-loop re-anchor (bounded state), streams two-tier flushed telemetry, and arms in-process tripwires: CUDA error, any false-action/missed, pos-violation, 3-consecutive malformed, latency (5-consecutive spikes — *consecutive* precisely to tolerate the unlockable memory clock's jitter), VRAM leak, and thermal. A 3-loop smoke passed clean; the full **≥24h run is currently executing** (~36,700 ticks). **Per our own discipline we do not call a verdict from a mid-run log** — at the time of writing it is 2,000+ ticks in with zero faults, with one honest watch item: a slow VRAM creep (+59 MiB by loop 84) that the VRAM tripwire will catch cleanly if it's a real per-loop leak rather than cross-process noise. Three possible outcomes, all informative: a clean 24h GREEN, a tripwire abort that *found* an endurance bug, or (unlikely) a semantic surprise.
+### 4.3 The endurance soak (6h GREEN; the formal ≥24h gate un-pursued by choice)
+`run_kairos_soak` loops the deterministic tape with a per-loop re-anchor (bounded state), streams two-tier flushed telemetry, and arms in-process tripwires: CUDA error, any false-action/missed, pos-violation, 3-consecutive malformed, latency (5-consecutive spikes — *consecutive* precisely to tolerate the unlockable memory clock's jitter), VRAM leak, and thermal.
+
+**6h soak GREEN (2026-06-16, hard receipt).** `_run_kairos_soak.bat 6` on the **dedicated local RTX 2060** ran to a clean verdict: `SOAK_EXIT=0`; **351 loops / ~8,400 ticks / 6h01m; 0 false-action, 0 missed, 0 malformed, 0 pos-violation** — salient ticks → ACTION and idle → NO_OP throughout, GPU clocks reset on exit. The journaled-ring metal ran a multi-hour reflex loop **unattended on consumer silicon with zero drift and zero leak** — the strongest endurance receipt to date. The fix that got the uninterrupted run was a **dedicated GPU**: the prior best (6.5h) was *contention*-aborted on the shared desktop's global-free tripwire — a harness/contention issue, not a substrate failure. The **formal ≥24h endurance gate remains un-pursued by operator choice (NOT failed)**: the discipline/arithmetic/crucible legs of G-KAIROS-1 were already functionally passed, and the clean 6h unattended run is the endurance evidence on the record.
+
+### 4.4 KAI-2 — the latent interrupt (cloud pipeline GREEN; the pivot gate is PENDING)
+A resident daemon should be *interruptible*: an event deliverable mid-idle as a compact latent packet rather than a verbose text frame. KAI-2 promotes the X-R1 latent-write into a delivery path, and phase 2 trains a codec to *compress* the event so the injected packet pivots the model in ≈1 step instead of the **44 text-delivery steps** measured in §6.2.
+
+**Phase-2 cloud pipeline GREEN (2026-06-16) — but the gate is PENDING.** The status string, used verbatim everywhere, is **"phase-2 cloud pipeline GREEN; G-KAIROS-2 pivot/selectivity gate PENDING."** The Colab-G4 lane now runs end-to-end on the **real bf16 `google/gemma-4-12B`** (an RTX PRO 6000 Blackwell, 96GB): a transformers-HEAD **loaded the brand-new `gemma4_unified` arch with no parser crash**, the `inputs_embeds` inject seam ran the distillation, the single-linear `KAI2Codec` (raw-event 640→3840·k, mirroring the model's native audio projector) trained via forward-KL distillation from the 12B text teacher, and it exported **8 packets + a checkpoint (10 files)** to HF `KnackAU/xbar-p2b-run/results_kai2/kai2_k4/` with `STATUS = "DONE rc=0"`.
+
+**The caveat, stated plainly:** `rc=0` means the distillation *loop* completed — it does **not** prove the trained packet pivots the model. The per-epoch KL lived on the ephemeral cloud VM and is gone; **codec quality is UNVERIFIED.** This is a real GREEN on the *pipeline* (load → inject seam → train → export), not on the codec. **G-KAIROS-2 is the actual gate, and the immediate next step:** pull the trained packets, inject them via `gemma4_kv_inject` on the engine, and measure a ≤2-step pivot to the correct `<ACTION>` plus a 2×2 selectivity check (idle→NO_OP, salient→ACTION). Until that passes there is **no "pivot proven" claim**.
 
 ---
 
@@ -142,9 +151,10 @@ A claim in this project comes with the command that produced it and the scope it
 | Wrap-aware ring (KAI-1c) | CLOSED | byte-identical across a forced wrap (40 layers clobbered, diffs=0) |
 | Journaled-ring O(1) telemetry | CLOSED | ring slope 0.00365 ≈ full 0.00371 s/action |
 | Semantic crucible (KAIROS) | CLOSED | 24 ticks perfect: 0 false / 0 missed / 0 drift |
-| ≥24h endurance soak | **IN-FLIGHT** | running; no verdict from a mid-run log |
+| 6h endurance soak (G-KAIROS-1) | **GREEN** | 351 loops / ~8,400 ticks / 6h01m unattended, 0 false / 0 missed / 0 malformed / 0 pos-violation (≥24h gate un-pursued by choice, not failed) |
+| KAI-2 phase-2 cloud pipeline | **GREEN (gate PENDING)** | end-to-end on real bf16 gemma-4-12B; 8 packets + ckpt exported (rc=0). Codec quality UNVERIFIED — G-KAIROS-2 pivot/selectivity gate is the next step |
 
-**The crossbar substrate — space ⊗ time ⊗ cognition — is structurally complete on a 12B within a 12 GB footprint.** The remaining gates are the endurance soak (running) and a short list of hygiene follow-ons (exact journal-tax via CUDA events; the `gemma4_kv_decode` first-token boundary reconcile; compact-slab globals wrap-rewind).
+**The crossbar substrate — space ⊗ time ⊗ cognition — is structurally complete on a 12B within a 12 GB footprint.** Endurance is now demonstrated by a clean 6h unattended soak (the formal ≥24h gate is un-pursued by operator choice, not failed). The forward edge is **G-KAIROS-2**: the KAI-2 phase-2 cloud pipeline is GREEN (it produces trained packets), but whether an injected packet *pivots* the model in ≤2 steps is unmeasured and is the next gate. The rest is a short list of hygiene follow-ons (exact journal-tax via CUDA events; the `gemma4_kv_decode` first-token boundary reconcile; compact-slab globals wrap-rewind).
 
 ---
 
