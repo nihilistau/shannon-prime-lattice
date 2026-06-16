@@ -790,10 +790,29 @@ into a contiguous `[en][E]` buffer, `prefill(uopen)`, `gemma4_kv_inject_seq(s, e
 the codec. **On FAIL:** the wrapper has a defect (loop bound, dpos advance, ph token); fix engine-side and
 re-gate before any projector work. No training is introduced until G-KAIROS-3-NULL is GREEN.
 
-### §7.3 — Frame projector (deferred until §7.2 GREEN; pre-registered target, not yet specified in full)
+### §7.3 — Frame projector + G-KAIROS-3 — GREEN 8/8 (2026-06-16, engine e35a227)
 
-640-float (40ms/16kHz) frame → E=3840 residual vector, landing on the same manifold the EMB sequence
-occupies. Two artifacts from one definition: `tools/audio_port/frame_projector.py` (train/export) + a
-serve-side `k_frame_project` kernel. The GNA/CNN front-end (Stage-2 work) produces the frame tape this
-consumes. Gate (G-KAIROS-3, future): a projected frame sequence steers the decode the way the EMB token
-sequence does — pre-registered when §7.2 closes and the projector target space is fixed.
+640-float (40ms/16kHz) frame → E=3840 residual vector on the gemma-4 manifold. Architecture (verified with
+the operator): per-position MLP `640→V_sub` logits → **on-manifold binder** `softmax(logits/τ)·W_sub`
+(W_sub = real OK_Q4B embed rows ×√H), trained with **dense per-position cross-entropy** (frame_i→token_i)
+— the structural fix for the t10 sparse-gradient plateau; the pivot is a consequence, never the train signal.
+
+**Done LOCAL, no cloud.** The cloud lane was premised on "real tokenizer blocked locally" — false: the engine
+owns the gemma tokenizer (`sp_tokenizer`, the metal gates' own). Added `SP_G4_TOK_DUMP` (engine-tokenizer id
+dump) → trained the projector on REAL token-id sequences → `SP_G4_KAI3` manifest gate. A G4 for a tiny MLP
+would have been over-provisioning (banked lesson).
+
+- **Synthetic ladder (architecture proof, `tools/audio_port/`):** noise_rel=0.1 (2.5× noise:signal) →
+  held-out per-position top1 **1.000**, CE→0, manifold cos **0.9998**, KAI2-format export. Binder is
+  noise-independent (cos ~0.98 even at top1 0.03) ⇒ emits on-manifold-but-wrong under stress, never the
+  t10 off-manifold noise. (`KAI3-LADDER-RESULTS.md`.)
+- **Real-token train:** V_sub=60 (template event vocab), held-out top1 **0.931**, manifold cos **0.9937**.
+- **G-KAIROS-3 metal gate (12B OK_Q4B, 2060, clocks 1680, `SP_G4_KAI3`):** projected frame sequences →
+  `gemma4_kv_inject_seq` → **8/8 PASS**, SEMANTICALLY (salient→event-specific ACTION: "Restart the build
+  process", "Check disk status and run SMART", "Authenticate user…"; idle→NO_OP). `KAI3_GATE_EXIT=0`,
+  receipt `_xbar/p2b/kai3_gate.log`.
+
+**This inverts the §6.6 KAI-2 verdict on the same substrate:** compressed fixed-width packet = 1/2 (sequence
+info compressed out); projected N-frame sequence = 8/8 (sequence preserved, per-position CE recovers it).
+The audio-port thesis — continuous frames can drive the 12B's execution path — is proven. NEXT: swap the
+synthetic anchor matrix for real GNA/CNN features (task #154); the delivery + projection architecture is locked.
