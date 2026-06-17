@@ -5,6 +5,42 @@ the rule that prevents the repeat. Receipts-first: cite the run/commit where it 
 
 ---
 
+## 2026-06-18 — The boundary thesis: the substrate wins on the container, never on the content
+
+This is the keystone lesson of unifying XBAR onto the exact-integer O_K substrate (Q(√−163), the
+dual-prime negacyclic CRT-NTT). Ten receipts split cleanly into two piles, and the split IS the lesson.
+
+**What the integer substrate WON — every win was about EXACTNESS, not about structure.**
+The Ring-3 bind re-carried onto native `sp_pr_mul`/NTT is **256/256 bit-identical** to the integer
+reference, the ±1 carrier recall is **lossless** vs float, and the superposition vector M is
+**byte-identical across 8 summation permutations** where the float M diverges 4.44e-15 (non-associative).
+The Frobenius π^k integer Ring-2 store (Theorem-T4 form) reconstructs **sub-ULP at 24 bits** at 0.76× the
+float store. These are all the same property: the substrate is an **indestructible algebraic container** —
+exact bind, exact integer store, reduction-order immunity (a *correctness* guarantee, not a speed trick).
+Receipts: engine `0019b86` (Leg A), `dbe4103`/`d076797` (Frobenius), `15e7051` (full organism native).
+
+**What number-theoretic STRUCTURE LOST — four honest negatives, each measured-inert, all kept on record.**
+(a) Dirichlet-character carriers (Leg B, `d7d96fe`) *do* Heegner-order native coherence (Weil bound:
+random 0.0355 > OK(−67) 0.0153 > OK(−163) 0.0086) but recall got WORSE (spiky small-period spectrum =
+poor self-unbind) and C2 SimHash was unchanged (random projection washes coherence out) — random ±1 stays
+the carrier. (b) Möbius square-free compression of the dense Ring-3 M (`1e70763`) fails — M is 99.6% dense,
+divisor-recon error 1.35× the signal. (c) lzma/zlib entropy coding on the Frobenius residual (`e6d17bb`) is
+dead weight (1.02×) — the int8 residual is incompressible high-entropy. (d) T2-Möbius on the real
+gemma-4-12b embeddings (`ac76c8e`) reconstructs composite rows *worse than random* — trained embeddings
+have no multiplicative index structure (token IDs are BPE merge ranks).
+
+**THE RULE: the value of the exact-integer substrate is the algebraic CONTAINER (bind / store /
+reduction-order immunity), NOT structure imposed on the high-entropy CONTENT.** Before reaching for a
+number-theoretic transform (Möbius, Dirichlet characters, divisor sieves) to *compress or organize the
+payload*, ask whether the payload actually carries that structure — and MEASURE it cheaply first
+(coherence sweep, density check, reconstruction-vs-random) before building. The chaos is bound *inside* the
+rigid order; it is not made orderly *by* it. Corollary for the public record: keep the design-proposal vs
+validated distinction explicit — T2 (Möbius) was a theory-paper proposal never empirically validated; T4
+(Frobenius) was validated 6-sig-fig on Gemma3-1B and is the lever that actually shipped (the model-weight
+T4 quantization is the next step — NOT Möbius).
+
+---
+
 ## 2026-06-17 — Three lessons from closing C2 Memo curator + Ring-3 Path A
 
 **(i) Verify Gemini reframes against the substrate — then MEASURE the fix before shipping it.**

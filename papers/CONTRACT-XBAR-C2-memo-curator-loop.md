@@ -140,4 +140,18 @@ The matched recall is bit-identical (the curator promotes the right memory at ze
 
 **#222 FINALIZED — replay is now SWA-ring-aware (2026-06-17, engine 24071bc).** `gemma4_kv_replay` checkpoints each clobbered ring slot into the KAI-1c undo-journal before overwrite (the exact `g4_kv_step` mechanic); globals stay full-cache. **G-222-WRAP GREEN E2B+12B** (`SP_G4_KV_RING_W=16`, anchor=24 ⇒ replay slots `(24..31)%16 = 8..15` alias live positions 8–15, the wrap-crossing hazard): load-bearing (injected slots zeroed) + the journal-backed rewind restores the **full live window byte-identical (layer-diffs=0)**, pos→anchor, O(1). Receipt `engine tests/fixtures/xbar_c2/G-222-WRAP.log`. **⇒ the local KV substrate is airtight in BOTH regimes — full-cache (G-222) and SWA-ring (G-222-WRAP). C2 + the local KV optimizations are CLOSED; the only remaining XBAR-side thread (Ring-3 gist consolidation) is a separate training campaign behind `G-R3-LOSS` + operator budget.**
 
-*The substrate reads, writes, compresses, replays, and holds its perplexity. C2 is the first turn where it decides — on its own — what to remember.*
+**G-R2-FROB — the Frobenius πᵏ integer episode store (T4 storage form) GREEN (2026-06-18, engine dbe4103 / d076797; `tools/curator/frob_episode.py`).** The Ring-2 episode payload is given an exact-integer O_K form (the storage-codec arm of the v1.5 unification onto `O_K`): a **rank-2 O_K lattice** — a coarse code `a` plus an error-feedback residual `b`, reconstructing `x = a·s_a + b·s_b` with **REAL scales (NOT literal complex ω)** — i.e. the Frobenius πᵏ scale is applied to integer codes, not a complex rotation. Bit-width sweep:
+
+| code form | bits | rel-L2 | store factor |
+|---|---|---|---|
+| a16 | 16 | 3e-5 | — |
+| a8b4 | 12 | (coarse) | — |
+| **a16b8** | 24 | **1.2e-7 (SUB-ULP)** | **0.76×** |
+
+The a16b8 form is sub-ULP and the πᵏ scale is free; it **replays clean on the 12B**. **HONEST scope (on the board):** the n=42 `SP_REPLAY` PPL is BLIND below ~1% (tie-flip — `feedback_small_n_deflection_illusion`); the only clean +0.000% is float-exact replay == baseline 4.6665. So "lossless" here = **reconstruction fidelity** (relL2 1.2e-7), NOT an n=42 PPL gate. Receipt `engine tests/fixtures/xbar_c2/G-R2-FROB.log`.
+
+**G-R2-FROB-ENTROPY NEGATIVE (2026-06-18, engine e6d17bb).** Entropy-coding the Frobenius codes is dead weight: 1.02× (the residual is incompressible). **The lever is bit-width, not entropy** — kept as an honest negative, consistent with the RFC §3.0 boundary thesis (structure-on-content is inert). Receipt `engine tests/fixtures/xbar_c2/G-R2-FROB-ENTROPY.log`.
+
+**G-PERIOD6-REBASE GREEN (2026-06-18, engine d2d7ceb). Correctness tidy-up — closed.** The C2 / Ring-3 content-hash period was **8 → 6**, onto the true gemma4 global layers {5, 11, 17, …, 47} (`L%6==5`). The old PERIOD=8 hashed *non-global* layers into the signature; the rebase puts the address on the actual global crossbar. **All prior gates STAND** (the discrete integer-Hamming verdict is reduction-order-immune, so re-hashing only sharpens it) and the re-gated separation is **cleaner**. This is the period-6 rebase the v1.4 docs named as NEXT — now closed. Receipt `engine tests/fixtures/xbar_c2/G-PERIOD6-REBASE.log`.
+
+*The substrate reads, writes, compresses, replays, and holds its perplexity. C2 is the first turn where it decides — on its own — what to remember. And as of v1.5 it remembers in exact O_K integers, on the true global period.*
