@@ -93,4 +93,13 @@ loop each tick:
 3. **Online loop on Exec** — wire steps 1-7 onto `gemma4_kv_*` + `SP_REPLAY`; G-MEMO-NULL then G-MEMO-LOOP on 12B + E2B.
 4. Land receipts + contract run-record + STATE/handoff; then (operator-gated) open Ring-3.
 
+## 7. Run-records
+
+**Step 1 — registry + centroid-sig writer — G-MEMO-CUE(offline) GREEN (2026-06-17, frozen R).** `tools/curator/build_registry.py` (faithful to `sp_arm_build_R`: ±1 from splitmix64(`SP_ARM_PROJ_SEED=0x5350524F4A2B`), r=32, hd=512; `sig[r]` = mean over global-owner (`L%8==7`) projected keys, `proj[p]=Σ_d R[p·512+d]·K[d]`). Two real proven 12B episodes written to `registry.jsonl` on the Optane Ring-2 tier (`/mnt/f/ring2/episodes/`): **ep_toy** (the P3.3 `{2,10,100,1000}` episode, npos=16) + **ep_wiki** (a fresh `SP_XBAR_RECALL_WRITE` over the wiki.tiny chunk, npos=84). Separation (held-out cue = disjoint positions from each episode's own sig, cosine vs all sigs + 6 synthetic-gaussian-noise episodes):
+| held-out cue | self | best | max background | margin |
+|---|---|---|---|---|
+| ep_toy | +0.6863 | **ep_toy** | +0.2162 | **+0.2158** |
+| ep_wiki | +0.3730 | **ep_wiki** | +0.1932 | **+0.1534** |
+Every target's own sig is the row-max with a clean positive margin over the other episode AND noise ⇒ the dot-product index separates targets from background. **Caught + fixed:** the WRITE path dumps the full P-slot allocation (P=56 toy / 294 wiki), so the unfilled cache tail is uninitialized VRAM; the registry `npos` bounds the sig to the true filled prefix (correct curator behavior — first cut included garbage tail → ep_toy mis-resolved, RED → GREEN once capped). Receipts `engine tests/fixtures/xbar_c2/{registry.jsonl,G-MEMO-CUE_offline.log}`. NOTE: Step-1 uses the frozen ±1 R (operator-specified); the online loop (Step 3) recomputes `sig` with the learned-LSH R (`lsh_R_r32_raw.bin`) to match the production router — same registry schema, 1-line projection swap. NEXT = Step 2 (offline resolver formalization) → Step 3 (online loop on Exec, G-MEMO-NULL→G-MEMO-LOOP).
+
 *The substrate reads, writes, compresses, replays, and holds its perplexity. C2 is the first turn where it decides — on its own — what to remember.*
