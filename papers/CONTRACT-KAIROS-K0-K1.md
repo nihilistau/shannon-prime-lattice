@@ -858,7 +858,27 @@ in WSL — the last GNA-capable release; pip wheel lacks the plugin, banked reci
   factors), so POT's calibrated saturation thresholds are the recovery. Receipt `_xbar/p2b/kai3/G-KAIROS-3-GNA-i16_quant_gate.log`,
   scripts `tools/audio_port/{pot_gna_quantize,ov_gna_score,ov_score_ir}.py`.
 
-**VERDICT: Stage 2.b quantization gate GREEN → the EAR front-end is GREEN-LIT for Beast Canyon GNA 2.0 silicon.** The
-software-emulation math holds the acoustic boundaries bit-for-bit at FP32 token-recovery. NEXT = GNA HARDWARE bring-up
-(driver `gna_03.05.00.2116` + speech_sample kits at archive\notes_and_stuff\GNA\Drivers; host i9-11900KB = GNA 2.0),
-then pivot BACK to XBAR/KAIROS latent memory.
+**Stage 2.b quantization gate GREEN → the EAR front-end is GREEN-LIT for Beast Canyon GNA 2.0 silicon.** The
+software-emulation math holds the acoustic boundaries bit-for-bit at FP32 token-recovery.
+
+### §7.6 — Stage 2.b CLOSED ON SILICON — GNA_HW = 0.877 (2026-06-17, physical GNA 2.0)
+
+The POT-quantized i16 IR ran on the **physical Intel GNA 2.0 accelerator** of the Beast Canyon NUC (i9-11900KB,
+driver `gna_03.05.00.2116`, BIOS-enabled). `GNA_HW` execution required native Windows (WSL2 has no GNA MMIO
+passthrough) — Windows OpenVINO 2023.3 + Python 3.11. Two GNA-compiler conv constraints were fixed at zero cost
+first: **no conv padding** (encoder `padding=1`→`padding=0` VALID) and **conv filters multiple of 4** (CTC head
+33→36, dummies sliced). Result:
+
+| Path | i16 CTC recovery |
+|---|---|
+| FP32 reference | 0.877 |
+| GNA_SW_EXACT (emulation) | 0.877 |
+| **GNA_HW (physical silicon)** | **0.877** |
+
+**HARDWARE == EMULATION == FP32.** The EAR front-end is PHYSICALLY REALIZED on GNA 2.0. Receipt
+`_xbar/p2b/kai3/G-KAIROS-3-GNA-HW.log`; harness `run_gna_hw.bat GNA_HW`; checklist `GNA_HW_BRINGUP.md`.
+
+**KAI-3 / GNA EAR line CLOSED end-to-end:** real speech → log-mel → GNA-conservative Conv1d+CTC → projected
+frames → `gemma4_kv_inject_seq` → 12B pivot (7/8), with the front-end lowered to i16 and **executed on physical
+GNA 2.0 silicon at full FP32 recovery**. The path from a microphone to the model's reasoning is verified all the
+way down to the accelerator. NEXT = pivot BACK to XBAR/KAIROS latent memory.
