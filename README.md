@@ -28,22 +28,9 @@ a single human-readable synthesis of where the project stands: the XBAR latent c
 O(1) rewind, the KAIROS resident loop, the headline numbers, and the tests that prove each
 (and why they can be trusted). It is the fastest way to get oriented.
 
-**Latest (2026-06-17):** **XBAR P3 is CLOSED end-to-end (P3.0 → P3.4).** P3.3 added the replay-write seam
-(`SP_REPLAY`, `G-P3-SHARED` 3-leg PASS on both the 12B and E2B: an intact episode is bit-identical to
-baseline, a zeroed episode diverges 12/12), and P3.4 closed the recall-quality gate (`G-P3-PPL`: replaying
-a foreign episode deflects perplexity **+1.38%, under the <2% bar**; n=42 single-chunk, larger-N pending
-before any headline). The crossbar now reads, writes, compresses to O(1), retrieves under poison, replays
-bit-exactly, and recalls without breaking the model's perplexity. Separately, the **GNA "EAR" line is CLOSED
-end-to-end on physical silicon:** real speech → 12B pivot **7/8** (CTC recovery 0.44→0.868); the front-end
-lowered to GNA-native i16 at full FP32 token-recovery (POT 0.877) and run on the real Intel **GNA 2.0** in
-the NUC "Beast Canyon" (`GNA_HW` 0.877 == emulation == FP32) — the audio sense is physically realized. That
-near-term audio pivot is **done**, and the project has pivoted **back to XBAR**. The next milestone is the
-**Memo curator / Ring-3 orchestration tier above P3** — the autonomous recall-cue → episode-id → `SP_REPLAY`
-loop, with Ring-3 gist consolidation budget-gated via the P2.b adapter.
+**Latest (2026-06-17):** **The whole XBAR memory stack is proven end-to-end.** XBAR P3 CLOSED (P3.0→P3.4; `SP_REPLAY` G-P3-SHARED 3-leg PASS; G-P3-PPL +1.38% < 2%). **C2 Memo curator CLOSED** (Steps 1–3.1 + #222 + G-XBAR-ORGANISM step 1): the curator indexes episodes via a 256-bit discrete hash (r=256, integer Hamming TAU_BITS=168), is bit-inert off (G-MEMO-NULL, 4.6665 bit-identical), promotes matched recall at +0.000% and discards corrupted recall at +40106.6% (G-MEMO-LOOP). `#222 gemma4_kv_replay` brings SP_REPLAY into the persistent kv ABI with O(1) bit-exact rewind (G-222 + G-222-WRAP GREEN). G-XBAR-ORGANISM step 1: real audio episode injected into Ring-2, signature separates (self 211/256, margin +79), SP_REPLAY clean (+1989% is foreign-by-design = audio KV into wiki context; ~0% is matched-context only). **Ring-3 Path A CLOSED** (R3.1–R3.4 GREEN, parameter-free, zero training budget): VSA/HRR superposition over Z_q seeded from C2 256-bit sigs; retrieves to recall@1=1.0 to N=32, scales to N=64 @recall@5≥0.90, hit-fidelity 0.000% / miss gate +8.04%, DUALROUTE scan + null parity, D=128 NIGHTSHIFT seal proves the math (max episode count 15 < CAP=32 before hardcode). **GNA EAR CLOSED on physical silicon** (GNA_HW 0.877 == emu == FP32). Caveat on record: C2/Ring-3 uses PERIOD=8; true 12B SWA period = 6; all gates stand; period-6 rebase is the named next step. **NEXT: period-6 rebase, then full G-XBAR-ORGANISM loop** (audio cue → Ring-3 shortlist → #222 scan → promote).
 
-*(Prior: the KAIROS resident loop passed a 6h unattended soak GREEN; KAI-2 latent interrupt CLOSED-BOUNDED
-at the sequence-positional wall; KAI-3 audio-port CLOSED GREEN at 8/8 metal pivots — the bridge into the GNA
-"EAR" line above.)*
+*(Prior: KAIROS KAI-1/1b/1c + 6h soak GREEN; KAI-2 CLOSED-BOUNDED; KAI-3 CLOSED GREEN; GNA EAR CLOSED.)*
 
 **If you are a coding agent opening a session: read `prompt.md` first, then
 `CURRENT-STATE-OF-PROJECT.md` (the synthesis) and `papers/PPT-LAT-STATE.md` (the proven

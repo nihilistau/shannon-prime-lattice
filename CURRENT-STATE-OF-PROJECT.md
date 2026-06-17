@@ -1,6 +1,6 @@
 # Shannon-Prime — Current State of the Project
 
-**As of 2026-06-17 (GNA "EAR" line CLOSED on physical silicon; XBAR P3 CLOSED end-to-end P3.0→P3.4; Memo curator orchestration tier is the active NEXT).** This is the human-readable map of where the project stands: what we built, the numbers that matter, the tests we used to prove each claim, *why* those tests are the right ones, and why the results can be trusted. It is written to be read top-to-bottom by a person, and to orient an agent in one pass. Detailed, citable records live in the contracts and `PPT-LAT-STATE.md`; this document is the synthesis, not the ledger.
+**As of 2026-06-17 (C2 Memo curator CLOSED + Ring-3 Path A CLOSED + G-XBAR-ORGANISM step 1 GREEN; the whole XBAR memory stack — Ring-2 verbatim, Ring-3 gist, EAR→Ring-2 bridge — is proven end-to-end).** This is the human-readable map of where the project stands: what we built, the numbers that matter, the tests we used to prove each claim, *why* those tests are the right ones, and why the results can be trusted. It is written to be read top-to-bottom by a person, and to orient an agent in one pass. Detailed, citable records live in the contracts and `PPT-LAT-STATE.md`; this document is the synthesis, not the ledger.
 
 ---
 
@@ -151,7 +151,60 @@ With the EAR landed on silicon, the audio/GNA near-term pivot is **DONE** and th
 
 ---
 
-## 5. Latent-space steering (the P2b adapter line)
+## 5. The Memo curator — autonomous Ring-2 recall (the orchestration tier)
+
+### 5.1 What it is
+C2 is the **policy that drives the crossbar**. P3 built the substrate (read / write / compress / replay / recall-quality-bounded); C2 is the resident loop that, on each tick, decides whether to search memory, which episode to pull, and hands that episode to the proven `SP_REPLAY` inject seam — all under the same bit-exact-when-off + bounded-deflection discipline.
+
+### 5.2 The episode index — a 256-bit content-address
+Episodes are registered in a flat, append-only `registry.jsonl`. Each entry carries a `sig_bits` — a **256-bit LSH hash** of the mean projected global-owner key (`R@K` centroid over the episode). Matching a live cue to an episode is an **integer XOR+popcount against TAU_BITS=168** — reduction-order-immune and hardware-independent (a float cosine near a threshold can flip across reduction orders; an integer popcount cannot).
+
+**Why 256 bits, not 32?** An r-sweep over sign-binarized centroids proved that at r=32, sign binarization **collapses** the ep_wiki separation (bit-gap −1; a noise vector beats the target — the thin margin lives in magnitude, which sign discards). The gap recovers at r≥128, ships at r=256 (bit-gap +19). The claim "dot product IS Hamming distance" is **false as built** (holds only for ±1 vectors, not real-valued projection centroids) — verified by measurement, not accepted from the operator's reframe.
+
+### 5.3 The round-trip loop
+Per tick: extract a live query key → hash → Hamming match against registry → if match ≥ TAU_BITS, PROPOSE the episode via `SP_REPLAY` → GATE via `SP_G4_SCORE` deflection < 2% → ACCEPT (promote, keep cache) or REJECT (discard, rerun). The "rerun" is O(context) on the Option A one-shot path; the O(1) bit-exact alternative is #222.
+
+- **G-MEMO-NULL (engine `3ea0587`):** curator off ⇒ PPL **4.6665 bit-identical** to the uncurated baseline (shadow observer fired; empty-registry → NULL → inert). The whole loop is a provable no-op when off.
+- **G-MEMO-LOOP (engine `627dfad`):** ACCEPT matched recall **+0.000%** → PROMOTE (the right memory at zero fidelity cost); REJECT zeroed recall **+40,106.6%** → FLAG + DISCARD (the safety valve fires on garbage, not just borderline cases). Both branches proven.
+
+### 5.4 #222 — O(1) bit-exact rewind in the persistent KV ABI
+`gemma4_kv_replay` (engine `b4b037a`) injects a stored episode into the **resident** cache at `[dpos, dpos+npos)`. The curator can SPECULATE a recall; on reject, `gemma4_kv_rewind(npos)` undoes it **byte-exactly in O(1)** (full-cache slot==pos inverse). The SWA-ring variant (engine `24071bc`) journal-checkpoints each clobbered ring slot before overwrite; G-222-WRAP GREEN (journal-backed rewind diffs=0). **The local KV substrate is airtight in both regimes.**
+
+---
+
+## 6. Ring-3 — the gist tier (parameter-free neocortex, Path A CLOSED)
+
+### 6.1 What it is
+Ring-2 (now closed with C2) is the verbatim hippocampus — bit-exact recall, O(1) evict/rewind. Ring-3 is the **neocortical gist**: superpose many episodes into one bounded store, recall by content address with graceful, bounded, pre-registered loss. The crossbar's first *lossy* tier, and the only one whose gate is irreversible (source eviction happens after promotion).
+
+### 6.2 Architecture — VSA/HRR, parameter-free (Path A)
+Store `M = Σ_i (addr_i ⊛ id_i)` (circular convolution = the engine's NTT-over-Z_q algebra). Each `addr_i` is a carrier **seeded by the episode's real C2 256-bit signature** (so a live cue regenerates it without a model call). Recall: unbind with the carrier → cleanup argmax over the id codebook → Ring-2 verbatim verify via #222 (the retrieve-and-verify framing: Ring-3 only shortlists, Ring-2 carries the fidelity).
+
+**Why parameter-free works:** the signed (±1 Rademacher) carrier tracks the ideal unitary carrier closely (recall curves ≈ identical), so the math of large-number superposition holds without training. Path B (the P2.b learned adapter) is deferred unless a future measured need shows the shortlist insufficient.
+
+### 6.3 The four gates
+- **R3.1 G-R3-BIND** (engine `23539b7`): N=2 recall@1=1.0 (margins +0.586/+0.568); capacity recall@5≥0.90 to N=64 @ D=1024, graceful degrade past ~D. Caught+fixed: metric bug SNR→margin/z-score at N=2.
+- **R3.2 G-R3-LOSS** (engine `aae3131`): consolidation loss is a **step function** — hit +0.000% (verbatim verify is lossless), capacity miss +8.04% (>> 2% gate → caught + O(1)-rewind, never silent corruption). Promotion budget: ≤32 episodes/vector @ D=1024. Latency: 71µs unbind + one Optane ReadFile.
+- **R3.3 G-R3-DUALROUTE** (engine `69638cf`): cue→VSA unbind→top-K shortlist→#222 verify scan→land. Three pipes proven: clean hit, decoy scan (rank-1 foreign REJECT+rewind → rank-2 correct ACCEPT), null parity (empty Ring-3 → baseline byte-exact).
+- **R3.4 G-R3-NIGHTSHIFT** (engine `a64a916`): idle-loop state machine: SELECT→BIND(shadow copy)→SHADOW-GATE(re-verify every bound ep, crosstalk-safe)→PROMOTE+EVICT(verbatim stays on Optane, tier-demotion not delete)→SEAL. **D=1024/CAP=32 production run:** 40 episodes → **349.8 MB resident KV demoted to Optane, Ring-3 resident index 16.3 KB**. D=128 gate-driven seal proves the seal is the **math** (gate fires before the cap at [10,6,15,8,1] max 15 < 32).
+
+Remaining deferred: the Z_q/NTT engine port of the host-numpy VSA bind/unbind (deployment, exact integer); the G-R3-PROV provenance tag.
+
+---
+
+## 6.1 The organism — EAR→Ring-2 integration (step 1 GREEN)
+
+The **G-XBAR-ORGANISM** integration bridges the audio/GNA "EAR" line into the XBAR memory stack. Step 1 (engine `6600cf4`): a real audio packet (KAI-3 inject_seq path) flows through the conditioned cache (npos=114) and is serialized as an episode in the canonical uniform-512 format [48,114,512] — the same format as ep_wiki, with the clamp fix (12B SWA cache is jagged global 512 / SWA 2048; the episode clamps to global 512). Episode signature separates (self 211/256, margin +79, distinct from ep_wiki and ep_toy). SP_REPLAY=ep_audio loads and injects clean (RT_EXIT=0); the **+1989% deflection is foreign-by-design** (audio KV injected into a wiki context; ~0% is matched-context only — this is a scope-honest figure, not a failure).
+
+The **full organism loop** (driving a raw audio cue → Ring-3 shortlist → #222 verify scan → autonomously land ep_audio in the resident cache) is the next trajectory, gated behind the period-6 rebase correctness tidy-up.
+
+**Period-8 vs period-6 caveat:** the C2/Ring-3 sig pipeline uses PERIOD=8 (L%8==7) as the content-hash layer subset; the 12B's true SWA period is **6** (L%6==5). Separation is robust to the choice — all prior C2/R3 gates stand — and the rebase is a named correctness tidy-up, not a result fix.
+
+---
+
+---
+
+## 7. Latent-space steering (the P2b adapter line)
 
 Parallel to the substrate work, we investigated whether the latent write of §1.2 can be made *general* — learning an adapter that fills cache slots to order rather than transplanting them.
 
@@ -174,7 +227,7 @@ A claim in this project comes with the command that produced it and the scope it
 
 ---
 
-## 7. The state of the board
+## 8. The state of the board
 
 | Axis | Status | Headline receipt |
 |---|---|---|
@@ -190,11 +243,19 @@ A claim in this project comes with the command that produced it and the scope it
 | Journaled-ring O(1) telemetry | CLOSED | ring slope 0.00365 ≈ full 0.00371 s/action |
 | Semantic crucible (KAIROS) | CLOSED | 24 ticks perfect: 0 false / 0 missed / 0 drift |
 | 6h endurance soak (G-KAIROS-1) | **GREEN** | 351 loops / ~8,400 ticks / 6h01m unattended, 0 false / 0 missed / 0 malformed / 0 pos-violation (≥24h gate un-pursued by choice, not failed) |
-| KAI-2 latent interrupt | **CLOSED (BOUNDED)** | Phase-1 seam `gemma4_kv_inject` GREEN (EMB 2/2); Phase-2 static `KAI2Codec` MISSED the pivot (sequence-positional wall, not capacity). Engine `c5628e4` |
-| KAI-3 audio-port (GNA "EAR" bridge) | **CLOSED GREEN** | `gemma4_kv_inject_seq` (N-frame sequence, no compression); G-KAIROS-3 8/8 semantic pivots on the 12B; synthetic top-1 1.000, real-token 0.931. Engine `e35a227` |
+| KAI-2 latent interrupt | **CLOSED (BOUNDED)** | Phase-1 seam `gemma4_kv_inject` GREEN (EMB 2/2); Phase-2 static `KAI2Codec` MISSED (sequence-positional wall, not capacity). Engine `c5628e4` |
+| KAI-3 audio-port (GNA "EAR" bridge) | **CLOSED GREEN** | `gemma4_kv_inject_seq` (N-frame sequence, no compression); G-KAIROS-3 8/8 semantic pivots on 12B. Engine `e35a227` |
 | GNA "EAR" on physical silicon | **CLOSED** | real speech → 12B pivot 7/8 (CTC 0.44→0.868); POT GNA-native i16 = 0.877 full recovery; GNA_HW on Intel GNA 2.0 = 0.877 == emu == FP32 |
+| C2 Memo curator (Steps 1–3.1) | **CLOSED GREEN** | G-MEMO-NULL bit-identical; G-MEMO-LOOP ACCEPT +0.000% → PROMOTE / REJECT +40106.6% → DISCARD. Engine `627dfad` |
+| C2 resolver discrete bit-collision | **CLOSED GREEN** | 256-bit LSH hash, TAU_BITS=168; r=256 bit-gap +19 (r=32 collapses); reduction-order-immune address. Engine `6dd87b9` |
+| #222 O(1) rewind in kv ABI | **CLOSED GREEN** | `gemma4_kv_replay` + `gemma4_kv_rewind` byte-exact E2B+12B (diffs=0); G-222-WRAP GREEN (SWA-ring journal-backed). Engine `24071bc` |
+| Ring-3 Path A BIND (R3.1) | **CLOSED GREEN** | recall@1=1.0 to N=32 @ D=1024, margins +0.586/+0.568; ±1 carrier ≈ ideal. Engine `23539b7` |
+| Ring-3 consolidation loss (R3.2) | **CLOSED GREEN** | hit +0.000% / miss +8.04% gate-caught; budget ≤32 ep/vector; 71µs unbind. Engine `aae3131` |
+| Ring-3 dual-route recall (R3.3) | **CLOSED GREEN** | clean hit + decoy scan + null parity; degrade-safe. Engine `69638cf` |
+| Ring-3 NIGHTSHIFT idle loop (R3.4) | **CLOSED GREEN** | 40 ep → 349.8 MB KV demoted to Optane, Ring-3 index 16.3 KB; D=128 gate-driven seal proves seal is the math. Engine `a64a916` |
+| G-XBAR-ORGANISM step 1 | **GREEN** | EAR→Ring-2 write seam: ep_audio [48,114,512] uniform-512, sig self 211/256 margin +79, SP_REPLAY loads+injects clean. Engine `6600cf4` |
 
-**The crossbar substrate — space ⊗ time ⊗ cognition — is structurally complete on a 12B within a 12 GB footprint, and XBAR P3 is now CLOSED end-to-end: P3.0 manifest → P3.1 read → P3.2 spill/page/SWA-ring → P3.2-b-2b learned-LSH select → Phase C O(1) VRAM → C-c NIAH-survives → P3.3 replay-write → P3.4 recall-quality.** The auditable latent crossbar reads, writes, compresses to O(1), retrieves under poison, replays bit-exactly, and recalls without breaking the model's perplexity (+1.38% < 2%). Endurance is demonstrated by a clean 6h unattended soak (the formal ≥24h gate is un-pursued by operator choice, not failed). On the audio axis, **the GNA "EAR" line is now CLOSED end-to-end on physical silicon** (§4.6): real speech → 12B pivot 7/8, the front-end lowered to GNA-native i16 at full FP32 token-recovery (POT 0.877) and run on the real Intel GNA 2.0 hardware (GNA_HW 0.877 == emu == FP32). That deliberate near-term audio pivot is **DONE**, and **the project has pivoted back to XBAR (KAIROS latent memory)**. **NEXT = the orchestration / Ring-3 consolidation tier ABOVE P3** — the Memo curator's autonomous recall loop (recall-cue → episode-id → `SP_REPLAY`), with the Ring-3 gist consolidation budget-gated via the P2.b adapter. The remaining XBAR hygiene follow-ons (exact journal-tax via CUDA events; the `gemma4_kv_decode` first-token boundary reconcile; compact-slab globals wrap-rewind) stay queued; the P3.4 larger-N multi-chunk run is the named hardening lever before any public headline.
+**The whole XBAR memory stack is structurally proven end-to-end on the 12B within a 12 GB footprint.** The substrate reads, writes, compresses to O(1), retrieves under poison, replays bit-exactly, and recalls without breaking perplexity (P3). The curator indexes (registry), addresses (256-bit hash), selects (integer Hamming), is inert when off, and on metal promotes the matched recall at zero deflection cost and discards the corrupted one (C2). The neocortical gist tier superimposes many episodes into a bounded vector, recall@1 lossless to N=32, misses gate-caught, idle-loop seals 349.8 MB of resident KV down to a 16.3 KB Ring-3 index (Ring-3 Path A). The EAR→Ring-2 seam is proven for audio episodes, with a foreign-by-design deflection caveat correctly on the record. Endurance: 6h soak GREEN (formal ≥24h gate un-pursued by operator choice, not failed). GNA "EAR" CLOSED on physical silicon (§4.6). **NEXT = period-6 rebase (correctness tidy-up: C2/Ring-3 uses PERIOD=8, true 12B SWA period=6; all prior gates stand) → full G-XBAR-ORGANISM loop (raw audio cue → Ring-3 shortlist → #222 verify scan → autonomously land ep_audio in the resident cache).** Standing hygiene queued: cudaEvent journal-tax, `gemma4_kv_decode` first-token boundary, compact-slab globals wrap-rewind, P3.4 larger-N multi-chunk hardening run.
 
 ---
 

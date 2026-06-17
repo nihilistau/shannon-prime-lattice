@@ -5,6 +5,42 @@ the rule that prevents the repeat. Receipts-first: cite the run/commit where it 
 
 ---
 
+## 2026-06-17 — Three lessons from closing C2 Memo curator + Ring-3 Path A
+
+**(i) Verify Gemini reframes against the substrate — then MEASURE the fix before shipping it.**
+Gemini proposed: "dot IS Hamming for ±1 vectors, so replace your dot-product resolver with XOR+popcount —
+it's a clean isomorphism." The direction (Hamming-space resolver) was right. The mechanism was wrong
+as-built: our centroids are real-valued projection outputs (`R@K`, K float) carrying magnitude, NOT ±1
+sign bits. For real centroids `dot ≠ r − 2·Hamming`. An r-sweep measurement settled it: sign-binarize at
+r=32 collapses the bit-gap to −1 (regression), recovers at r≥128, ships at r=256 (bit-gap +19, reduction-
+order-immune address). **Rule: when a collaborator reframes the mechanism elegantly, honor the direction,
+fix the mechanics, and run a sweep (not a single-point) to confirm before committing to the design.**
+Receipt: C2 r-sweep in `CONTRACT-XBAR-C2-memo-curator-loop.md` §3, engine `6dd87b9` (discrete resolver).
+
+**(ii) Two classes of metric-bug: ratio-vs-margin at low N, and harness self-checks too weak to catch layout errors.**
+R3.1 BIND shipped with an SNR *ratio* (`signal/noise`) as the separation metric; at N=2 the ratio can be
+large but the absolute margin tiny — the metric looked healthy while hiding a degenerate case.
+Fix: switch to `margin = signal − noise` (the signed gap) which is linear and correctly flags N=2 ambiguity.
+Catch: also add an episode-size sanity check in the harness (assert `ep.k == expected_layers` before computing
+centroid). The organism step-1 clamp fix (`_c2_ep_wiki` format uses 512-padded globals; ep_audio was padded
+to 2048 via the gemma4 CUDA jagged SWA path → clamp to 512 caught by the size mismatch in the harness).
+**Rule: write `margin = signal − noise`, not `signal/noise`; always assert harness tensor shapes against the
+contract layout before running any gate that depends on them.**
+Receipt: R3.1 `G-R3-BIND` margin fix commit `23539b7`; organism clamp commit `6600cf4`.
+
+**(iii) Sandbox bash mount serves stale or truncated reads right after a Windows-side Edit — use /tmp
+for hererdocs and verify via Windows MCP for D:\\Files and repo-root _xbar.**
+The Cowork bash tool mounts only the four lattice/engine/system/system-engine repo subfolders. After a
+Windows-side `Edit` call the mount may serve a cached or truncated version of the file until the next
+mount refresh. Pattern: write transient payloads via `heredoc > /tmp/file`, not into the repo path
+directly; for paths outside the repo (D:\\Files, repo-root `_xbar/`, creds) use Windows-MCP FileSystem
+or PowerShell — the sandbox mount simply does not reach them. **Rule: trust the Read tool for repo
+files post-Edit; for out-of-repo paths use Windows-MCP; never pipe bash-side reads of a just-edited
+repo file into a gate output without verifying the write succeeded first.**
+Receipt: organism artifact at `D:\F\shannon-prime-repos\_xbar\p2b\kai3` (out-of-mount).
+
+---
+
 ## 2026-06-17 — Three lessons from closing XBAR P3.3/P3.4 + the GNA EAR on silicon
 
 **(i) A multi-path store will silently swallow a single-path hook — let the cheap gate fail-fast.**
