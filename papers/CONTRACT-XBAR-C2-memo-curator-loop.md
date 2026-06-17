@@ -100,6 +100,16 @@ loop each tick:
 |---|---|---|---|---|
 | ep_toy | +0.6863 | **ep_toy** | +0.2162 | **+0.2158** |
 | ep_wiki | +0.3730 | **ep_wiki** | +0.1932 | **+0.1534** |
-Every target's own sig is the row-max with a clean positive margin over the other episode AND noise ⇒ the dot-product index separates targets from background. **Caught + fixed:** the WRITE path dumps the full P-slot allocation (P=56 toy / 294 wiki), so the unfilled cache tail is uninitialized VRAM; the registry `npos` bounds the sig to the true filled prefix (correct curator behavior — first cut included garbage tail → ep_toy mis-resolved, RED → GREEN once capped). Receipts `engine tests/fixtures/xbar_c2/{registry.jsonl,G-MEMO-CUE_offline.log}`. NOTE: Step-1 uses the frozen ±1 R (operator-specified); the online loop (Step 3) recomputes `sig` with the learned-LSH R (`lsh_R_r32_raw.bin`) to match the production router — same registry schema, 1-line projection swap. NEXT = Step 2 (offline resolver formalization) → Step 3 (online loop on Exec, G-MEMO-NULL→G-MEMO-LOOP).
+Every target's own sig is the row-max with a clean positive margin over the other episode AND noise ⇒ the dot-product index separates targets from background. **Caught + fixed:** the WRITE path dumps the full P-slot allocation (P=56 toy / 294 wiki), so the unfilled cache tail is uninitialized VRAM; the registry `npos` bounds the sig to the true filled prefix (correct curator behavior — first cut included garbage tail → ep_toy mis-resolved, RED → GREEN once capped). Receipts `engine tests/fixtures/xbar_c2/{registry.jsonl,G-MEMO-CUE_offline.log}`. NOTE: Step-1 uses the frozen ±1 R (operator-specified); the online loop (Step 3) recomputes `sig` with the learned-LSH R (`lsh_R_r32_raw.bin`) to match the production router — same registry schema, 1-line projection swap.
+
+**Step 2 — offline resolver + τ_cue thresholding — G-MEMO-CUE(resolver) GREEN (2026-06-17, frozen R).** `tools/curator/resolve_cue.py`: `resolve_cue(q_sig)` scans `registry.jsonl`, takes `argmax_e q_sig·sig[e]`, and returns the `episode_id` **only if the best score exceeds `τ_cue`** — otherwise NULL (the decisive rejection that keeps the curator from injecting irrelevant noise and blowing the P3.4 deflection bound). **τ_cue = 0.30**, pre-registered from the Step-1 margins: targets self-score +0.3730 / +0.6863, the background noise floor peaks ~+0.2162 — 0.30 sits strictly inside that gap.
+
+| leg | input | resolves to | score | gate |
+|---|---|---|---|---|
+| positive | held-out cue ep_toy | **ep_toy** | +0.6863 | PASS |
+| positive | held-out cue ep_wiki | **ep_wiki** | +0.3730 | PASS |
+| negative ×8 | unrelated query sig (fresh-seed gaussian @ K-scale, disjoint from registry noise) | **NULL** | max +0.2562 | 8/8 PASS |
+
+Two-sided separation: lowest positive +0.3730 vs highest negative +0.2562 ⇒ **gap +0.1168**; τ=0.30 clears positives by ≥+0.073 and rejects negatives by ≥+0.044. The negative legs use a seed disjoint from the registry's own background noise (no circularity — genuinely unseen queries). Receipt `engine tests/fixtures/xbar_c2/G-MEMO-CUE_resolver.log` (force-added, `*.log` gitignored). Same frozen-R / learned-LSH-R note as Step 1 applies to Step 3. NEXT = Step 3 (online loop on Exec: cue→resolve→PROPOSE(`SP_REPLAY`)→GATE(`SP_G4_SCORE` <2% + NIAH)→PROMOTE/REWIND; G-MEMO-NULL→G-MEMO-LOOP on 12B + E2B).
 
 *The substrate reads, writes, compresses, replays, and holds its perplexity. C2 is the first turn where it decides — on its own — what to remember.*
