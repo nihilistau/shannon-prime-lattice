@@ -816,3 +816,29 @@ would have been over-provisioning (banked lesson).
 info compressed out); projected N-frame sequence = 8/8 (sequence preserved, per-position CE recovers it).
 The audio-port thesis — continuous frames can drive the 12B's execution path — is proven. NEXT: swap the
 synthetic anchor matrix for real GNA/CNN features (task #154); the delivery + projection architecture is locked.
+
+### §7.4 — REAL AUDIO (the synthetic anchor swapped for real speech) — 7/8 (2026-06-17, ckpt best=0.868)
+
+The §7.3 synthetic anchor matrix is now replaced with **real TTS speech**, end-to-end, no architecture change
+to the frozen binder/`gemma4_kv_inject_seq` delivery. Pipeline (`tools/audio_port/`): voxtral-mini-realtime-rs
+TTS WAV (short, number-free, speech-primed events) → resample 24k→16k → log-mel (40ms/640 hop, 64 mels) →
+**GNA-conservative standard Conv1d encoder** (n_mels→256, k=3 ×3 + 1×1 head over V_sub+blank) trained with
+**`torch.nn.CTCLoss`** (the proven impl; frames≠tokens handled natively, no adaptive-pool crutch) → CTC-greedy
+collapse → per-frame `softmax(logits/τ)·W_sub` on-manifold vectors → KAI2 packet → `gemma4_kv_inject_seq`.
+
+- **First run (2026-06-16): 3/7.** 61 train samples / 1 voice / 150 ep → held-out CTC greedy token recovery
+  **0.44**. The ceiling was **data-starvation, pre-registered as the predicted failure mode — NOT architecture.**
+- **Multi-voice scale-up (overnight bake): CTC recovery 0.44 → 0.868.** 924 train samples × 2 voices
+  (casual_female/casual_male), 400 ep, minibatch + cosine LR. Held-out per-position **eval_tok_acc 0.807**,
+  best greedy token recovery **0.868**.
+- **G-KAIROS-3-AUDIO metal gate (12B OK_Q4B, 2060, clocks 1680, `SP_G4_KAI3`, single-voice held-out eval,
+  8 events ACTION/NO_OP): 7/8 PASS.** All 4 NO_OPs correct; 3/4 ACTIONs correct and SEMANTICALLY coherent
+  ("ACTION>restart build process</ACTION>", "ACTION>Fix the build issue</ACTION>", "ACTION>Check certificate
+  status</ACTION>"); the lone miss (aud_02) is ACTION→NO_OP = the **conservative** failure (salient read as
+  idle, never a false-fire). `GATE_EXIT=3`, receipt `_xbar/p2b/kai3/G-KAIROS-3-AUDIO_7of8.log`.
+
+**Verdict: the GNA "EAR" thesis — real speech driving the 12B's execution pivot — is PROVEN (7/8).** The 3/7→7/8
+climb tracked CTC recovery 0.44→0.868 exactly as the data-starvation hypothesis predicted; delivery + projection
+architecture unchanged from the §7.3 synthetic 8/8. Remaining headroom (the 1 miss) = more CTC recovery: harder
+levers are noise/SNR augmentation, more voices, and eventually real recorded event audio. NEXT = GNA HW lowering
+(Stage 2, task #154) — the real front-end on the host GNA 2.0 silicon — then pivot BACK to XBAR/KAIROS latent memory.
