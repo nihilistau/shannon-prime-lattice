@@ -840,5 +840,25 @@ collapse → per-frame `softmax(logits/τ)·W_sub` on-manifold vectors → KAI2 
 **Verdict: the GNA "EAR" thesis — real speech driving the 12B's execution pivot — is PROVEN (7/8).** The 3/7→7/8
 climb tracked CTC recovery 0.44→0.868 exactly as the data-starvation hypothesis predicted; delivery + projection
 architecture unchanged from the §7.3 synthetic 8/8. Remaining headroom (the 1 miss) = more CTC recovery: harder
-levers are noise/SNR augmentation, more voices, and eventually real recorded event audio. NEXT = GNA HW lowering
-(Stage 2, task #154) — the real front-end on the host GNA 2.0 silicon — then pivot BACK to XBAR/KAIROS latent memory.
+levers are noise/SNR augmentation, more voices, and eventually real recorded event audio.
+
+### §7.5 — Stage 2.b: GNA i16 QUANTIZATION GATE — GREEN (2026-06-17, POT GNA-native PTQ)
+
+The frozen audio_ctc encoder lowered to the **GNA 2.0 software-emulation backend** (OpenVINO 2023.3 archive runtime
+in WSL — the last GNA-capable release; pip wheel lacks the plugin, banked recipe in memory). The conv stack compiles
++ runs on `GNA_SW_EXACT` i16 with **zero topology rewrite** (the GNA-conservative 1D-conv design paid off).
+
+- **ONNX → OV-IR FP32 = bit-exact:** OV CPU FP32 0.877 == torch 0.877.
+- **GNA default i16 (naive symmetric min/max) = 0.667 (−0.211):** the CTC-head logit-variance shear, scale-invariant
+  (flat across input scale factors) ⇒ a quantizer-default problem, not a precision floor.
+- **NNCF calibrated INT8 (CPU) = 0.860 (−0.017):** proves the spiky CTC head SURVIVES calibration — but NNCF's generic
+  FakeQuantize **won't compile on GNA** (the libGNA compiler owns its scale factors and rejects foreign FQ).
+- **POT DefaultQuantization, `target_device=GNA` (the GNA-native i16 PTQ) = 0.877 (−0.000): FULL RECOVERY**, compiles +
+  runs on `GNA_SW_EXACT`. Not a passthrough — identical SW_EXACT i16 mode gives 0.667 (naive) vs 0.877 (POT scale
+  factors), so POT's calibrated saturation thresholds are the recovery. Receipt `_xbar/p2b/kai3/G-KAIROS-3-GNA-i16_quant_gate.log`,
+  scripts `tools/audio_port/{pot_gna_quantize,ov_gna_score,ov_score_ir}.py`.
+
+**VERDICT: Stage 2.b quantization gate GREEN → the EAR front-end is GREEN-LIT for Beast Canyon GNA 2.0 silicon.** The
+software-emulation math holds the acoustic boundaries bit-for-bit at FP32 token-recovery. NEXT = GNA HARDWARE bring-up
+(driver `gna_03.05.00.2116` + speech_sample kits at archive\notes_and_stuff\GNA\Drivers; host i9-11900KB = GNA 2.0),
+then pivot BACK to XBAR/KAIROS latent memory.
