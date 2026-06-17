@@ -47,6 +47,18 @@ Ring-3 never has to be *right*; it has to be *not-wrong-enough to shortlist*, an
 5. **R3.4 (NIGHTSHIFT)** — the idle-loop driver: Ring-2 → (bind) → Ring-2′ shadow → (G-R3-LOSS) → Ring-3, pre-eviction-gated. (no budget for Path A)
 6. **R3-B (only if R3.1 shortlist is insufficient)** — open Path B: the P2.b adapter training campaign, **gated on operator budget green**, retrieve-and-verify framing, cost-capped RunPod bake.
 
+## 5.1 Run-records
+
+**R3.1 — G-R3-BIND GREEN (2026-06-17, engine 23539b7; Path A, parameter-free, offline).** The VSA/HRR superposition math holds on the real Ring-2 episode tensors. `tools/ring3/g_r3_bind.py`: store `M = Σ_i (addr_i ⊛ id_i)` (circular convolution = the engine's NTT-over-Z_q algebra), `addr_i` = a carrier **seeded by episode i's real C2 256-bit signature** (content-derived from `ep.k` global keys, so a live cue regenerates it — ties Ring-3 to the proven C2 resolver), `id_i` = a clean ±1 label (the surfaced "episode signature", a pointer back to the Ring-2 verbatim episode for the exact #222 verify — never a reconstructed span, §1 trap stays shut). Recall: `id_est = M ⊛ addr_j†` → cleanup argmax over the id codebook.
+
+| metric | result |
+|---|---|
+| **N=2 (ep_toy + ep_wiki, the operator's ask)** | recall@1 = 1.0; margins **+0.586 / +0.568** (correct id strictly above crosstalk), ±1 substrate carrier |
+| capacity (±1 carrier, D=1024) | recall@5 ≥ 0.90 to **N=64**; graceful degrade past ~D (N=128 → 0.87, N=256 → 0.45) |
+| substrate cost | ±1 Rademacher carrier tracks the ideal unitary carrier closely (recall curves ≈ identical) |
+
+**Caught + fixed a metric bug, not a math failure:** the first cut defined `SNR = cos(correct)/max cos(wrong)`, which at N=2 divides by a ~0/negative wrong-id cosine (near-orthogonal random ids) → a sign-flipped artifact (`−91`) despite recall@1 being perfect. Replaced with the cleanup-standard **margin** (`correct − max wrong > 0`) + **z-score**; recall was always correct. Receipt `engine tests/fixtures/xbar_r3/G-R3-BIND.log`. Domain note: proved in the real domain via FFT circular conv (= the NTT algebra); the **deployment binds over Z_q via the engine NTT/CRT** (exact integer, no float drift) — that engine port is R3.x. NEXT = R3.2 `G-R3-LOSS` (consolidation loss + fact-survival, pin the promotion budget) → R3.3 dual-route (RETRIEVE shortlist → the closed #222 VERIFY) → R3.4 NIGHTSHIFT idle loop. All Path-A steps remain **no-budget**.
+
 ## 6. Scope fence
 
 - Ring-3 is **Ring-2-verbatim's gist companion**, not a replacement. The verbatim store and its O(1) evict/rewind/replay (C2 + #222, CLOSED) remain the source of truth; Ring-3 only *shortlists* into it.
