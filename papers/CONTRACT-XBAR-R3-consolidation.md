@@ -59,6 +59,17 @@ Ring-3 never has to be *right*; it has to be *not-wrong-enough to shortlist*, an
 
 **Caught + fixed a metric bug, not a math failure:** the first cut defined `SNR = cos(correct)/max cos(wrong)`, which at N=2 divides by a ~0/negative wrong-id cosine (near-orthogonal random ids) → a sign-flipped artifact (`−91`) despite recall@1 being perfect. Replaced with the cleanup-standard **margin** (`correct − max wrong > 0`) + **z-score**; recall was always correct. Receipt `engine tests/fixtures/xbar_r3/G-R3-BIND.log`. Domain note: proved in the real domain via FFT circular conv (= the NTT algebra); the **deployment binds over Z_q via the engine NTT/CRT** (exact integer, no float drift) — that engine port is R3.x. NEXT = R3.2 `G-R3-LOSS` (consolidation loss + fact-survival, pin the promotion budget) → R3.3 dual-route (RETRIEVE shortlist → the closed #222 VERIFY) → R3.4 NIGHTSHIFT idle loop. All Path-A steps remain **no-budget**.
 
+**R3.2 — G-R3-LOSS GREEN (2026-06-17, engine aae3131; 12B-b1).** Architecture correction made before running: in the locked retrieve-and-verify design Ring-3 stores a content-addressable **pointer**, not a lossy gist — a correct recall fetches the **verbatim** Ring-2 tensor, so **hit fidelity is 0 by construction.** The directive's "gist-PPL vs verbatim-PPL" delta would read ~0 (trivial/misleading) or require the convicted lossy-gist Path B. So `G-R3-LOSS` decomposes into three real axes, all measured:
+
+| axis | result |
+|---|---|
+| **(1) hit fidelity** (correct id → verbatim ep_wiki, NPOS=16) | PPL 4.6665 == baseline → **+0.000% — lossless verify** |
+| **(2) capacity miss** (wrong id → foreign ep_toy, NPOS=16) | PPL 5.0417 → **+8.04%**, i.e. **>> the 2% gate ⇒ flagged + O(1)-rewound, never silent corruption**. Recoverable-info loss is BINARY: 0 on hit / total on miss, governed by `recall@1(N)`. |
+| **(3) promotion budget** (from the G-R3-BIND curve @ D=1024) | recall@1 = 1.0 to **N=32** → **consolidate ≤ 32 episodes per Ring-3 vector for lossless recall**; beyond, misses are gate-caught (degrade-safe) |
+| **(4) latency shear** | unbind+cleanup **71 µs** (negligible) + one Optane ReadFile (existing Ring-2 backend); inject/score unchanged |
+
+The thermodynamic answer: a correct unbind costs **zero** fidelity (the verify re-injects exact bytes); a wrong unbind (capacity overflow) loses the fact but is **caught by the deflection gate** — the loss is degrade-safe, not corrupting. Receipt `engine tests/fixtures/xbar_r3/G-R3-LOSS.log`. NEXT = R3.3 `G-R3-DUALROUTE` (wire the live RETRIEVE shortlist → the closed #222 VERIFY end-to-end on 12B+E2B). No-budget.
+
 ## 6. Scope fence
 
 - Ring-3 is **Ring-2-verbatim's gist companion**, not a replacement. The verbatim store and its O(1) evict/rewind/replay (C2 + #222, CLOSED) remain the source of truth; Ring-3 only *shortlists* into it.
