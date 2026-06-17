@@ -1,6 +1,11 @@
 # SESSION-HANDOFF.md — where things stand
 
-**Updated:** 2026-06-16 (**KAI-2 CLOSED, BOUNDED** (engine `c5628e4`, contract §6.6 `2675c79`): Phase-1 seam
+**Updated:** 2026-06-17 (**KAI-3 / GNA EAR line CLOSED end-to-end ON SILICON**, then **pivoted back to XBAR; P3.3 SP_REPLAY = WIP**).
+- **GNA EAR (sibling line) CLOSED:** real speech → 12B pivot **7/8** (multi-voice CTC recovery 0.44→0.868); front-end lowered ONNX→OpenVINO→**POT GNA-native i16 = 0.877 full recovery**; conv constraints fixed (VALID pad + 36-filter head); **`GNA_HW` on the PHYSICAL Intel GNA 2.0 = 0.877 == emulation == FP32 → EAR physically realized.** Contract §7.4/7.5/7.6; receipts `_xbar/p2b/kai3/G-KAIROS-3-{AUDIO_7of8,GNA-i16_quant_gate,GNA-HW}.log`; toolchain banked (memory `reference_gna_openvino_toolchain`). Windows OV2023.3 runtime at `_xbar/p2b/kai3/ov2023_win`.
+- **XBAR P3.3 SP_REPLAY = WIP, NOT GREEN.** Next named XBAR step (replay-injection seam at the CUDA cache-store boundary; precedes P3.4 PPL gate). SEAM CUT + committed WIP (`cuda_forward.cu` decls/loader/inject/free + `test_gemma4_cuda.c` `SP_G4_REPLAY_GATE` + `_run_p33.bat`); **leg-1 intact bit-exact (non-corrupting); G-P3-SHARED leg-2 INCONCLUSIVE** — `gemma4_decode_cuda` has 3 decode paths, my inject hit only the graph-capture store (~line 2516); gate's active `SP_CUDA_DECODE_INT8` path differs ⇒ inject inert ⇒ zeroed didn't diverge. E2B fail-fast caught it in 2min; **contract/STATE kept PRISTINE.** LOCKED next-session: (1) inject across ALL 3 prefill store sites; (2) harden leg-2 to a raw logit / L0-attn diff (not greedy argmax). Then re-gate E2B→12B, land receipts + contract §P3.3, then P3.4. Detail: memory `project_p33_sp_replay_wip`.
+
+---
+*Prior (2026-06-16):* (**KAI-2 CLOSED, BOUNDED** (engine `c5628e4`, contract §6.6 `2675c79`): Phase-1 seam
 `gemma4_kv_inject` GREEN / frozen asset (EMB control 2/2), Phase-2 static `KAI2Codec` MISSED the pivot —
 sequence-positional wall, not capacity; no more codec-compression cycles) **+ KAI-3 AUDIO-PORT CLOSED GREEN**
 (engine `e35a227`, contract §7.3 `e826950`): the inverse — `gemma4_kv_inject_seq` injects N projected frames 1:1
@@ -263,4 +268,50 @@ B×B InfoNCE, N-way gate, honest controls); receipts HF `results_contrastive/ct1
 
 ## 4. Landed this session (receipts)
 
-- **#115 CLOSED + 12B text-in LIVE
+- **#115 CLOSED + 12B text-in LIVE**: GEMMA4_BPE dispatch 5432/5432 both lanes, roundtrip 60/60
+  (engine `3457a41..3253a82`, core `9d3cc72`); blob regen + SHA re-pair all four 12B pairs +
+  `T_G4_TOK_12B_PAIRED` + B1 GPU decode smoke 6/6 (engine `d8ba947`). Gold `.pre115` backups →
+  `G:\My Drive\shannon-prime-cold\pre115-2026-06-10\`.
+- **G-P3-GEOM substrate** (core `64b698c`): sp_arm_*_geom API, legacy delegates, T_ARM_GEOM
+  26/26. + gemma4.c owner bounds guard, standalone frobenius link fix, T_FRO_5 v2 align
+  (core `c608b2f`). Suite restocked green from H:\ (E_CPU_9 disposition: AVX2 reassociation
+  `5e443c9` → scalar pin `5cd5870`).
+- **CONTRACT-XBAR-P3 drafted** (`aabafec`) + §3b audit corrections (V-less IS real on the 12B;
+  KVD-const is 12B-only) — pointer in C1-lite §3b (`3d42477`).
+- **Stage KAIROS registered** (`ROADMAP-KAIROS.md` + `CONTRACT-KAIROS-K0-K1.md`, `a4d8f71`):
+  the sp-kernel thesis (turn = memory artifact; tick/interrupt/yield mapped to gated SP
+  primitives), CosySim/NEXUS/Project X = KAI-0 reference corpus (adopt/adapt/reject done).
+- **DESIGN-diffusion-lane** (`038dd0d`): T8 drafter = headline; recall-time gist upsampling
+  FORBIDDEN; consolidation-time ε-instrument; Exec stays AR.
+- **Doc fleet**: all four repo READMEs modernized; public site's stale 32k-HIT hero CORRECTED
+  (PIA `1d52e85`); Roadmap agent-nav box; engine root swept to `_bake/` (`7914429`) +
+  `.gitattributes` line-ending physics (`7ab91a7`); `shannon-prime-papers` repo DELETED
+  (PIA is the only series repo).
+- **Environment build-out**: Colab CLI lane live (T4 smoke green); gws + gcloud installed and
+  authed (project `sp-ppt-arm-lat`, Drive smoke green); credentials registry created
+  (`ENVIRONMENT.md` §1); ecosystem = HF PRO + Colab Pro + GitHub Pro + RunPod + Drive 5TB +
+  GCloud.
+
+## 5. Open threads (small, don't lose)
+
+- New HF model bucket (operator 2026-06-11) — **repo id = `KnackAU/sp-diffusion-stage`** (RESOLVED;
+  the air-gap for speculative-decode + MoE / DiffusionGemma prototypes). Push target for the
+  diffusion/spec-decode lane; banked in memory `reference-hf-diffusion-bucket`.
+- `.pre115` backups: D: copies deletable once operator confirms Drive uploads complete.
+- WSL gcloud unauthed (fine; Windows is canonical).
+- **HF-token path fixed 2026-06-11:** the creds-registry restructure MOVED the token into
+  `creds/claude-hf-token.txt`, but `_xbar/p2b` scripts read the old `archive/notes_and_stuff/
+  claude-hf-token.txt` → `fetch_horizon`/etc. were dead. Restored the synced duplicate at the old
+  path (ENVIRONMENT §1's "keep in sync"). DURABLE FIX TODO: repoint scripts to the `creds/` path
+  so a future move can't re-break them.
+- E2B/12B per-stage artifact assignments for P3 are pinned in CONTRACT-P3 §4 — drafting agent
+  noted §3b's geometry line conflates the two artifacts.
+- The operator floated zeta-PE / prime-harmonic positional encoding (his CosySim
+  `apps/prime_encoding` research) as a future lattice-native experiment — parked, unbanked
+  beyond this line.
+
+## 6. Standing watch procedure
+
+`check_pods.py` (any pods?) → `fetch_horizon.py` (receipts/STATUS) → verdict ONLY on
+STATUS=DONE (no reads from partial logs — the §3g lesson) → §3m matrix → contract run-record +
+STATE line + memory + commit/push. The watch holds. ⬢
