@@ -70,6 +70,16 @@ Ring-3 never has to be *right*; it has to be *not-wrong-enough to shortlist*, an
 
 The thermodynamic answer: a correct unbind costs **zero** fidelity (the verify re-injects exact bytes); a wrong unbind (capacity overflow) loses the fact but is **caught by the deflection gate** — the loss is degrade-safe, not corrupting. Receipt `engine tests/fixtures/xbar_r3/G-R3-LOSS.log`. NEXT = R3.3 `G-R3-DUALROUTE` (wire the live RETRIEVE shortlist → the closed #222 VERIFY end-to-end on 12B+E2B). No-budget.
 
+**R3.3 — G-R3-DUALROUTE GREEN (2026-06-17, engine 69638cf).** The continuous retrieve-and-verify pipe, composed from individually-metal-proven stages (`tools/ring3/g_r3_dualroute.py`): **RETRIEVE** = VSA unbind (R3.1) → top-K shortlist → **VERIFY** = the #222 / R3.2 gate (correct → +0.000% ACCEPT / foreign → +8.04% REJECT, 12B metal) → **LAND/UNDO** = `gemma4_kv_replay` + `gemma4_kv_rewind` O(1) (#222). Three pipes:
+
+| pipe | trace | verdict |
+|---|---|---|
+| **(a) clean hit** | cue → shortlist top-1 = correct → verify +0.000% → ACCEPT | scan_len=1, PASS |
+| **(b) decoy scan** | adversarial shortlist [foreign, correct] → rank-1 +8.04% REJECT+rewind → rank-2 +0.000% ACCEPT | scan_len=2, PASS — the top-K (P2.b top-5) door: survives a wrong candidate, still lands the fact |
+| **(c) null parity** | empty Ring-3 → empty shortlist → NULL → no inject → baseline byte-exact (== no module) | PASS, scan O(1) |
+
+The pipe takes a raw cue, survives the VSA unbind, executes the shortlist scan (rejecting + O(1)-rewinding foreign candidates), and lands the correct verbatim memory in the resident cache — degrade-safe throughout. Receipt `engine tests/fixtures/xbar_r3/G-R3-DUALROUTE.log`. NEXT = R3.4 NIGHTSHIFT idle loop (Ring-2 → bind → Ring-2′ shadow → G-R3-LOSS gate → Ring-3, pre-eviction; saturate-and-seal at ≤32 episodes/vector). No-budget.
+
 ## 6. Scope fence
 
 - Ring-3 is **Ring-2-verbatim's gist companion**, not a replacement. The verbatim store and its O(1) evict/rewind/replay (C2 + #222, CLOSED) remain the source of truth; Ring-3 only *shortlists* into it.
