@@ -28,18 +28,22 @@ a single human-readable synthesis of where the project stands: the XBAR latent c
 O(1) rewind, the KAIROS resident loop, the headline numbers, and the tests that prove each
 (and why they can be trusted). It is the fastest way to get oriented.
 
-**Latest (2026-06-16):** the KAIROS resident loop passed a **6h unattended soak GREEN** (351 loops /
-~8,400 ticks / 6h01m, 0 false / 0 missed / 0 pos-violation; the formal ≥24h gate is un-pursued by
-operator choice, not failed). **KAI-2 (the latent interrupt) is CLOSED, BOUNDED:** the delivery seam
-`gemma4_kv_inject` is a frozen GREEN asset (EMB control 2/2 on the 12B), but a single *static* compressed
-codec packet missed the pivot — a **sequence-positional** wall, not capacity. That motivated **KAI-3 (the
-audio-port frame projector), now CLOSED GREEN:** the inverse — `gemma4_kv_inject_seq` injects a *sequence*
-of N projected frames 1:1 with positions (no compression), and the metal gate hit **8/8 semantic pivots**
-on the 12B. KAI-3 is the bridge into the **GNA "EAR" line** — a *separate-but-related* program that gives
-the frozen model a real-world audio sense through the always-on NUC GNA 2.0 hardware, sharing the same
-inject seam (it is **not** a replacement for KAIROS latent memory). The next milestone is **GNA Stage 2**:
-swap the synthetic anchor for the real GNA/CNN audio front-end; the project then pivots **back to XBAR
-(KAIROS latent memory)**.
+**Latest (2026-06-17):** **XBAR P3 is CLOSED end-to-end (P3.0 → P3.4).** P3.3 added the replay-write seam
+(`SP_REPLAY`, `G-P3-SHARED` 3-leg PASS on both the 12B and E2B: an intact episode is bit-identical to
+baseline, a zeroed episode diverges 12/12), and P3.4 closed the recall-quality gate (`G-P3-PPL`: replaying
+a foreign episode deflects perplexity **+1.38%, under the <2% bar**; n=42 single-chunk, larger-N pending
+before any headline). The crossbar now reads, writes, compresses to O(1), retrieves under poison, replays
+bit-exactly, and recalls without breaking the model's perplexity. Separately, the **GNA "EAR" line is CLOSED
+end-to-end on physical silicon:** real speech → 12B pivot **7/8** (CTC recovery 0.44→0.868); the front-end
+lowered to GNA-native i16 at full FP32 token-recovery (POT 0.877) and run on the real Intel **GNA 2.0** in
+the NUC "Beast Canyon" (`GNA_HW` 0.877 == emulation == FP32) — the audio sense is physically realized. That
+near-term audio pivot is **done**, and the project has pivoted **back to XBAR**. The next milestone is the
+**Memo curator / Ring-3 orchestration tier above P3** — the autonomous recall-cue → episode-id → `SP_REPLAY`
+loop, with Ring-3 gist consolidation budget-gated via the P2.b adapter.
+
+*(Prior: the KAIROS resident loop passed a 6h unattended soak GREEN; KAI-2 latent interrupt CLOSED-BOUNDED
+at the sequence-positional wall; KAI-3 audio-port CLOSED GREEN at 8/8 metal pivots — the bridge into the GNA
+"EAR" line above.)*
 
 **If you are a coding agent opening a session: read `prompt.md` first, then
 `CURRENT-STATE-OF-PROJECT.md` (the synthesis) and `papers/PPT-LAT-STATE.md` (the proven
@@ -282,4 +286,27 @@ shannon-prime-lattice/
 Binding for any session that picks up the project:
 
 - **Anti-contamination.** Do NOT read, copy, or vendor code from the
-  archived
+  archived `shannon-prime/` or `shannon-prime-engine/` repos. The math
+  papers under `papers/PPT-ARM/` are conceptual reference — theory only,
+  never code. The lattice is a clean rebuild.
+- **No silent gate revisions.** Surface upstream; amendments land formally
+  with rationale, never as footnotes on a PASS.
+- **Honest closure notes.** Every closure enumerates gates, actual results,
+  what was bundled vs isolated, and deltas vs spec.
+- **One math object.** Features must touch a distinguishing primitive
+  (§2's substrate list / the ten heterogeneous-SoC CRT tricks); otherwise
+  they are drift.
+- **Terminology is load-bearing.** Lattice · `⪯_d` · KSTE · ARM · CRT-NTT ·
+  Spinor block · Frobenius lift · OK_Q4B · Exec / Memo / Ring 1/2/2′/3 ·
+  XBAR lanes P/C/M/N · NIGHTSHIFT · stage taxonomy (Alpha…Eta, Omicron ο,
+  Holon ⬢⃝). Don't invent new names or collapse two into one.
+- **Worktrees per concurrent agent.** 2+ agents on one repo → each in its
+  own `git worktree add`.
+
+---
+
+## 10. Contact
+
+- GitHub Issues: project tracking lives in each repo.
+- Discord: [Shannon-Prime-Lattice](https://discord.gg/rre9XZmvV).
+- License: MIT (see `LICENSE`).

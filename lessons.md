@@ -5,6 +5,34 @@ the rule that prevents the repeat. Receipts-first: cite the run/commit where it 
 
 ---
 
+## 2026-06-17 — Three lessons from closing XBAR P3.3/P3.4 + the GNA EAR on silicon
+
+**(i) A multi-path store will silently swallow a single-path hook — let the cheap gate fail-fast.**
+`gemma4_decode_cuda` has TWO prefill stores: the graph-capture path AND the velocity path. Under
+recall/replay `use_graph` is FALSE, so the **velocity** path is the one that actually runs. The first
+cut of P3.3 `SP_REPLAY` hooked only the graph store → the inject was inert (the gate would have read as
+a no-op). The cheap **E2B** fail-fast leg of `G-P3-SHARED` caught it in ~2 minutes — *before* paying the
+12B-metal cost. **Rule: when a hot path has more than one code route for the same operation, hook ALL of
+them, and run the cheapest representative gate first so an inert seam surfaces for pennies, not for a
+full 12B run.** Fix = inject at both stores (graph ~L2516 + velocity ~L2825).
+
+**(ii) Well-formed primitives compose at their boundaries with zero new code.** P3.4's PPL scorer **is**
+`gemma4_decode_cuda` in `SP_G4_SCORE` mode; `SP_REPLAY` is a flag on that same decode. So the recall-quality
+gate (`G-P3-PPL`, +1.38% < 2%) composed `SP_REPLAY ∘ SP_G4_SCORE` with **zero new engine code**. When each
+stage is a clean flag on the one decode, gates snap together — this is the payoff of the null-floor discipline
+(one untouched decode, behaviour added only via off-by-default knobs).
+
+**(iii) GNA: the OpenVINO toolchain is self-consistent only as a single ABI island.** The pip OpenVINO wheel
+**lacks the GNA plugin** (Intel removed it after the 2023.3 line). Mixing the pip runtime with the 2023.3
+*archive* runtime ABI-fails both ways. **The only working path is the archive's self-consistent 2023.3 runtime
+via `setupvars`** (+ system py3.8). And two GNA conv constraints bite at lowering time: **no padding** (GNA is
+VALID-only → encoder conv `padding=1→0`) and **filters must be a multiple of 4** (CTC head `33→36`, dummy
+channels sliced). With those, POT GNA-native i16 PTQ recovers full FP32 token-recovery (0.877) and the
+front-end runs on the physical GNA 2.0 at 0.877 == emu == FP32. Full recipe: memory
+`reference_gna_openvino_toolchain`.
+
+---
+
 ## 2026-06-16 — KAI-2 FINAL VERDICT (t10): Phase-1 GREEN, Phase-2 BOUNDED at the sequence-positional wall
 
 This closes G-KAIROS-2. The "FIX (next pass)" prescribed in the RESOLVED entry below (manifold-anchor

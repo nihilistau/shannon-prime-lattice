@@ -1,6 +1,6 @@
 # Shannon-Prime — Current State of the Project
 
-**As of 2026-06-16 (KAI-2 CLOSED bounded, KAI-3 CLOSED GREEN, GNA Stage 2 next).** This is the human-readable map of where the project stands: what we built, the numbers that matter, the tests we used to prove each claim, *why* those tests are the right ones, and why the results can be trusted. It is written to be read top-to-bottom by a person, and to orient an agent in one pass. Detailed, citable records live in the contracts and `PPT-LAT-STATE.md`; this document is the synthesis, not the ledger.
+**As of 2026-06-17 (GNA "EAR" line CLOSED on physical silicon; XBAR P3 CLOSED end-to-end P3.0→P3.4; Memo curator orchestration tier is the active NEXT).** This is the human-readable map of where the project stands: what we built, the numbers that matter, the tests we used to prove each claim, *why* those tests are the right ones, and why the results can be trusted. It is written to be read top-to-bottom by a person, and to orient an agent in one pass. Detailed, citable records live in the contracts and `PPT-LAT-STATE.md`; this document is the synthesis, not the ledger.
 
 ---
 
@@ -54,6 +54,18 @@ The retention proof: plant a secret "needle" deep in a 16k-token haystack, force
 
 - **Headline:** with the learned router the needle is recovered at depths 10%, 50%, and 90%. With a **frozen router (negative control)** it MISSES.
 - **Why the negative control is essential:** a HIT alone could be leakage (the needle sitting in some live buffer). The frozen-router MISS at the same depth proves the retrieval is *the learned router doing its job*, not an artifact — the router selected the needle into the compact slab, and only the good router can. A full-attention baseline at 16k is physically impossible on the 2060 (the context-sized softmax blows the shared-memory budget), which is exactly the motivation.
+
+### 1.7 P3.3 — the replay-write seam (CLOSED GREEN)
+The read/compaction path proved XBAR can *read* a compacted cache; P3.3 closes the inverse — *writing* a stored episode back in. `SP_REPLAY` injects an episode's owner-K/V over the prefill rows `[0, NPOS)` at the CUDA cache-store boundary, before attention.
+
+- **Headline (`G-P3-SHARED`, 3-leg PASS on BOTH 12B and E2B):** on the 12B (`gemma4-12b-b1`, 48 owners) and on E2B (`gemma4-e2b`, 15 owners / 20 sharers = owner-indirection exercised), an *intact* replayed episode is **bit-identical to baseline (diffs = 0)**, a *zeroed* episode **diverges 12/12** (collapse to a degenerate loop), and `SP_REPLAY` unset is the floor. Intact-equals-baseline proves the seam is well-formed; zeroed-diverges proves the payload is *load-bearing*, not inert.
+- The inject is placed at **both** prefill stores in `gemma4_decode_cuda` (graph-capture and velocity paths) — the velocity path is the one the gate actually runs (`use_graph` false under recall). Receipts `tests/fixtures/xbar_p3_replay/G-P3-SHARED_{12B,E2B}_GREEN.log`; harness `SP_G4_REPLAY_GATE`.
+
+### 1.8 P3.4 — recall quality (CLOSED GREEN)
+The last gate: replaying a foreign episode must not *break the model's perplexity*. The PPL scorer **is** `gemma4_decode_cuda` in `SP_G4_SCORE` mode, so `SP_REPLAY` composed with it with **zero new engine code**.
+
+- **Headline (`G-P3-PPL`):** wiki.tiny `n_ctx=84`, recall-OFF baseline SP PPL **4.6665** → recall-ON (proven episode, `NPOS=4`) **4.7311** = **+1.38% deflection, under the <2.0% gate → PASS**. A foreign episode over the 4 earliest of 84 positions, and the model holds focus. This complements the §1.5 sparse-recall deflection (learned-LSH 8× = +0.47%).
+- **Honest caveat (on the record):** `n_scored = 42`, a single chunk. The number is *deterministic* (replay, not router sampling — so not a noise-flippable illusion like the small-N read-deflection was), but a **larger-N multi-chunk run is the hardening lever before any public headline.** Receipt `tests/fixtures/xbar_p3_replay/G-P3-PPL_run.log`; runner `_run_p34_ppl.bat`.
 
 ---
 
@@ -127,11 +139,71 @@ KAI-3 is the **inverse of KAI-2** and the bridge into a *separate-but-related* p
 - **Numbers.** Synthetic ladder `noise_rel=0.1` (2.5× noise:signal) → held-out per-position top-1 **1.000**, manifold cos **0.9998** (the binder is noise-independent). Real-token train `V_sub=60` → top-1 **0.931**, cos **0.9937**.
 - **G-KAIROS-3 metal gate** (`SP_G4_KAI3` manifest) on the resident 12B: **8/8 SEMANTIC pivots** — salient → an event-specific `<ACTION>` ("Restart the build process", "Check disk status and run SMART"), idle → `NO_OP`; `KAI3_GATE_EXIT=0`. Receipts: `_xbar/p2b/kai3_gate.log`, `tools/audio_port/KAI3-LADDER-RESULTS.md` (engine repo).
 
-### 4.6 GNA Stage 2 — the next milestone (the real "EAR")
-With the KAI-3 delivery + projection architecture **LOCKED**, the next step (task **#154**) is **GNA Stage 2**: replace the synthetic anchor matrix `A` with the real **GNA/CNN audio front-end** — live audio/telemetry → 40 ms / 640-float / 16 kHz frames; `audio_token_id = 258881` — so the model gets an always-on, real-world audio sense. This is the GNA "EAR" line proper; KAIROS latent memory (XBAR) resumes after it.
+### 4.6 GNA "EAR" — CLOSED end-to-end ON PHYSICAL SILICON (the real audio sense lands)
+The GNA "EAR" line — replacing the synthetic anchor with a real audio front-end and lowering it onto the Intel GNA hardware — is now **CLOSED end-to-end on the physical silicon**, the strongest receipt in the audio program.
+
+- **Real speech → 12B pivot, 7/8 (2026-06-17).** Real TTS speech → log-mel → a GNA-conservative Conv1d encoder + CTC head → `gemma4_kv_inject_seq` → the resident 12B pivots **7/8** (up from 3/7 on the first run). Held-out CTC token recovery climbed **0.44 → 0.868** under a multi-voice bake (924 samples, 2 voices, 400 ep) — the 3/7 ceiling was data-starvation, not architecture, exactly as predicted. All 4 NO_OPs correct; 3/4 ACTIONs correct and coherent; the 1 miss was a conservative ACTION→NO_OP.
+- **The quant ladder (OpenVINO 2023.3, GNA 2.0).** ONNX→OV-IR FP32 is **bit-exact** (CPU 0.877 == torch 0.877). GNA default i16 *naive* PTQ **shears** recovery 0.877→0.667 (−0.211, scale-invariant ⇒ real int16 quant loss = the predicted CTC-head shear). NNCF calibrated INT8 on CPU recovers the head (0.860) but its FakeQuantize won't compile on GNA. **POT DefaultQuantization, GNA-native i16 = 0.877 FULL RECOVERY** (== FP32). Two GNA conv constraints fixed at zero cost: padding `1→0` (GNA = VALID only) and the CTC head `33→36` out-channels (GNA needs filters a multiple of 4; the dummy channels are sliced off).
+- **GNA_HW on the physical accelerator = 0.877.** Run on the real Intel **GNA 2.0** in the NUC "Beast Canyon" (i9-11900KB, driver `gna_03.05.00.2116`, BIOS-enabled), the front-end scores **0.877 == GNA_SW_EXACT emulation == FP32**. The EAR front-end is **PHYSICALLY REALIZED**. (Native-Windows OpenVINO 2023.3 — WSL2 has no GNA MMIO passthrough.)
+- **Receipts/contract.** `CONTRACT-KAIROS-K0-K1.md` §7.4/7.5/7.6; `_xbar/p2b/kai3/G-KAIROS-3-{AUDIO_7of8,GNA-i16_quant_gate,GNA-HW}.log`; engine tooling `tools/audio_port/{ov_gna_score,ov_score_ir,pot_gna_quantize}.py` + `run_gna_hw.bat` + `GNA_HW_BRINGUP.md`.
+
+With the EAR landed on silicon, the audio/GNA near-term pivot is **DONE** and the project **pivots back to XBAR (KAIROS latent memory)** — see §7.
 
 ---
 
 ## 5. Latent-space steering (the P2b adapter line)
 
-Parallel to the substrate work, we investigated whether the latent write of §1.2 can be made *general* — learning an adapter that fills cache slots 
+Parallel to the substrate work, we investigated whether the latent write of §1.2 can be made *general* — learning an adapter that fills cache slots to order rather than transplanting them.
+
+- **Recognition is real but sub-usable so far:** a contrastive-addressing probe reached top-1 0.462 (vs 0.031 chance — ~15× over chance) and top-5 0.77. That says the addressing signal exists and is a *shortlister, not yet a sniper*, which points the design toward a two-stage retrieve-and-verify loop rather than more training epochs.
+- **Generation at high compression is dead at k=2** (six forks all convicted) — an honest negative kept on the record. The verdict: the substrate stands regardless of the learned-fill outcome; learned-fill is a policy layer on top, not a foundation.
+
+---
+
+## 6. Why the results can be trusted (the methodology)
+
+This section is the actual moat. The numbers above are only as good as the discipline that produced them.
+
+1. **Bit-exact-when-off / null floor.** The production decode path is never touched. Every "on" result is therefore a controlled delta against a byte-identical baseline, not a comparison between two moving targets.
+2. **Pre-registered bounded gates.** When a stage crosses from exact to lossy (sparse, compressed), bit-exactness is impossible by definition — so we *write down the degradation threshold before the code* (e.g. PPL < 2%) and never move it to make a result pass. The 8× router's +0.47% is green against a bar set in advance.
+3. **Negative controls and poison.** Retention is proven by *destroying* the live source (poison) and by showing a *worse router misses* (control), not by a bare equality that leakage could fake.
+4. **Honest negatives, published.** A faster-but-wrong 34.2 tok/s headline was retired by our own perplexity rule; a 32k needle MISS stayed on the public front page; a small-N "improvement" was caught as a noise illusion when measured on a real corpus. The discipline self-corrects in the open.
+5. **Measurement hygiene.** GPU clocks pinned for timing; and when the 2060 turned out unable to pin its *memory* clock, we changed how we read sub-10% deltas rather than trusting the wall clock. We don't difference two sequential noisy series.
+
+A claim in this project comes with the command that produced it and the scope it's valid in. That is what "auditable" means here, and it is the one property a floating-point, text-bus agent stack cannot offer.
+
+---
+
+## 7. The state of the board
+
+| Axis | Status | Headline receipt |
+|---|---|---|
+| XBAR latent write (P1) | CLOSED | 15/15 incorporation + 15/15 selectivity; self-null 7/7 bit-identical |
+| XBAR ring + spill + page (P3) | CLOSED | bit-exact paged decode under a poisoned live cache |
+| O(1) VRAM (C-b.2) | CLOSED | 8k↔16k flat within ~50 MiB |
+| Learned router (8×) | CLOSED | +0.47% PPL (oracle −0.08%; frozen +4.17%) |
+| NIAH retention (C-c) | CLOSED | needle survives at 10/50/90% depth; frozen-router control MISSES |
+| XBAR replay-write (P3.3) | CLOSED GREEN | `SP_REPLAY` `G-P3-SHARED` 3-leg PASS on 12B + E2B: intact bit-identical, zeroed diverges 12/12 |
+| XBAR recall quality (P3.4) | CLOSED GREEN | `G-P3-PPL` +1.38% deflection < 2% gate (4.6665→4.7311); n=42 single-chunk caveat |
+| O(1) rewind (KAI-1b) | CLOSED | byte-identical 48 layers; 0.0073 vs 0.924 s/action |
+| Wrap-aware ring (KAI-1c) | CLOSED | byte-identical across a forced wrap (40 layers clobbered, diffs=0) |
+| Journaled-ring O(1) telemetry | CLOSED | ring slope 0.00365 ≈ full 0.00371 s/action |
+| Semantic crucible (KAIROS) | CLOSED | 24 ticks perfect: 0 false / 0 missed / 0 drift |
+| 6h endurance soak (G-KAIROS-1) | **GREEN** | 351 loops / ~8,400 ticks / 6h01m unattended, 0 false / 0 missed / 0 malformed / 0 pos-violation (≥24h gate un-pursued by choice, not failed) |
+| KAI-2 latent interrupt | **CLOSED (BOUNDED)** | Phase-1 seam `gemma4_kv_inject` GREEN (EMB 2/2); Phase-2 static `KAI2Codec` MISSED the pivot (sequence-positional wall, not capacity). Engine `c5628e4` |
+| KAI-3 audio-port (GNA "EAR" bridge) | **CLOSED GREEN** | `gemma4_kv_inject_seq` (N-frame sequence, no compression); G-KAIROS-3 8/8 semantic pivots on the 12B; synthetic top-1 1.000, real-token 0.931. Engine `e35a227` |
+| GNA "EAR" on physical silicon | **CLOSED** | real speech → 12B pivot 7/8 (CTC 0.44→0.868); POT GNA-native i16 = 0.877 full recovery; GNA_HW on Intel GNA 2.0 = 0.877 == emu == FP32 |
+
+**The crossbar substrate — space ⊗ time ⊗ cognition — is structurally complete on a 12B within a 12 GB footprint, and XBAR P3 is now CLOSED end-to-end: P3.0 manifest → P3.1 read → P3.2 spill/page/SWA-ring → P3.2-b-2b learned-LSH select → Phase C O(1) VRAM → C-c NIAH-survives → P3.3 replay-write → P3.4 recall-quality.** The auditable latent crossbar reads, writes, compresses to O(1), retrieves under poison, replays bit-exactly, and recalls without breaking the model's perplexity (+1.38% < 2%). Endurance is demonstrated by a clean 6h unattended soak (the formal ≥24h gate is un-pursued by operator choice, not failed). On the audio axis, **the GNA "EAR" line is now CLOSED end-to-end on physical silicon** (§4.6): real speech → 12B pivot 7/8, the front-end lowered to GNA-native i16 at full FP32 token-recovery (POT 0.877) and run on the real Intel GNA 2.0 hardware (GNA_HW 0.877 == emu == FP32). That deliberate near-term audio pivot is **DONE**, and **the project has pivoted back to XBAR (KAIROS latent memory)**. **NEXT = the orchestration / Ring-3 consolidation tier ABOVE P3** — the Memo curator's autonomous recall loop (recall-cue → episode-id → `SP_REPLAY`), with the Ring-3 gist consolidation budget-gated via the P2.b adapter. The remaining XBAR hygiene follow-ons (exact journal-tax via CUDA events; the `gemma4_kv_decode` first-token boundary reconcile; compact-slab globals wrap-rewind) stay queued; the P3.4 larger-N multi-chunk run is the named hardening lever before any public headline.
+
+---
+
+## 8. Hardware reality (so numbers are read correctly)
+
+- **Host GPU:** RTX 2060, **12 GB** VRAM, sm_75. Core clock locks for timing; **the memory clock does not lock** (vendor-unsupported), so bandwidth-bound decode has an irreducible ±~12% wall-clock jitter floor. Use within-config slopes or CUDA-event timing for sub-10% deltas, never a difference of two sequential wall-clock series.
+- **Model:** Gemma-3-12B, QAT 4-bit (the "B1" / OK_Q4B artifact), the only mathematically-intact sub-5-bit Gemma-4-12B we could produce (paper 06).
+- **Scope of claims:** the **0.6B** model is used for the memory-ladder and control experiments; the **12B** carries the XBAR and KAIROS headline results. Any "one model, one host" boilerplate in older docs is stale and should read "0.6B for the ladder, 12B for XBAR/KAIROS."
+
+---
+
+*Pointers: the canonical proven-record is `papers/PPT-LAT-STATE.md`; the active contracts are `papers/CONTRACT-KAIROS-K0-K1.md` (KAI-0/1, §5.5-5.8 are freshest), `papers/CONTRACT-XBAR-P3-ring-on-exec.md`, and `papers/RFC-XBAR-auditable-latent-crossbar.md`; the public receipts ledger is in the `Position_Is_Arithmetic` repo (`LEDGER.md`).*
