@@ -80,6 +80,17 @@ The thermodynamic answer: a correct unbind costs **zero** fidelity (the verify r
 
 The pipe takes a raw cue, survives the VSA unbind, executes the shortlist scan (rejecting + O(1)-rewinding foreign candidates), and lands the correct verbatim memory in the resident cache — degrade-safe throughout. Receipt `engine tests/fixtures/xbar_r3/G-R3-DUALROUTE.log`. NEXT = R3.4 NIGHTSHIFT idle loop (Ring-2 → bind → Ring-2′ shadow → G-R3-LOSS gate → Ring-3, pre-eviction; saturate-and-seal at ≤32 episodes/vector). No-budget.
 
+**R3.4 — G-R3-NIGHTSHIFT GREEN (2026-06-17, engine a64a916). Ring-3 Path A CLOSED end-to-end.** The idle-loop consolidation state machine (`tools/ring3/g_r3_nightshift.py`): SELECT a resident Ring-2 episode → BIND (addr⊛id into the active vector, in a shadow copy) → SHADOW-GATE (re-verify **every** bound episode still recalls@1 above margin — crosstalk-safe, not just the new one) → PROMOTE + EVICT (free the resident slot; the verbatim ep.k **stays on Optane**, a tier-demotion not a delete) → SATURATE & SEAL (gate-driven; CAP=32 = the R3.2 budget as a safety cap) → fresh vector.
+
+| run | result |
+|---|---|
+| **(A) D=1024, CAP=32 (production)** | 40 episodes → vector#1 seals at the cap (32), vector#2 carries 8; all recall@1 GREEN; resident pool 40→0; **349.8 MB resident KV demoted to Optane, Ring-3 resident index 16.3 KB** |
+| **(B) D=128 (small)** | the shadow-gate fires **before** the cap — seals `[10,6,15,8,1]` (max 15 < 32), proving the seal is the capacity **math**, not a hardcoded 32; all recall@1 GREEN |
+
+The thermodynamic GC works: episodes move from the expensive resident pool into the dense superposed index (O(1)-per-vector resident footprint) before capacity runs out, the eviction is degrade-safe (gate guards reachability before the slot is freed; verbatim survives on Optane), and the seal is the math. Receipt `engine tests/fixtures/xbar_r3/G-R3-NIGHTSHIFT.log`.
+
+**⇒ Ring-3 Path A is CLOSED end-to-end, parameter-free, zero training budget: R3.1 BIND → R3.2 LOSS → R3.3 DUALROUTE → R3.4 NIGHTSHIFT, all GREEN.** Remaining (deferred): the R3.x **Z_q/NTT engine port** of the host-numpy VSA bind/unbind (deployment, exact integer); the R3.x **provenance tag** (G-R3-PROV); and **Path B** (the P2.b adapter) — only if a future need shows the parameter-free shortlist insufficient, and only behind the operator's budget green.
+
 ## 6. Scope fence
 
 - Ring-3 is **Ring-2-verbatim's gist companion**, not a replacement. The verbatim store and its O(1) evict/rewind/replay (C2 + #222, CLOSED) remain the source of truth; Ring-3 only *shortlists* into it.
