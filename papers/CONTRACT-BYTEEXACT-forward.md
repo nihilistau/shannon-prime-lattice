@@ -68,6 +68,26 @@ cargo run --release --bin bx_islands_compare -- ..\..\tests\fixtures\xbar_r3\bx_
 ```
 Receipt: `engine tests/fixtures/xbar_r3/G-BYTEEXACT-ISLANDS-CUDA.log`. This gate is the named §8-step-2 precondition for wiring the integer islands into the CUDA forward.
 
+### 5.2 G-BYTEEXACT-FORWARD-12B — the islands wired into the CUDA decode (PRE-REGISTERED 2026-06-18)
+The §5.1 scaffold proved the integer refs match the float islands on real 12B activations (RMS 3.84e-5 / GELU 8.18e-7 / RoPE 9.62e-6, all < 1e-4). This gate is the WIRE-IN: the exact-integer islands now run *inside* the gemma4 CUDA decode, gated by `SP_BYTEEXACT`. Builds on the already-landed integer **attention** (`k_attn_decode_win_bx`, §7; G-BYTEEXACT-ATTN-12B: LEG A 4.6665 / LEG B 4.6069 on n=42).
+
+**Mechanism (additive, env-gated, default-off = byte-identical null floor):** a `__device__ __constant__ int d_bx_flag` is set ONCE at `gemma4_decode_cuda` entry (`cudaMemcpyToSymbol` from `getenv("SP_BYTEEXACT")`, BEFORE graph capture so the captured graph bakes the chosen path). Each float island kernel gains an `if (d_bx_flag) { …integer… return; }` branch in front of its existing float body:
+- **RMSNorm** — `k_rmsnorm` / `k_rmsnorm_head` / `k_rmsnorm_head_noweight` → shared `bx_rmsnorm_core` (int64 sum-of-squares reduction = order-immune; `bx_rms_inv` = the 64-bit-split isqrt, SH=50 `num=(n<<50)/sumsq; val=num<<22; inv=bx_isqrt_u64(val)`; Q16/IB20/Qw16, out / 2^52).
+- **GELU** — `k_gelu_mul` + the AltUp gate `k_altup_gate` → `bx_gelu` (FB30 cubic+tanh; `bx_mulshift_fb` = `__umul64hi`-based signed `(a*b)>>FB` for the `X*X`/`X*X*X`; tanh via the shared `bx_exp_fixed`).
+- **RoPE** — `k_rope` / `k_rope_at` / `k_rope_freqs` / `k_rope_freqs_at` / `k_rope_dyn` / `k_rope_freqs_dyn` → `bx_cordic_cossin` (rotation-mode CORDIC, the ref atan table + K) via `bx_rope_pair` (Q16 fixed-point rotate); `freq` recomputed from the same float `rbase`/`ff` inputs the float kernel uses, encoded to FB30 (`bx_rope_theta`, `pos*freq_fix` < 2^50 so no `__int128`).
+- **softcap** — `k_softcap` (LM-head) → integer tanh via `bx_tanh_fixed`.
+
+All wide products avoid `__int128` (NVCC): `__umul64hi` for the GELU cubic and the exp's `d*LOG2E`; the 64-bit isqrt split for the RMS numerator. Reductions are exact integer ⇒ **reduction-order-immune** (the cross-machine bit-identity proxy; a true two-GPU check is external/future).
+
+**Gate (`test_gemma4_ppl_cuda`, NCTX=84, CHUNKS=1, n_scored=42, `build-cuda-vs22`, model `gemma4-12b-b1.sp-model`):**
+| leg | env | threshold | meaning |
+|---|---|---|---|
+| **LEG A** | `SP_BYTEEXACT` unset | **PPL == 4.6665 EXACTLY** | the null floor — default-off MUST be byte-identical to baseline |
+| **LEG B** | `SP_BYTEEXACT=1` | **PPL parity** (within small-N deflection; attention-only gave 4.6069) | the integer islands cost nothing measurable |
+| **DETERMINISM** | `SP_BYTEEXACT=1`, run twice | **run-to-run bit-identical** | integer reductions are order-immune (cross-machine proxy) |
+
+LEG A is the hard byte-identical constraint; LEG B is a parity band (the n=42 deflection is ±~1.5%, see `feedback_small_n_deflection_illusion`). Receipt: `engine tests/fixtures/xbar_r3/G-BYTEEXACT-FORWARD-12B.log`.
+
 ## 6. Note for the gguf-v4 successor
 A *from-scratch* model would **choose** Mersenne hidden dims ({8191, 32767, 131071}) so RMSNorm/RoPE division becomes an exact bit-shift, closing all islands by construction — the natural end state this retrofit approximates with fixed-point. Out of scope here; in scope for the successor study.
 
