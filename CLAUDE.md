@@ -14,6 +14,7 @@
 - **Gemini is a valued collaborator but we verify** — read the actual paper/code, fix/improve its suggestions, map onto our discrete substrate; never blindly adopt.
 - **Drive by default.** Make the obvious call; surface only genuine forks, and recommend. No filler, no closers.
 - Anti-contamination: do not copy from `shannon-prime/` or `shannon-prime-engine/`.
+- **SP-OKF knowledge discipline.** All knowledge docs are SP-OKF concepts (our profile of Google's Open Knowledge Format v0.1): carry the frontmatter (`type` required + `title/description/tags/timestamp/resource` + the receipts-first `sp_status/sp_gate/sp_commit/sp_repro`). New `type`s register in `papers/SP-OKF-PROFILE.md` §2 FIRST. Run the validator (gate `G-OKF-CONFORM`) on a touched bundle before commit: `python tools/okf_validate.py <bundle-dir>`. Spec + phased rollout: `papers/SP-OKF-PROFILE.md`.
 
 **Start:** read `prompt.md` → `papers/PPT-LAT-STATE.md` + `papers/PPT-LAT-Roadmap.md` + active contract → `MEMORY.md` → check the tree → confirm next falsifiable step → execute, gate, commit/push, bank memory.
 
