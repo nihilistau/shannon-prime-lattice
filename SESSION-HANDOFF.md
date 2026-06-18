@@ -11,6 +11,18 @@ The XBAR memory architecture is now UNIFIED onto the exact-integer O_K substrate
 **No runs in flight. No pods. No schtasks. RunPod balance: $0.**
 
 ---
+## 0b. BYTE-EXACT FORWARD — campaign status (2026-06-18, late session)
+
+Goal: the entire gemma-4-12B forward **byte-exact** (cross-machine bit-identical, deterministic-integer) — auditability mission, not compression (see `papers/CONTRACT-BYTEEXACT-forward.md`). **Course-correction landed (operator): the byte-exact math is owned by the UNIVERSAL Rust crate `engine tools/sp_dsp_smoke` (L2 orchestrator + scalar bit-exact reference), NOT hand-rolled per backend.** The crate already had the LINEAR algebra bit-exact-gated (Barrett, mod-q matmul, Garner CRT w/ `Q1_INV_MOD_Q2=894602413`, the NTT ladder); this session's offline ATTN-NTT/ATTN-FULL prototypes + the CUDA `bx_*` re-derived it (lesson banked).
+
+DONE + GREEN this session:
+- **Islands → crate** (the genuinely-new nonlinear piece): `sp_dsp_smoke/src/sp_islands_q_ref.rs` (`rmsnorm/softmax/gelu_q_ref`, FB30 exact-integer) + host gate `sp_islands_q_ref_test.rs` — **G-ISLANDS-Q-REF GREEN** (RMS 5.8e-6 / softmax 1.3e-6 / GELU 2.8e-6, order-immune; `cargo run --bin sp_islands_q_ref_test`, host x86 no DSP). Engine `4511a10`.
+- **Bridge step 1**: `case SP_ARCH_GEMMA4: gemma4_forward_cuda` added to `tools/sp_daemon/c_backend_cuda/sp_daemon_cuda_glue.c` — the crate's existing `register_forward_backend` hook (feature `wire_cuda_backend`, gate `T_WIRE_CUDA_RUNTIME_ACTIVE`) can now drive the real 12B. Engine `3f021d9`.
+- **(provisional)** committed CUDA `k_attn_decode_win_bx` (exact-integer dual-prime attention, on-12B PPL 4.6069 vs 4.6665 baseline, `9c2aad3`) — left as a CUDA-side datapoint pending reconciliation into the crate-driven path. The wrong-layer CUDA RMS edits were **reverted**.
+
+NEXT (all crate-native, the obvious remaining — full bridge plan in CONTRACT-BYTEEXACT §8): RoPE integer-exact ref (last island; needs integer sin/cos = CORDIC/poly) → wire islands into a CUDA exactness gate vs `*_q_ref` → reconcile `.sp-model` loader to OK_Q4B (or pass resident `g_w`) → end-to-end byte-exact-when-off gate spanning CUDA (build `wire_cuda_backend` + `T_WIRE_CUDA_RUNTIME_ACTIVE`) → (new sprint) persistent-KV L1 verb for `gemma4_kv` decode. Build note: the crate's host bins run with plain `cargo run --bin <name>`; the CUDA forward backend builds under VS18 BuildTools (`D:\Program Files (x86)\...\18\BuildTools`, cl 14.50) + CUDA 13.2, feature `wire_cuda_backend`.
+
+---
 ## 1. IN FLIGHT right now (nothing; all clean)
 
 - No active GPU runs. No pods. No schtasks. GPU clocks at default.
