@@ -1,6 +1,6 @@
 # SESSION-HANDOFF.md — where things stand
 
-**Updated:** 2026-06-18 (**XBAR UNIFIED onto the exact-integer O_K substrate** — ten receipts, all GREEN or honest-negative; engine `0019b86→d2d7ceb`, all pushed; **period-6 rebase + host-numpy→native Z_q/NTT port both CLOSED**; **nothing baking**).
+**Updated:** 2026-06-18 (**XBAR / NIGHTSHIFT COMPLETE end-to-end** — the native-C `core/ring3` port closed the deploy gap: gate **T_RING3_NATIVE 42/42**, math-core `e0fccd3` / engine submodule `7b992d2`. Prior: XBAR unified onto the exact-integer O_K substrate, period-6 rebase + host-numpy→native Z_q/NTT port CLOSED. T4-weights convicted, KAIROS closed → the locked queue's prior top two are spent; NEXT is an open strategic call. **Nothing baking**).
 
 ---
 
@@ -50,9 +50,13 @@ Previously closed (all on record, nothing in flight):
 
 ## 2. The decision queue (locked order — do not reshuffle without the operator)
 
-1. **▶▶ T4 Frobenius π^k quantization of the 9.4 GB model WEIGHTS (2026-06-18).** This is the validated lever — Frobenius cancellation, 6-sig-fig on Gemma3-1B, per-tensor π^k scale is FREE (no propagation), now operational on the Ring-2 episode store (G-R2-FROB). Apply it to the *weights*: embedding / FFN / attention tensors. **NOT Möbius** — G-T2-WEIGHTS proved Möbius fails its own object (trained embeddings have no multiplicative index structure; composite-row reconstruction worse than random). Pre-register the quality gate (top-1 / PPL deflection vs the OK_Q4B baseline 4.6665) before coding; the bit-width is the lever (cf. 12b 2.86× / 16b 2.0× / 24b 1.36× on episodes). No budget (local 2060).
+**STATUS (2026-06-18): the locked queue's prior top two are SPENT.** XBAR / NIGHTSHIFT is now COMPLETE end-to-end and KAIROS was already closed; T4-on-weights is convicted. The next campaign is an open strategic call (see item 1).
 
-2. **▶ KAIROS post-organism state.** With the organism loop closed native, the next agency-axis step is the resident KAIROS loop over the unified substrate. Scope to be set against the existing KAIROS contracts.
+0. **✓ XBAR / NIGHTSHIFT COMPLETE end-to-end (2026-06-18).** Mechanisms all GREEN (P1→P3.4 + C2 Steps 1–3.1 + #222 + Ring-3 Path A R3.1→R3.4 + organism + native O_K bind) AND the **native-C `core/`-resident port CLOSED** — `core/ring3/` (`ring3.c` + `include/sp/ring3.h`) ports the VSA layer + NIGHTSHIFT state machine onto native `sp_pr_mul`; gate **T_RING3_NATIVE 42/42** (bind/unbind/superpose bit-identical to the Python `ok_bind` reference; NIGHTSHIFT reproduced [32,8]@D=1024 + gate-before-cap@D=128; order-immune); carriers unified to splitmix64 (no Python regression). Math-core `e0fccd3`, engine submodule bump `7b992d2`, engine ok_bind unify `f331da2`. The resident consolidation loop is now deployable native C. Remaining XBAR items are optional / deferred-by-choice → moved to the hygiene queue (item 3): N1 unattended soak, G-R3-PROV, Path B.
+
+1. **▶▶ NEXT = open strategic inflection (operator's call).** The major campaigns are all closed — XBAR/NIGHTSHIFT, the byte-exact forward, KAIROS, GNA EAR. **T4 Frobenius π^k on the WEIGHTS is NOT a candidate — it is CONVICTED:** the incoherence-rotation / Hadamard-fold compression was ruled REDUNDANT vs per-32-block OK_Q4B (G-WEIGHT-FOLD-ORACLE `8ae8825`, "do NOT build" — the boundary thesis on weights), and the byte-exact OK_Q8-per-tensor-π^k angle was absorbed into the closed byte-exact forward (dp4a integer accumulate already makes OK_Q4B exact). Candidate next campaigns to choose among: **(a) harden→publish** — P3.4 larger-N multi-chunk hardening run + the R1–R5 prepublication checklist, toward releasing the staged papers; **(b) gguf-v4 Mersenne co-design** — the from-scratch format/model where a Mersenne hidden-dim unlocks the exact integer-RMS shortcut (byte-exact is its foundation); **(c) the diffusion lane** (DiffusionGemma drafter / spec-decode, Stage-Gamma). The one carried-forward external item is the 2-physical-GPU byte-exact check (needs a 2nd machine).
+
+2. **▶ N1 — the deployed subconscious (optional; the lone remaining NIGHTSHIFT item).** The consolidation *mechanism* is closed (item 0); N1 is the *deployment*: episode persistence across sessions (the C1-lite `{Kstore,Vstore,manifest}` file-set, reload-and-recall) + an unattended schtasks-owned consolidation soak (net-positive gated promotions, zero canonical corruption, full receipt log — the consolidation analogue of the proven KAIROS 6h soak). Deferrable by choice like the KAIROS ≥24h gate; pre-register CONTRACT-XBAR-N1 before running if pursued.
 
 3. **Hygiene queue (non-blocking; pick up when convenient).**
    - #220 cudaEvent journal-tax (exact per-tick overhead; wall-clock floor on 2060 makes it noise otherwise).
