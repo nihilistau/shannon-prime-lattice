@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION CLOSED — lat-3-hx-mode-d-hvx (Sprint D MVP)
+description: "Date: 2026-05-29"
+tags: [session-handoff, hvx]
+timestamp: 2026-05-29T02:46:28Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-3-hx-mode-d-hvx.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION CLOSED — lat-3-hx-mode-d-hvx (Sprint D MVP)
 **Date:** 2026-05-29  
 **Plan:** `papers/SESSION-PLAN-lat-3-hx-mode-d-hvx.md` (`d0d273f`)  

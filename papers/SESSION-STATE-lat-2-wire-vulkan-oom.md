@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION-STATE — Phase 2-VK Vulkan runtime OOM (P2 quarantine)
+description: "Filed: 2026-06-02 (core-heal recovery session)"
+tags: [session-handoff, vulkan, wire]
+timestamp: 2026-06-01T19:48:32Z
+resource: shannon-prime-lattice/papers/SESSION-STATE-lat-2-wire-vulkan-oom.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-STATE — Phase 2-VK Vulkan runtime OOM (P2 quarantine)
 
 **Filed:** 2026-06-02 (core-heal recovery session)

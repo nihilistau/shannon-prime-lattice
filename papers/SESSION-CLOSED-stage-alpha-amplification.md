@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: "SESSION-CLOSED — Stage Alpha: the amplification arc + C2 envelope close (2026-06-04→06)"
+description: "Scope: the CPU/RAM/Optane tier (Stage Alpha)."
+tags: [session-handoff]
+timestamp: 2026-06-06T05:12:28Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-stage-alpha-amplification.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-CLOSED — Stage Alpha: the amplification arc + C2 envelope close (2026-06-04→06)
 
 **Scope:** the CPU/RAM/Optane tier (Stage Alpha). Closes the C2 ARM-memory

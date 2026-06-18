@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION CLOSED — lat-2-CU.PTX.MMA.TILE.2B
+description: "Date: 2026-05-27"
+tags: [session-handoff, ptx]
+timestamp: 2026-05-27T09:49:25Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-2-CU-PTX-MMA-TILE-2B.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION CLOSED — lat-2-CU.PTX.MMA.TILE.2B
 **Date:** 2026-05-27  
 **Milestone:** §17.3.TILE-2b — B smem transpose, naive byte-scatter  

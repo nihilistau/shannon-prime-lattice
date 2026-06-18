@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION PLAN — lat-3-hx-mode-f-halide-vtcm (Sprint F)
+description: "Date: 2026-05-29"
+tags: [session-handoff, vtcm]
+timestamp: 2026-05-29T04:05:36Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-3-hx-mode-f-halide-vtcm.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION PLAN — lat-3-hx-mode-f-halide-vtcm (Sprint F)
 **Date:** 2026-05-29
 **Goal:** Stand up the Halide AOT generator path for a 2-D fixed-point axpby kernel and use it as the carrier for a hardware litmus test on `HAP_request_VTCM()` under our existing Path-B Unsigned PD admission.

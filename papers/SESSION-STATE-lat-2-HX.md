@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION-STATE-lat-2-HX
+description: "Phase: 2-HX — engine, Hexagon V69 HTP backend (shannon-prime-system-engine)."
+tags: [session-handoff]
+timestamp: 2026-05-23T07:14:09Z
+resource: shannon-prime-lattice/papers/SESSION-STATE-lat-2-HX.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-STATE-lat-2-HX
 
 **Phase:** 2-HX — engine, Hexagon V69 HTP backend (`shannon-prime-system-engine`).

@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION CLOSED — lat-smoke-2node
+description: "Date: 2026-05-29"
+tags: [session-handoff]
+timestamp: 2026-05-28T16:01:20Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-smoke-2node.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION CLOSED — lat-smoke-2node
 **Date:** 2026-05-29  
 **Tag:** `lat-smoke-2node`  

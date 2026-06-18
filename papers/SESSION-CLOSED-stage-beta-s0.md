@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION-CLOSED — Stage Beta Stage-0 + GPU decode (2026-06-06)
+description: "Scope: open Stage Beta (RTX 2060 12GB, Turing sm_75) — verify the discrete"
+tags: [session-handoff]
+timestamp: 2026-06-06T05:12:58Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-stage-beta-s0.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-CLOSED — Stage Beta Stage-0 + GPU decode (2026-06-06)
 
 **Scope:** open Stage Beta (RTX 2060 12GB, Turing sm_75) — verify the discrete

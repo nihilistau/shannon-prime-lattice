@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION CLOSED — lat-3-hx-mode-d-j (Sprint J — Path A1 sp_dsp_smoke-resident)
+description: "Date: 2026-05-30"
+tags: [session-handoff]
+timestamp: 2026-05-29T12:06:10Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-3-hx-mode-d-j.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION CLOSED — lat-3-hx-mode-d-j (Sprint J — Path A1 sp_dsp_smoke-resident)
 **Date:** 2026-05-30
 **Engine commits:** `5b446e9` (SpErr::Other), `3ede795` (dsp_model.rs), `f429f5f` (kv_cache.rs), `78fd394` (bin), `8896ea7` (verbatim output)

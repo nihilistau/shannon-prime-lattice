@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: "SESSION CLOSED — Phase 3-MoE: qwen35moe reference forward bit-exact (2026-06-02)"
+description: "Model: Qwen3.6-35B-A3B (qwen35moe), D:\\Files\\Models\\lmstudio-community\\Qwen3.6-35B-A3B-GGUF\\Qwen3.6-35B-A3B-Q4_K_M.gguf (19.7 GB, Q4_K_M)."
+tags: [session-handoff, moe]
+timestamp: 2026-06-02T05:16:25Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-3-moe-forward.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION CLOSED — Phase 3-MoE: qwen35moe reference forward bit-exact (2026-06-02)
 
 **Model:** Qwen3.6-35B-A3B (`qwen35moe`), `D:\Files\Models\lmstudio-community\Qwen3.6-35B-A3B-GGUF\Qwen3.6-35B-A3B-Q4_K_M.gguf` (19.7 GB, Q4_K_M).

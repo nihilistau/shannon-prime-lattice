@@ -1,3 +1,15 @@
+---
+type: contract
+title: "CONTRACT XBAR-P2 — Pseudo-token injection (the deployable mechanism, and the stall fix)"
+description: "Parent: RFC-XBAR §5 stage P2 · CONTRACT-XBAR-P1 (CLOSED, ledger X-R1)."
+tags: [contract, xbar]
+timestamp: 2026-06-08T00:18:32Z
+resource: shannon-prime-lattice/papers/CONTRACT-XBAR-P2-pseudo-token.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # CONTRACT XBAR-P2 — Pseudo-token injection (the deployable mechanism, and the stall fix)
 
 **Parent:** RFC-XBAR §5 stage P2 · CONTRACT-XBAR-P1 (CLOSED, ledger X-R1). **Status:** P2.a DRAFT (spec'd 2026-06-08).

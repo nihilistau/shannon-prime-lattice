@@ -1,3 +1,15 @@
+---
+type: design
+title: "RFC-001: PPT-ARM — the Shannon-Prime inference architecture (and the Lattice that fell out of it)"
+description: "Status: DRAFT for review/critique/iteration."
+tags: [design]
+timestamp: 2026-06-18T05:55:03Z
+resource: shannon-prime-lattice/papers/PPT-LAT-RFC-001-Universal-Discrete-Architecture.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # RFC-001: PPT-ARM — the Shannon-Prime inference architecture (and the Lattice that fell out of it)
 
 **Status:** DRAFT for review/critique/iteration. v2 — hierarchy corrected (PPT-ARM is primary; the Lattice is its natural extension). **Amended 2026-06-03:** the C2.1 memory envelope is now measured (recall router solved, two-ring wired live — §9/§11); public front door live at [Position Is Arithmetic](https://github.com/nihilistau/Position_Is_Arithmetic) (site https://nihilistau.github.io/Position_Is_Arithmetic/); all repos relicensed to MIT.

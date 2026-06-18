@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION CLOSED — lat-2-L1.FP16 (§8.7.5–8.7.6)
+description: "Tags (both repos):"
+tags: [session-handoff, l1]
+timestamp: 2026-05-25T22:21:00Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-2-L1-FP16.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION CLOSED — lat-2-L1.FP16 (§8.7.5–8.7.6)
 
 **Tags (both repos):**

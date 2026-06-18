@@ -1,3 +1,15 @@
+---
+type: contract
+title: CONTRACTS C4 / C5 / C6 — decisions captured (stubs; detailed design DEFERRED)
+description: "Parent: RFC-001. Status: decision-capture stubs, NOT full contracts."
+tags: [contract]
+timestamp: 2026-06-03T19:00:26Z
+resource: shannon-prime-lattice/papers/CONTRACT-C4-C5-C6-decisions.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # CONTRACTS C4 / C5 / C6 — decisions captured (stubs; detailed design DEFERRED)
 
 **Parent:** RFC-001. **Status:** decision-capture stubs, NOT full contracts. **Deliberate scope limit:** detailed L1-ABI/daemon state machines are **deferred until C1/C2 prove the substrate** (the project's failure mode is architecting unbuilt pillars ahead of the measured base). This file exists so the *decisions* below are not lost (anti-amnesia), not to design the machines now.

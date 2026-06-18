@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: "SESSION-CLOSED: lat-phase-ts-map"
+description: "Date: 2026-05-26"
+tags: [session-handoff]
+timestamp: 2026-05-26T13:17:57Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-ts-map.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-CLOSED: lat-phase-ts-map
 
 **Date:** 2026-05-26  

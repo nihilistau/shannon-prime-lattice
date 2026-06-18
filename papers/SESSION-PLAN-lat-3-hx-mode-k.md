@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION PLAN — lat-3-hx-mode-k (K v0.alpha — dispatch-parallelism premise)
+description: "Date: 2026-05-30"
+tags: [session-handoff]
+timestamp: 2026-05-29T13:21:16Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-3-hx-mode-k.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION PLAN — lat-3-hx-mode-k (K v0.alpha — dispatch-parallelism premise)
 **Date:** 2026-05-30
 **Goal:** Empirically verify whether two ARM threads concurrently invoking the EXISTING Sprint J FFN diag method on the cDSP achieve wall-clock parallelism via FastRPC + cDSP's dual-vector-context capability. **No kernel changes, no Halide generator changes, no second prime.** ~150 LOC; pcycle overlap is the decision gate for whether K v0.beta (Barrett-reduction CRT kernel) dispatches or K.2 (NPU/Mode B/D) takes priority.

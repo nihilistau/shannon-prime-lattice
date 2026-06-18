@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION PLAN — lat-16-3-1-bulk
+description: "Date: 2026-05-29"
+tags: [session-handoff]
+timestamp: 2026-05-28T19:54:43Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-16-3-1-bulk.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION PLAN — lat-16-3-1-bulk
 **Date:** 2026-05-29  
 **Scope:** Ship `sp_hedge_read_bulk` + `setvbuf` bench fix. Issue throughput-closed + umbrella on PASS.

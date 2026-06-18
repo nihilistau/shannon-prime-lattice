@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: "SESSION-CLOSED — Stage Beta speed: CUDA graphs + the INT8/Q4 dp4a ladder (2026-06-06)"
+description: "Scope: turn the Stage-Beta GPU decode (Beta-S0) into a real speed story —"
+tags: [session-handoff, speed]
+timestamp: 2026-06-06T08:08:23Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-stage-beta-speed.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-CLOSED — Stage Beta speed: CUDA graphs + the INT8/Q4 dp4a ladder (2026-06-06)
 
 **Scope:** turn the Stage-Beta GPU decode (Beta-S0) into a real speed story —

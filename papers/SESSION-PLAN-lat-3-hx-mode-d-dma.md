@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION PLAN — lat-3-hx-mode-d-dma (Sprint B)
+description: "Date: 2026-05-29"
+tags: [session-handoff]
+timestamp: 2026-05-29T02:08:36Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-3-hx-mode-d-dma.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION PLAN — lat-3-hx-mode-d-dma (Sprint B)
 **Date:** 2026-05-29  
 **Goal:** `DmaBuffer` zero-copy via `rpcmem_alloc(RPCMEM_HEAP_ID_SYSTEM, RPCMEM_TRY_MAP_STATIC, size)`. Eliminate the ARM↔DSP marshalling copy that Sprint A pays for plain `Vec<u8>` buffers.

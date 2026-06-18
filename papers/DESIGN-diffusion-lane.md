@@ -1,3 +1,15 @@
+---
+type: design
+title: "DESIGN — the diffusion lane (DiffusionGemma applications, banked 2026-06-11)"
+description: "Status: [DESIGN] — nothing here is open work."
+tags: [design, diffusion]
+timestamp: 2026-06-11T04:27:27Z
+resource: shannon-prime-lattice/papers/DESIGN-diffusion-lane.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # DESIGN — the diffusion lane (DiffusionGemma applications, banked 2026-06-11)
 
 **Status:** [DESIGN] — nothing here is open work. Strict sequencing: no diffusion item starts

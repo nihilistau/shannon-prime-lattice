@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: RELEASE — KAIROS Latent Interrupt (KAI-2) + Audio-Port Bridge (KAI-3)
+description: "Release date: 2026-06-16"
+tags: [session-handoff, kairos, kai2, kai3]
+timestamp: 2026-06-16T09:41:41Z
+resource: shannon-prime-lattice/papers/RELEASE-KAIROS-KAI2-KAI3.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # RELEASE — KAIROS Latent Interrupt (KAI-2) + Audio-Port Bridge (KAI-3)
 
 **Release date:** 2026-06-16

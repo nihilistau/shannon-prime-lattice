@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION-PLAN — Phase 3-G4 Stage 2 (Gemma4 decode + oracle validation)
+description: "Filed: 2026-06-02 (overnight autonomous handoff)."
+tags: [session-handoff]
+timestamp: 2026-06-01T21:07:03Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-3-g4-stage2.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-PLAN — Phase 3-G4 Stage 2 (Gemma4 decode + oracle validation)
 
 **Filed:** 2026-06-02 (overnight autonomous handoff). **Owner:** dispatched agent.

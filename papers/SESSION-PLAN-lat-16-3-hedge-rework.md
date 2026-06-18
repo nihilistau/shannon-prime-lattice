@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION PLAN — lat-16-3-hedge-rework (bench corrections)
+description: "Date: 2026-05-29"
+tags: [session-handoff]
+timestamp: 2026-05-28T18:11:31Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-16-3-hedge-rework.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION PLAN — lat-16-3-hedge-rework (bench corrections)
 **Date:** 2026-05-29  
 **Prior session:** `lat-16-3-hedge` (1727f88, 4f62fd6, 7d38aa8) shipped the persistent pool migration; bench at 7d38aa8 used 1MB arena via `sp_alloc_channel_pair` (silent malloc fallback path).  

@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION PLAN — lat-3-hx-mode-e-axpby (Sprint E)
+description: "Date: 2026-05-29"
+tags: [session-handoff]
+timestamp: 2026-05-29T02:53:52Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-3-hx-mode-e-axpby.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION PLAN — lat-3-hx-mode-e-axpby (Sprint E)
 **Date:** 2026-05-29  
 **Goal:** Close the two highest-priority Sprint E items from the Sprint D closure: F1 (explicit HVX intrinsics for fixed-point axpby) and F2 (batched FastRPC call surface). Halide AOT generator pipeline + VTCM + DMA prefetch + full FFN remain Sprint F.

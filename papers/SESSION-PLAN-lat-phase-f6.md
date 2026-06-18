@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: "SESSION PLAN — lat-phase-f6: Dual-Server Consolidation"
+description: "Created: 2026-05-29"
+tags: [session-handoff]
+timestamp: 2026-05-28T16:33:09Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-phase-f6.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION PLAN — lat-phase-f6: Dual-Server Consolidation
 
 **Created:** 2026-05-29  

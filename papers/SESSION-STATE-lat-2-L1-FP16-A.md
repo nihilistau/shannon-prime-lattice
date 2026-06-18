@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION-STATE-lat-2-L1-FP16-A
+description: "Phase: 2-L1.FP16 (Roadmap §8.7.5) — PART A ONLY (the math-core ABI extension)."
+tags: [session-handoff, l1]
+timestamp: 2026-05-25T17:06:31Z
+resource: shannon-prime-lattice/papers/SESSION-STATE-lat-2-L1-FP16-A.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-STATE-lat-2-L1-FP16-A
 
 **Phase:** 2-L1.FP16 (Roadmap §8.7.5) — **PART A ONLY (the math-core ABI extension).**

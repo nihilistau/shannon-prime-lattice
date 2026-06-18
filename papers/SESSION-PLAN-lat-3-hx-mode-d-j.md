@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION PLAN — lat-3-hx-mode-d-j (Sprint J — full model loader + KV cache + AppState)
+description: "Date: 2026-05-30"
+tags: [session-handoff]
+timestamp: 2026-05-29T11:37:58Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-3-hx-mode-d-j.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION PLAN — lat-3-hx-mode-d-j (Sprint J — full model loader + KV cache + AppState)
 **Date:** 2026-05-30
 **Goal:** Scale the Sprint I single-tile loader to all 28 Qwen3-0.6B layers; allocate the KV cache at ctx_max=4096; integrate model + KV into sp-daemon AppState; verify end-to-end via 6 gates on S22U.

@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: "SESSION CLOSED — lat-3-hx-mode-d-rpc (Sprint A, Path B)"
+description: "Date: 2026-05-29"
+tags: [session-handoff]
+timestamp: 2026-05-29T02:05:48Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-3-hx-mode-d-rpc.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION CLOSED — lat-3-hx-mode-d-rpc (Sprint A, Path B)
 **Date:** 2026-05-29  
 **Plan:** `papers/SESSION-PLAN-lat-3-hx-mode-d-rpc.md` (`e1da690`)  

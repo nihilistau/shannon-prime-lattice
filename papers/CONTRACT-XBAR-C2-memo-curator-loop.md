@@ -1,3 +1,15 @@
+---
+type: contract
+title: "CONTRACT-XBAR-C2 — the Memo curator: the autonomous Ring-2 recall loop"
+description: "Status: SPEC (opened 2026-06-17, the turn after P3 closed end-to-end)."
+tags: [contract, xbar, memo]
+timestamp: 2026-06-17T21:25:20Z
+resource: shannon-prime-lattice/papers/CONTRACT-XBAR-C2-memo-curator-loop.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # CONTRACT-XBAR-C2 — the Memo curator: the autonomous Ring-2 recall loop
 
 **Status:** SPEC (opened 2026-06-17, the turn after P3 closed end-to-end). Forward spec, not yet built.

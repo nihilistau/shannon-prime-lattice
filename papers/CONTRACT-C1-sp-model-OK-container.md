@@ -1,3 +1,15 @@
+---
+type: contract
+title: CONTRACT C1 — `.sp-model` v1 + the O_K container (the REDUCING artifact)
+description: "Parent: RFC-001. Status: ✅ CLOSED 2026-06-03 — all C1 gates green on 2 archs (gemma4 OK_Q8 + qwen35moe OK_Q4)."
+tags: [contract]
+timestamp: 2026-06-03T10:13:47Z
+resource: shannon-prime-lattice/papers/CONTRACT-C1-sp-model-OK-container.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # CONTRACT C1 — `.sp-model` v1 + the O_K container (the REDUCING artifact)
 
 **Parent:** RFC-001. **Status:** ✅ **CLOSED 2026-06-03** — all C1 gates green on 2 archs (gemma4 OK_Q8 + qwen35moe OK_Q4). The reducing loader is now public as **Position Is Arithmetic paper 02** (repro green, 6/6 E_FMT gates).

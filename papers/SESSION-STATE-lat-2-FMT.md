@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION-STATE — lat-2-FMT (`.sp-model` on-disk format)
+description: "Worktree: D:\\F\\shannon-prime-repos\\shannon-prime-system-engine\\.claude\\worktrees\\agent-ae9cd42cdb37e9a1c"
+tags: [session-handoff]
+timestamp: 2026-05-22T18:13:11Z
+resource: shannon-prime-lattice/papers/SESSION-STATE-lat-2-FMT.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-STATE — lat-2-FMT (`.sp-model` on-disk format)
 
 Worktree: `D:\F\shannon-prime-repos\shannon-prime-system-engine\.claude\worktrees\agent-ae9cd42cdb37e9a1c`

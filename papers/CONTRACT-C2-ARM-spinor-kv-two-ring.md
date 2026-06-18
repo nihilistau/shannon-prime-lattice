@@ -1,3 +1,15 @@
+---
+type: contract
+title: "CONTRACT C2 — ARM memory: Spinor-KV inline compression + the two rings"
+description: "Parent: RFC-001 §2. Builds on: C1 (the reducing .sp-model + arena swivel)."
+tags: [contract, spinor, arm]
+timestamp: 2026-06-06T19:03:57Z
+resource: shannon-prime-lattice/papers/CONTRACT-C2-ARM-spinor-kv-two-ring.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # CONTRACT C2 — ARM memory: Spinor-KV inline compression + the two rings
 
 **Parent:** RFC-001 §2. **Builds on:** C1 (the reducing `.sp-model` + arena swivel). **Status:** C2.1 COMPLETE (2026-06-03) — two-ring recall wired live + all three walls down (router/sinks/Optane-IOCP/quickselect/Ring-1-shrink); see §C2.1. **C2.4 CLOSED (2026-06-06): the v5 composed 32k finale COMPLETED (16.3 h, zero errors) and the NIAH verdict is MISS** — infrastructure proven at scale, retrieval quality at 64× selection budget not; see §C2.4-CLOSURE for the verdict, the config regression it exposed, and the diagnostic plan.

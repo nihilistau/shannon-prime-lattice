@@ -1,3 +1,15 @@
+---
+type: design
+title: Phase 4-MeMo M.0 — Memory model artifact CHOICE + CLOSURE
+description: Memory model stub for the heterogeneous CRT mesh is a byte-identical
+tags: [design, memo]
+timestamp: 2026-05-30T00:39:37Z
+resource: shannon-prime-lattice/papers/PHASE-4-MEMO-M0-CHOICE.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # Phase 4-MeMo M.0 — Memory model artifact CHOICE + CLOSURE
 
 ## Headline

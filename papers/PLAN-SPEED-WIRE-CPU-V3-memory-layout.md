@@ -1,3 +1,15 @@
+---
+type: design
+title: "PLAN — SPEED / WIRE-CPU-V3: close the last 1.34× (memory layout, not ALU)"
+description: "Parent: CONTRACT-SPEED-wire-tok-s.md (P1, RFC-001 §0/§8/§11)."
+tags: [design, speed, memo, cpu, wire]
+timestamp: 2026-06-03T09:56:25Z
+resource: shannon-prime-lattice/papers/PLAN-SPEED-WIRE-CPU-V3-memory-layout.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # PLAN — SPEED / WIRE-CPU-V3: close the last 1.34× (memory layout, not ALU)
 
 **Parent:** `CONTRACT-SPEED-wire-tok-s.md` (P1, RFC-001 §0/§8/§11). **Status:** PLAN (design only; no kernel changes here). **Box-contention:** all measurement stages need the dev host CPU — schedule them when the R9 32k run has freed the box.

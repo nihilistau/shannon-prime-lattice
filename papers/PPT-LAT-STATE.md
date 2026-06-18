@@ -1,3 +1,15 @@
+---
+type: project-state
+title: PPT-LAT — PROJECT STATE LEDGER (the proven record)
+description: This is the authoritative record of what is PROVEN.
+tags: [project-state]
+timestamp: 2026-06-18T05:48:11Z
+resource: shannon-prime-lattice/papers/PPT-LAT-STATE.md
+sp_status: GREEN
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # PPT-LAT — PROJECT STATE LEDGER (the proven record)
 
 **This is the authoritative record of what is PROVEN. Read it first. Trust it. Build on it. Do NOT re-derive it.**

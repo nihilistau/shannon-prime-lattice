@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION PLAN — lat-16-3-hedge (persistent-pool revision)
+description: "Date: 2026-05-29"
+tags: [session-handoff]
+timestamp: 2026-05-28T17:45:34Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-16-3-hedge.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION PLAN — lat-16-3-hedge (persistent-pool revision)
 **Date:** 2026-05-29  
 **Supersedes:** session 416417b (PREFETCH+LOAD single-thread — wrong pattern)  

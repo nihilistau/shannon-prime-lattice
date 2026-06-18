@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION-CLOSED-lat-2-L1-HANDLE
+description: "Phase: 2-L1.HANDLE (Roadmap §8.7.3) — math core (shannon-prime-system)."
+tags: [session-handoff, l1]
+timestamp: 2026-05-25T11:08:36Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-2-L1-HANDLE.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-CLOSED-lat-2-L1-HANDLE
 
 **Phase:** 2-L1.HANDLE (Roadmap §8.7.3) — math core (`shannon-prime-system`).

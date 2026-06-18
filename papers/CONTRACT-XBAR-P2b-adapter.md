@@ -1,3 +1,15 @@
+---
+type: contract
+title: "CONTRACT XBAR-P2b — The span-compression adapter (the scalpel, trained)"
+description: "Parent: CONTRACT-XBAR-P2 (P2.a CLOSED + the 2026-06-09 PLE correction) · RFC-XBAR v1 §5."
+tags: [contract, xbar]
+timestamp: 2026-06-12T04:52:27Z
+resource: shannon-prime-lattice/papers/CONTRACT-XBAR-P2b-adapter.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # CONTRACT XBAR-P2b — The span-compression adapter (the scalpel, trained)
 
 **Parent:** CONTRACT-XBAR-P2 (P2.a CLOSED + the 2026-06-09 PLE correction) · RFC-XBAR v1 §5.

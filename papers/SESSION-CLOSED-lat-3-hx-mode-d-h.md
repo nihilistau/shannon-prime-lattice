@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION CLOSED — lat-3-hx-mode-d-h (Sprint H — diagnostic)
+description: "Date: 2026-05-30"
+tags: [session-handoff]
+timestamp: 2026-05-29T08:25:18Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-3-hx-mode-d-h.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION CLOSED — lat-3-hx-mode-d-h (Sprint H — diagnostic)
 **Date:** 2026-05-30
 **Engine commits:** `1c3b0c5` (diag instrument), `facbdfc` (bisect qbits), `b5a642b` (bisect dim)

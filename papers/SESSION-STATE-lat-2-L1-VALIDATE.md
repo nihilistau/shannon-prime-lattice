@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION-STATE — Phase 2-L1.VALIDATE (§8.7.2) — engine integration bump
+description: "Phase. PPT-LAT-Roadmap §8.7.2 — point each backend's CMake at the relocated"
+tags: [session-handoff, l1]
+timestamp: 2026-05-23T21:47:59Z
+resource: shannon-prime-lattice/papers/SESSION-STATE-lat-2-L1-VALIDATE.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-STATE — Phase 2-L1.VALIDATE (§8.7.2) — engine integration bump
 
 **Phase.** PPT-LAT-Roadmap §8.7.2 — point each backend's CMake at the relocated

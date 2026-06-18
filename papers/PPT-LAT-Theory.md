@@ -1,3 +1,15 @@
+---
+type: design
+title: PPT-LAT Theory
+description: "Document version. Theory revision 2, scope expansion to include the Prime Power Transformer (PPT) substrate alongside the lattice / dominance / ARM material."
+tags: [design]
+timestamp: 2026-06-18T05:54:05Z
+resource: shannon-prime-lattice/papers/PPT-LAT-Theory.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # PPT-LAT Theory
 
 ## The Prime Power Transformer and the Prime-Factored Coordinate Lattice — A Unified Algebraic Substrate for Inference, Storage, and Network Aggregation

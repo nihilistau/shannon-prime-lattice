@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: "SESSION STATE — Phase TS.MAP & TS.ALLOC"
+description: "Date: 2026-05-28"
+tags: [session-handoff]
+timestamp: 2026-05-28T02:21:03Z
+resource: shannon-prime-lattice/papers/SESSION-STATE-lat-ts-map.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION STATE — Phase TS.MAP & TS.ALLOC
 ## §16.1: GF(2) Channel Oracle + Channel-Pair Allocator
 

@@ -1,3 +1,15 @@
+---
+type: design
+title: SPEC — gemma4 tokenizer dispatch (the 514k-merge BPE)
+description: "Status: IMPLEMENTED — GATES GREEN (2026-06-10)."
+tags: [design, gemma4, tokenizer]
+timestamp: 2026-06-09T23:10:45Z
+resource: shannon-prime-lattice/papers/SPEC-gemma4-tokenizer-dispatch.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SPEC — gemma4 tokenizer dispatch (the 514k-merge BPE)
 
 Status: **IMPLEMENTED — GATES GREEN (2026-06-10).** Engine `3457a41..3253a82` +

@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION-PLAN — lat-2-l3-fg-cross-compile
+description: "Sprint: Phase 2-L3.FG-CROSS-COMPILE — math-core C ABI for aarch64-android"
+tags: [session-handoff, l3]
+timestamp: 2026-05-29T16:06:35Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-2-l3-fg-cross-compile.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-PLAN — lat-2-l3-fg-cross-compile
 
 **Sprint:** Phase 2-L3.FG-CROSS-COMPILE — math-core C ABI for aarch64-android

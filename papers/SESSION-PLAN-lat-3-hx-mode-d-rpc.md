@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: "SESSION PLAN — lat-3-hx-mode-d-rpc (Sprint A, Path B)"
+description: "Date: 2026-05-29"
+tags: [session-handoff]
+timestamp: 2026-05-29T01:12:56Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-3-hx-mode-d-rpc.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION PLAN — lat-3-hx-mode-d-rpc (Sprint A, Path B)
 **Date:** 2026-05-29  
 **Scope:** Phase 3-HX Mode-D Sprint A — IPC bridge ALONE (no DMA-BUF allocator, no Halide AOT, no Axum integration).  

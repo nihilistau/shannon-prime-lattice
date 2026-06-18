@@ -1,3 +1,15 @@
+---
+type: design
+title: "SPEC: qwen35moe (Qwen3.6-35B-A3B) — Phase 3-MoE+GDN ground truth"
+description: "Date: 2026-06-02"
+tags: [design, qwen, moe]
+timestamp: 2026-06-02T02:41:58Z
+resource: shannon-prime-lattice/papers/SPEC-qwen35moe-GDN.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SPEC: qwen35moe (Qwen3.6-35B-A3B) — Phase 3-MoE+GDN ground truth
 
 **Date:** 2026-06-02

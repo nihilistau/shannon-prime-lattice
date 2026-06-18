@@ -1,3 +1,15 @@
+---
+type: runbook
+title: "RUNBOOK — Cloud GPU compute from the Knack box (RunPod + HF, SSH-free)"
+description: "Purpose. Run GPU jobs that don't fit the local RTX 2060-12GB (P2.b adapter training, Phase-0 inversion on the full bf16 12B) — autonomously, cost-safely, with receipts."
+tags: [runbook]
+timestamp: 2026-06-08T14:25:22Z
+resource: shannon-prime-lattice/papers/RUNBOOK-cloud-compute.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # RUNBOOK — Cloud GPU compute from the Knack box (RunPod + HF, SSH-free)
 
 **Purpose.** Run GPU jobs that don't fit the local RTX 2060-12GB (P2.b adapter training, Phase-0 inversion on the full bf16 12B) — autonomously, cost-safely, with receipts. Proven end-to-end 2026-06-09 (XBAR P2.b Phase 0: 50-span + 30-span inversion runs on an A6000, ~$0.40-0.50 each).

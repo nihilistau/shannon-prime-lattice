@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION-PLAN — lat-3-hx-mode-d-j5
+description: "Sprint: Phase 4 Sprint J.5 — NDK toolchain unblock + AppState wiring"
+tags: [session-handoff]
+timestamp: 2026-05-29T13:13:35Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-3-hx-mode-d-j5.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-PLAN — lat-3-hx-mode-d-j5
 
 **Sprint:** Phase 4 Sprint J.5 — NDK toolchain unblock + AppState wiring

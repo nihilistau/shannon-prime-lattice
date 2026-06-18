@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION PLAN — lat-3-hx-mode-d-i (Sprint I — single-layer smoke)
+description: "Date: 2026-05-30"
+tags: [session-handoff]
+timestamp: 2026-05-29T08:44:05Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-3-hx-mode-d-i.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION PLAN — lat-3-hx-mode-d-i (Sprint I — single-layer smoke)
 **Date:** 2026-05-30
 **Goal:** Load ONE FFN layer's `W_gate` tile from a real Qwen3-0.6B `.sp-model`, push through the existing Sprint G dual-VTCM Halide matmul kernel via `FastRpcSession` + `DmaBuffer`, verify bit-identity against the inline scalar reference at q_bits ≤ 15. Single matmul, single tile, single layer. No new memory entries; no Phase 4 scope.

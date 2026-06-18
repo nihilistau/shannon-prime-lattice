@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION-CLOSED-lat-1
+description: "Phase: 1 — Math core foundations (shannon-prime-system)."
+tags: [session-handoff]
+timestamp: 2026-05-21T15:58:01Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-1.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-CLOSED-lat-1
 
 **Phase:** 1 — Math core foundations (`shannon-prime-system`).

@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION CLOSED — lat-3-hx-mode-d-ffn-vtcm (Sprint G)
+description: "Date: 2026-05-29"
+tags: [session-handoff, vtcm]
+timestamp: 2026-05-29T07:09:17Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-3-hx-mode-d-ffn-vtcm.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION CLOSED — lat-3-hx-mode-d-ffn-vtcm (Sprint G)
 **Date:** 2026-05-29
 **Engine commit:** (see tag)

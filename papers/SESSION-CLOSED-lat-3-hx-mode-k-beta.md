@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION CLOSED — lat-3-hx-mode-k-beta (PARTIAL via 2.5b-C deferral)
+description: "Date: 2026-05-30"
+tags: [session-handoff]
+timestamp: 2026-05-29T16:27:42Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-3-hx-mode-k-beta.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION CLOSED — lat-3-hx-mode-k-beta (PARTIAL via 2.5b-C deferral)
 **Date:** 2026-05-30
 **Status:** **PARTIAL** — Stage 2.5a (scalar Barrett foundation) PASS; Stages 2.5b through 7 deferred to a focused HVX-engineering sprint per operator-authorized 2.5b-C path.

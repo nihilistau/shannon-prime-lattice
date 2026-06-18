@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION CLOSED — lat-2-L1.PARITY
+description: "Tag: lat-phase-2-l1-parity-closed (engine + math-core)"
+tags: [session-handoff, l1]
+timestamp: 2026-05-25T20:43:32Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-2-L1-PARITY.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION CLOSED — lat-2-L1.PARITY
 
 **Tag:** `lat-phase-2-l1-parity-closed` (engine + math-core)

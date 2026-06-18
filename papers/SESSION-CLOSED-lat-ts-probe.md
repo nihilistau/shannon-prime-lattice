@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: "SESSION-CLOSED: lat-ts-probe"
+description: "Date: 2026-05-28"
+tags: [session-handoff]
+timestamp: 2026-05-28T02:45:27Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-ts-probe.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-CLOSED: lat-ts-probe
 
 **Date:** 2026-05-28

@@ -1,3 +1,15 @@
+---
+type: design
+title: Mode D Design Draft — Halide AOT + FastRPC + ISP fusion on Hexagon
+description: Reference design for Phase 3-HX-MODE-D (Roadmap §12).
+tags: [design]
+timestamp: 2026-05-23T12:57:20Z
+resource: shannon-prime-lattice/papers/MODE_D_DESIGN_DRAFT.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # Mode D Design Draft — Halide AOT + FastRPC + ISP fusion on Hexagon
 
 Reference design for Phase 3-HX-MODE-D (Roadmap §12). Stash of the

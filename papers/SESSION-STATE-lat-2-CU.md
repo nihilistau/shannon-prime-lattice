@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION-STATE-lat-2-CU
+description: "Phase: 2-CU — engine, CUDA backend (shannon-prime-system-engine)."
+tags: [session-handoff]
+timestamp: 2026-05-22T16:19:32Z
+resource: shannon-prime-lattice/papers/SESSION-STATE-lat-2-CU.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-STATE-lat-2-CU
 
 **Phase:** 2-CU — engine, CUDA backend (`shannon-prime-system-engine`).

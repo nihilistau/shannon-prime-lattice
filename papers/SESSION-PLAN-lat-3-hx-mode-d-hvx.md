@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION PLAN — lat-3-hx-mode-d-hvx (Sprint D MVP)
+description: "Date: 2026-05-29"
+tags: [session-handoff, hvx]
+timestamp: 2026-05-29T02:36:27Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-3-hx-mode-d-hvx.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION PLAN — lat-3-hx-mode-d-hvx (Sprint D MVP)
 **Date:** 2026-05-29  
 **Goal:** Ship the first HVX-vectorized fixed-point compute kernel through the Sprint A/B/C bridge. Prove that the dispatch chain (HTTP → FastRPC → DmaBuffer → V69 cDSP → HVX vector ops → DmaBuffer-out → HTTP response) carries actual SIMD work, bitwise correctly and faster than scalar.

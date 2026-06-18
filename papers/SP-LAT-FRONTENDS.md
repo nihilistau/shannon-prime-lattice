@@ -1,3 +1,15 @@
+---
+type: design
+title: SP-LAT-FRONTENDS
+description: Using separate frontends—specifically targeting Flutter for the mobile UI on your S22 Ultra—is an exceptionally pragmatic strategy.
+tags: [design]
+timestamp: 2026-05-25T09:31:23Z
+resource: shannon-prime-lattice/papers/SP-LAT-FRONTENDS.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 Using separate frontends—specifically targeting Flutter for the mobile UI on your S22 Ultra—is an exceptionally pragmatic strategy. In fact, for a complex heterogeneous pipeline like the one we just mapped out for Hexagon (Mode D), it is the most robust way to handle the Android operating system's strict UI constraints.
 
 If you build a Flutter mobile app for the phone, you must architect the boundary exactly right to protect the zero-copy pipelines we built in L1 and L2.

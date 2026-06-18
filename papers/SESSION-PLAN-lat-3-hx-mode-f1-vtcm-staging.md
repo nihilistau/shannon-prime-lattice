@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION PLAN — lat-3-hx-mode-f1-vtcm-staging (Sprint F.1 — retry)
+description: "Date: 2026-05-29"
+tags: [session-handoff, vtcm]
+timestamp: 2026-05-29T06:20:52Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-3-hx-mode-f1-vtcm-staging.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION PLAN — lat-3-hx-mode-f1-vtcm-staging (Sprint F.1 — retry)
 **Date:** 2026-05-29
 **Goal:** Re-attempt the C-side VTCM staging path for the Halide-AOT kernel that the prior Sprint F closure declared unviable, with two new ingredients the prior attempt did not test.

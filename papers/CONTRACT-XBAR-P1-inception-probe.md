@@ -1,3 +1,15 @@
+---
+type: contract
+title: "CONTRACT XBAR-P1 — The Inception Probe (prove the latent crossbar, measure its geometric tolerance)"
+description: "Parent: RFC-XBAR §5 stage P1."
+tags: [contract, xbar]
+timestamp: 2026-06-08T15:14:27Z
+resource: shannon-prime-lattice/papers/CONTRACT-XBAR-P1-inception-probe.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # CONTRACT XBAR-P1 — The Inception Probe (prove the latent crossbar, measure its geometric tolerance)
 
 **Parent:** RFC-XBAR §5 stage P1. **Priority:** gates the entire XBAR lane — no curator training, no ring wiring, no adapter work until this runs.

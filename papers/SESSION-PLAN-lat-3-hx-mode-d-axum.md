@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION PLAN — lat-3-hx-mode-d-axum (Sprint C)
+description: "Date: 2026-05-29"
+tags: [session-handoff]
+timestamp: 2026-05-29T02:18:41Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-3-hx-mode-d-axum.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION PLAN — lat-3-hx-mode-d-axum (Sprint C)
 **Date:** 2026-05-29  
 **Goal:** Bind `FastRpcSession` + `DmaBuffer` into an HTTP endpoint. Verify the full chain: HTTP request → axum handler → FastRPC → cDSP → response.

@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION STATE — Phase 5 PoUW / Friedman Sieve
+description: "Date: 2026-05-27"
+tags: [session-handoff, pouw]
+timestamp: 2026-05-27T14:13:53Z
+resource: shannon-prime-lattice/papers/SESSION-STATE-lat-5-POUW.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION STATE — Phase 5 PoUW / Friedman Sieve
 
 **Date:** 2026-05-27

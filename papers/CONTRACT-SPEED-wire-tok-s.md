@@ -1,3 +1,15 @@
+---
+type: contract
+title: CONTRACT SPEED — WIRE the integer pipes → tok/s vs llama.cpp (the north-star)
+description: "Parent: RFC-001 §0 (the north-star) + §8 (the WIRE gap)."
+tags: [contract, speed, wire]
+timestamp: 2026-06-07T04:29:37Z
+resource: shannon-prime-lattice/papers/CONTRACT-SPEED-wire-tok-s.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # CONTRACT SPEED — WIRE the integer pipes → tok/s vs llama.cpp (the north-star)
 
 **Parent:** RFC-001 §0 (the north-star) + §8 (the WIRE gap). **Priority:** P1 (RFC-001 §11, STATE §5.1). **Status:** DRAFT + baseline in progress.

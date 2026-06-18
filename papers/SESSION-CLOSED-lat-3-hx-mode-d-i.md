@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION CLOSED — lat-3-hx-mode-d-i (Sprint I — single-layer smoke)
+description: "Date: 2026-05-30"
+tags: [session-handoff]
+timestamp: 2026-05-29T10:53:39Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-3-hx-mode-d-i.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION CLOSED — lat-3-hx-mode-d-i (Sprint I — single-layer smoke)
 **Date:** 2026-05-30
 **Engine commits:** `da0bd38` (parser), `e1a4407` (driver), `7d1e7a9` (verbatim output capture)

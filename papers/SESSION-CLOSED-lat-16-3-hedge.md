@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION CLOSED — lat-16-3-hedge (persistent-pool revision)
+description: "Date: 2026-05-29"
+tags: [session-handoff]
+timestamp: 2026-05-28T17:59:38Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-16-3-hedge.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION CLOSED — lat-16-3-hedge (persistent-pool revision)
 **Date:** 2026-05-29  
 **Tags:** `lat-phase-16-3-hedge-correctness-closed`, `lat-phase-16-3-hedge-pool-closed`  

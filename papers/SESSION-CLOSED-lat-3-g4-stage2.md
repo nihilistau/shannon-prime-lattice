@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION-CLOSED — Phase 3-G4 Stage 2 (Gemma4 decode + GGUF loader + oracle)
+description: "Filed: 2026-06-02 (overnight autonomous)."
+tags: [session-handoff]
+timestamp: 2026-06-02T00:20:05Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-3-g4-stage2.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-CLOSED — Phase 3-G4 Stage 2 (Gemma4 decode + GGUF loader + oracle)
 
 **Filed:** 2026-06-02 (overnight autonomous). **Owner:** dispatched agent.

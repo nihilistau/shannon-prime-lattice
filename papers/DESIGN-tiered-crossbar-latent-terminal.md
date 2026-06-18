@@ -1,3 +1,15 @@
+---
+type: design
+title: "DESIGN — Tiered Crossbar (Split-Brain) + the Latent Terminal (BANKED, 2026-06-15)"
+description: "Status: BANKED / PARKED."
+tags: [design]
+timestamp: 2026-06-15T11:13:53Z
+resource: shannon-prime-lattice/papers/DESIGN-tiered-crossbar-latent-terminal.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # DESIGN — Tiered Crossbar (Split-Brain) + the Latent Terminal (BANKED, 2026-06-15)
 
 **Status: BANKED / PARKED.** This is a destination, not the current lane. We do **not** pivot the

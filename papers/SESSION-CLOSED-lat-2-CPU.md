@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION-CLOSED-lat-2-CPU
+description: "Phase: 2-CPU — engine, CPU backend (shannon-prime-system-engine)."
+tags: [session-handoff, cpu]
+timestamp: 2026-05-22T11:52:17Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-2-CPU.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-CLOSED-lat-2-CPU
 
 **Phase:** 2-CPU — engine, CPU backend (`shannon-prime-system-engine`).

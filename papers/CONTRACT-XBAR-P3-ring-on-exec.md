@@ -1,3 +1,15 @@
+---
+type: contract
+title: "CONTRACT XBAR-P3 — ring-on-Exec: the two-ring + recall router + episode replay on the gemma4 CUDA decode"
+description: "Parent: RFC-XBAR v1 §3/§3.1 (ring hierarchy + design rules) + §5 (P3 row); CONTRACT-XBAR-C1-lite §3b (the P3 pre-flight audit; gates G-P3-GEOM / G-P3-SHARED / G-P3-WIN named there) + its run-record (g"
+tags: [contract, xbar]
+timestamp: 2026-06-18T05:55:34Z
+resource: shannon-prime-lattice/papers/CONTRACT-XBAR-P3-ring-on-exec.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # CONTRACT XBAR-P3 — ring-on-Exec: the two-ring + recall router + episode replay on the gemma4 CUDA decode
 
 **Parent:** RFC-XBAR v1 §3/§3.1 (ring hierarchy + design rules) + §5 (P3 row); CONTRACT-XBAR-C1-lite §3b (the P3 pre-flight audit; gates G-P3-GEOM / G-P3-SHARED / G-P3-WIN named there) + its run-record (geom substrate landed, core `64b698c`, T_ARM_GEOM 26/26); CONTRACT-C2 §C2.1 (the gate vocabulary: parity-when-off, NIAH G1, PPL-deflection G2). **Status:** **RATIFIED (operator, 2026-06-11)** — the staged plan, the five gates, the host-side-router-v0 decision, the 12B/E2B gate split, the prefix-sum episode law, and the named deferrals (G-P3-WIN / CUDA-graph ring exec / device router / Spinor-coded spill) are the agreed law. Build-ready when sequenced (queue #5, behind horizon → Fork-3 → InfoNCE). Contract-before-code — code may now ship per-stage against these gates; any need discovered outside this spec amends the contract first.

@@ -1,3 +1,15 @@
+---
+type: design
+title: DESIGN — VSA / Harmonic Binding as the Ring-3 holographic consolidation tier
+description: "Status: IMPLEMENTED + NATIVE (2026-06-18)."
+tags: [design, ring3, vsa]
+timestamp: 2026-06-17T21:24:08Z
+resource: shannon-prime-lattice/papers/DESIGN-VSA-ring3-holographic.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # DESIGN — VSA / Harmonic Binding as the Ring-3 holographic consolidation tier
 
 **Status:** **IMPLEMENTED + NATIVE (2026-06-18).** The mechanism this doc specifies (HRR / circular-convolution binding for Ring-3 consolidation) is GATED GREEN end-to-end (CONTRACT-XBAR-R3 R3.1→R3.4) and, as of 2026-06-18, the deployment **binds/unbinds via the engine-native exact-integer `sp_pr_mul` (Leg A)** — the float-FFT prototype is ripped out of the live path. Two normative findings are now folded in below: (a) §2 — the bind is the native dual-prime CRT-NTT over `Z_q` (C↔engine parity 256/256 bit-identical, reduction-order-immune); (b) §2/§3 — the **carrier must stay unstructured** (random ±1): the structured split-prime Dirichlet-character carrier (Leg B) is a measured **honest negative**. **Parent:** RFC-XBAR v1.4 §Ring-3 amendment (the consolidated "neocortical/gist" tier, dual-recall, `G-R3-LOSS`); CONTRACT-XBAR-R3 (the gated contract + run-records); CONTRACT-XBAR-C1-lite (the curator); `DESIGN-diffusion-lane.md` (the consolidation-time gist instrument + the §4 recall-time-upsampling trap); CONTRACT-XBAR-P2b §3n/§3o (why VSA is NOT the curator).

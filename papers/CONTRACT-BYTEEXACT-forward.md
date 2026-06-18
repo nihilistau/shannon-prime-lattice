@@ -1,3 +1,15 @@
+---
+type: contract
+title: CONTRACT — The Byte-Exact Forward (weights + the three fp32 islands)
+description: "Status (2026-06-18): DESIGN + OFFLINE PROTOTYPES COMPLETE & GREEN."
+tags: [contract, byteexact]
+timestamp: 2026-06-18T04:52:34Z
+resource: shannon-prime-lattice/papers/CONTRACT-BYTEEXACT-forward.md
+sp_status: GREEN
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # CONTRACT — The Byte-Exact Forward (weights + the three fp32 islands)
 
 **Status (2026-06-18):** DESIGN + OFFLINE PROTOTYPES COMPLETE & GREEN. Engine build is the next campaign.

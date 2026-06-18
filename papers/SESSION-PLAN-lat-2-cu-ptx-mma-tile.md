@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: "SESSION-PLAN: Phase 2-CU.PTX.MMA.TILE"
+description: "Roadmap §: §17.3.TILE"
+tags: [session-handoff, ptx]
+timestamp: 2026-05-27T06:06:42Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-2-cu-ptx-mma-tile.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-PLAN: Phase 2-CU.PTX.MMA.TILE
 
 **Roadmap §:** §17.3.TILE  

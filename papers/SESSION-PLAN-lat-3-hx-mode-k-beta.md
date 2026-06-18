@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION PLAN — lat-3-hx-mode-k-beta (K v0.beta — Barrett-reduction CRT kernel)
+description: "Date: 2026-05-30"
+tags: [session-handoff]
+timestamp: 2026-05-29T15:56:34Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-3-hx-mode-k-beta.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION PLAN — lat-3-hx-mode-k-beta (K v0.beta — Barrett-reduction CRT kernel)
 **Date:** 2026-05-30
 **Goal:** Implement the manifesto Trick #1 CRT-split matmul: two Halide AOT skels emitting `mod-q_1` and `mod-q_2` residue computations, dispatched concurrently via the K v0.alpha `DualDispatch` substrate, recombined via ARM-side Garner into the full unbounded integer matmul. Math identity to Sprint J's saturating kernel in the no-saturation regime; per-prime Barrett correctness verified against arbitrary-precision (i128) reference; dual-dispatch speedup ≥ 1.5× per K v0.alpha's measured baseline.

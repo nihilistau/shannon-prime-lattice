@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION CLOSED — lat-3-hx-mode-k (K v0.alpha — dispatch-parallelism premise)
+description: "Date: 2026-05-30"
+tags: [session-handoff]
+timestamp: 2026-05-29T13:26:31Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-3-hx-mode-k.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION CLOSED — lat-3-hx-mode-k (K v0.alpha — dispatch-parallelism premise)
 **Date:** 2026-05-30
 **Engine commits:** (plan: `f2ddf86`/lattice), engine dispatcher + bin (`previous engine commit`), engine output artifact `cdaaf15`

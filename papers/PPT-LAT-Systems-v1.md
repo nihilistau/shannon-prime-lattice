@@ -1,3 +1,15 @@
+---
+type: design
+title: PPT-LAT-Systems — v1
+description: "Shannon-Prime: PPT-ARM Systems Architecture."
+tags: [design]
+timestamp: 2026-06-18T05:54:36Z
+resource: shannon-prime-lattice/papers/PPT-LAT-Systems-v1.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # PPT-LAT-Systems — v1
 
 **Shannon-Prime: PPT-ARM Systems Architecture.**

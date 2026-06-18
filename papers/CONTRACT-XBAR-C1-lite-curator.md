@@ -1,3 +1,15 @@
+---
+type: contract
+title: "CONTRACT XBAR-C1-lite — Memo v0, the heuristic curator loop on the qwen3 CPU two-ring"
+description: "Parent: RFC-XBAR v1 §5 (C1-lite) + §7 (NIGHTSHIFT)."
+tags: [contract, xbar]
+timestamp: 2026-06-14T03:38:54Z
+resource: shannon-prime-lattice/papers/CONTRACT-XBAR-C1-lite-curator.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # CONTRACT XBAR-C1-lite — Memo v0, the heuristic curator loop on the qwen3 CPU two-ring
 
 **Parent:** RFC-XBAR v1 §5 (C1-lite) + §7 (NIGHTSHIFT). **Status:** SPEC + seam analysis (2026-06-09). The parallel track to P2.b — needs no cloud, no 12B, no training; runs on the proven qwen3 CPU two-ring (C2.2, `T_ARM_GENKV` green).

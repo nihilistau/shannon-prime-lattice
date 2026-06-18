@@ -1,3 +1,15 @@
+---
+type: design
+title: PPT-LAT-SP-MODEL — `.sp-model` byte layout v0
+description: Companion document to PPT-LAT-L1-ABI-v0.
+tags: [design]
+timestamp: 2026-06-18T05:49:12Z
+resource: shannon-prime-lattice/papers/PPT-LAT-SP-MODEL-v0.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 > **⚠️ SUPERSEDED (2026‑06‑02) — now Appendix B of `PPT-LAT-Systems-v1.md`.** **The biggest correction:** v0 §1 lists "compression on disk" as a *non‑goal* — but the C1 finding (PROVEN this session) is the opposite: the converter **REDUCES** (body ≤ source quant; OK_Q4 gave ~17% reduction + output‑lossless top‑1 on qwen35moe). Appendix B carries the corrected codec‑by‑source transcoder, the `OK_Q4=11` dtype, the arch_id enum through QWEN36=8, the arch_struct growth rule, and the swivel loader. The mmap‑pure load + Spinor 63→64 padding decision are unchanged and PROVEN. Kept for provenance. **Read Systems v1 Appendix B.**
 
 > **IMPL-STATUS 2026-06-06 — the arch_struct GROWTH RULE is now honored by the loaders.** The engine adapters `sp_model_to_qwen3`/`sp_model_to_qwen25` (engine `2138f89`) previously hard-rejected any `.sp-model` whose on-disk `arch_struct_size < sizeof(sp_arch_info)`. They now **memcpy `min(arch_struct_size, sizeof(sp_arch_info))`** and require only the base geometry (`>= offsetof(sp_arch_info, n_ff)`), so an OLDER artifact (appended fields absent) **zero-fills the appended tail = "unspecified" sentinel** — exactly the growth discipline this doc specifies. Verified on `qwen3_rt.sp-model` (`arch_struct_size=56` = base+FP16, written before the Gemma4 `g4_*`/qwen35moe `q36_*` appends): now loads + decodes correctly. The hard `<` reject was a loader bug; the format/growth-rule was always right.

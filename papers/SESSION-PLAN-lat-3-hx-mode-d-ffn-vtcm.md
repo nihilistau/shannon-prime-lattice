@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION PLAN — lat-3-hx-mode-d-ffn-vtcm (Sprint G)
+description: "Date: 2026-05-29"
+tags: [session-handoff, vtcm]
+timestamp: 2026-05-29T07:08:21Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-3-hx-mode-d-ffn-vtcm.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION PLAN — lat-3-hx-mode-d-ffn-vtcm (Sprint G)
 **Date:** 2026-05-29
 **Goal:** Implement the dual-VTCM staging architecture for a 2-stage matmul FFN

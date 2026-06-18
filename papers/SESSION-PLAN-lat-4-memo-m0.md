@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: Sprint M.0 — Memory model artifact (PROTOCOL BRING-UP STUB) — PLAN
+description: "1. Phase 4-MeMo roadmap block — papers/PPT-LAT-Roadmap.md:5772-5956"
+tags: [session-handoff, memo]
+timestamp: 2026-05-30T00:39:37Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-4-memo-m0.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # Sprint M.0 — Memory model artifact (PROTOCOL BRING-UP STUB) — PLAN
 
 ## Stage 0 — Reference reading (citations)

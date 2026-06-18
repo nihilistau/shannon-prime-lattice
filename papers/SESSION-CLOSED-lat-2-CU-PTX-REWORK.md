@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: "SESSION-CLOSED: Phase 2-CU.PTX REWORK (lat-2-cu-ptx-rework)"
+description: "Phase: 2-CU.PTX Rework — corrective pass over the prior closure defects"
+tags: [session-handoff, ptx]
+timestamp: 2026-05-27T04:10:50Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-2-CU-PTX-REWORK.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-CLOSED: Phase 2-CU.PTX REWORK (lat-2-cu-ptx-rework)
 
 **Phase:** 2-CU.PTX Rework — corrective pass over the prior closure defects  

@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION PLAN — lat-3-hx-mode-d-h (Sprint H — diagnostic)
+description: "Date: 2026-05-30"
+tags: [session-handoff]
+timestamp: 2026-05-29T08:16:21Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-3-hx-mode-d-h.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION PLAN — lat-3-hx-mode-d-h (Sprint H — diagnostic)
 **Date:** 2026-05-30
 **Goal:** Empirically characterize the two G.1 boundaries that Sprint G left open. Do not patch the kernel; bisect the boundaries with data, then file Sprint H.PATCH as a follow-on grounded in that data.

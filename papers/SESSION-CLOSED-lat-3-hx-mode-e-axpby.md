@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION CLOSED — lat-3-hx-mode-e-axpby
+description: "Date: 2026-05-29"
+tags: [session-handoff]
+timestamp: 2026-05-29T03:08:28Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-3-hx-mode-e-axpby.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION CLOSED — lat-3-hx-mode-e-axpby
 **Date:** 2026-05-29
 **Engine commit:** 921c569

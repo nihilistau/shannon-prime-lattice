@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION CLOSED — Phase 2-CU.PTX.MMA.TILE-2C
+description: "Date: 2026-05-27"
+tags: [session-handoff, ptx]
+timestamp: 2026-05-27T10:59:49Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-2-CU-PTX-MMA-TILE-2C.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION CLOSED — Phase 2-CU.PTX.MMA.TILE-2C
 ## §17.3.TILE: Turing Tiled INT8/INT4 MMA — No-smem-B Architecture
 

@@ -1,3 +1,15 @@
+---
+type: contract
+title: CONTRACT KAIROS-K0/K1 — reference extraction + the heartbeat null
+description: "Parent: ROADMAP-KAIROS §5."
+tags: [contract, kairos]
+timestamp: 2026-06-17T01:21:15Z
+resource: shannon-prime-lattice/papers/CONTRACT-KAIROS-K0-K1.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # CONTRACT KAIROS-K0/K1 — reference extraction + the heartbeat null
 
 **Parent:** ROADMAP-KAIROS §5. **Status:** K0 RUN (Stage-0 swarm 2026-06-10; MiMo external reference

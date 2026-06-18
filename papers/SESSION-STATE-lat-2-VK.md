@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: "SESSION-STATE — lat-2-VK (Phase 2-VK: Vulkan compute backend)"
+description: "Status: COMPLETE — all gates GREEN."
+tags: [session-handoff]
+timestamp: 2026-05-22T18:14:35Z
+resource: shannon-prime-lattice/papers/SESSION-STATE-lat-2-VK.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION-STATE — lat-2-VK (Phase 2-VK: Vulkan compute backend)
 
 Status: **COMPLETE — all gates GREEN.** Phase 2-VK mirrors the closed 2-CU CUDA

@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION CLOSED — lat-16-3-hedge-rework
+description: "Date: 2026-05-29"
+tags: [session-handoff]
+timestamp: 2026-05-28T19:15:29Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-16-3-hedge-rework.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION CLOSED — lat-16-3-hedge-rework
 **Date:** 2026-05-29  
 **Plan:** `papers/SESSION-PLAN-lat-16-3-hedge-rework.md` (lattice `d72fb41`)  

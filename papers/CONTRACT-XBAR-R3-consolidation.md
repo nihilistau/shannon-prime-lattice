@@ -1,3 +1,15 @@
+---
+type: contract
+title: CONTRACT-XBAR-R3 — Ring-3 consolidation (the gist tier) — PRE-REGISTRATION
+description: "Status: Path A CLOSED end-to-end + NATIVE-ENGINE PORT CLOSED (2026-06-18)."
+tags: [contract, xbar]
+timestamp: 2026-06-17T21:23:20Z
+resource: shannon-prime-lattice/papers/CONTRACT-XBAR-R3-consolidation.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # CONTRACT-XBAR-R3 — Ring-3 consolidation (the gist tier) — PRE-REGISTRATION
 
 **Status:** **Path A CLOSED end-to-end + NATIVE-ENGINE PORT CLOSED (2026-06-18).** R3.1 BIND → R3.2 LOSS → R3.3 DUALROUTE → R3.4 NIGHTSHIFT all GREEN (2026-06-17, host-numpy), and as of 2026-06-18 the deployment VSA bind/unbind is **re-carried onto the engine-native exact-integer dual-prime CRT-NTT** (`core/ntt_crt` + `core/poly_ring`, `sp_pr_mul` / `ntt_forward∘pointwise∘inverse`) — the `R3.x Z_q/NTT engine port` named below as deferred is now **DONE and removed from the deferred list** (run-records §5.1, G-R3-BIND-on-O_K + G-R3-ORGANISM-NATIVE). Path B (the learned adapter) remains deferred behind the operator's budget green. Parent: RFC-XBAR v1.4 §3.1 (the Ring-3 amendment, `G-R3-LOSS`), `DESIGN-VSA-ring3-holographic.md` (the parameter-free mechanism, now binding via native `sp_pr_mul`), `CONTRACT-XBAR-P2b-adapter.md` (the convicted learned path), `CONTRACT-XBAR-C2-memo-curator-loop.md` (the Ring-2 verbatim loop this sits above, now CLOSED incl. #222).

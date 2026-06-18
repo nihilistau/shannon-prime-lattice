@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION PLAN AMENDMENT — lat-3-hx-mode-k-beta Stage 2.5
+description: "Date: 2026-05-30"
+tags: [session-handoff]
+timestamp: 2026-05-29T16:15:21Z
+resource: shannon-prime-lattice/papers/SESSION-PLAN-lat-3-hx-mode-k-beta-AMENDMENT-stage-2-5.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION PLAN AMENDMENT — lat-3-hx-mode-k-beta Stage 2.5
 **Date:** 2026-05-30
 **Trigger:** Stage 2 SASS check (engine `39e286c`) — Halide rejects Int(64) on HVX with internal panic. Operator authorized F-B (hand-rolled HVX intrinsic chain) and added T_BARRETT_SCALAR_ORACLE as the diagnostic-isolation gate prerequisite. This amendment specifies the Stage 2.5 design before code.

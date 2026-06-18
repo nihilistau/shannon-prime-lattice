@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: SESSION STATE — Phase 6-NET / QUIC CRT Sharding
+description: "Date: 2026-05-28"
+tags: [session-handoff]
+timestamp: 2026-05-27T18:28:21Z
+resource: shannon-prime-lattice/papers/SESSION-STATE-lat-6-NET.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # SESSION STATE — Phase 6-NET / QUIC CRT Sharding
 
 **Date:** 2026-05-28

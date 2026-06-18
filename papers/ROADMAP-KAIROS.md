@@ -1,3 +1,15 @@
+---
+type: roadmap
+title: "ROADMAP — STAGE KAIROS (καιρός): the Shannon-Prime Kernel"
+description: "Status: DESIGN (stage registered 2026-06-10; no gate has run; nothing here is claimed)."
+tags: [roadmap, kairos]
+timestamp: 2026-06-17T21:25:38Z
+resource: shannon-prime-lattice/papers/ROADMAP-KAIROS.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # ROADMAP — STAGE KAIROS (καιρός): the Shannon-Prime Kernel
 
 **Status:** DESIGN (stage registered 2026-06-10; no gate has run; nothing here is claimed).

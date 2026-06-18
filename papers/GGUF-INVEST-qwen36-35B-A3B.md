@@ -1,3 +1,15 @@
+---
+type: design
+title: "GGUF Investigation: Qwen3.6-35B-A3B (Phase 3-MoE scope)"
+description: "Date: 2026-05-26"
+tags: [design, qwen]
+timestamp: 2026-06-02T02:42:05Z
+resource: shannon-prime-lattice/papers/GGUF-INVEST-qwen36-35B-A3B.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 > **⚠️ SUPERSEDED (2026-06-02) on the architecture claim.** The "Mamba2-style SSM"
 > label below is WRONG — it was inferred from `ssm.*` metadata keys without reading
 > llama's compute graph. The linear layers are **Gated DeltaNet (Qwen3-Next family)**,

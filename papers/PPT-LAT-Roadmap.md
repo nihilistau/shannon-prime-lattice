@@ -1,3 +1,15 @@
+---
+type: roadmap
+title: PPT-LAT-Roadmap
+description: "Project: shannon-prime-lattice"
+tags: [roadmap]
+timestamp: 2026-06-18T05:51:13Z
+resource: shannon-prime-lattice/papers/PPT-LAT-Roadmap.md
+sp_status: GREEN
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 # PPT-LAT-Roadmap
 
 **Project:** shannon-prime-lattice

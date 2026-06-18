@@ -1,3 +1,15 @@
+---
+type: session-handoff
+title: "SESSION-CLOSED: Phase 2-CU.PTX (lat-phase-2-cu-ptx-closed)"
+description: "Phase: 2-CU.PTX — engine, CUDA bare-metal PTX/WMMA primitives"
+tags: [session-handoff, ptx]
+timestamp: 2026-05-27T04:22:56Z
+resource: shannon-prime-lattice/papers/SESSION-CLOSED-lat-2-CU-PTX-SUPERSEDED.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
 > SUPERSEDED 2026-05-27 — see SESSION-CLOSED-lat-2-CU-PTX-REWORK.md.
 > This document describes the prior agent's premature closure that
 > shipped nvcuda::wmma C++ in ptx_mma.cuh (zero asm volatile) +
