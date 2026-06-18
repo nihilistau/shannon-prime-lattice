@@ -15,13 +15,17 @@ Usage:
     python okf_validate.py <bundle-dir> [--strict-links] [--quiet]
 Exit code 0 iff zero errors (warnings do not fail unless --strict-links).
 """
-import os, re, sys, datetime
+import os, re, sys, datetime, fnmatch
 
 SP_TYPES = {
     "research-paper", "paper-bite", "paper-provenance", "contract", "gate-receipt",
     "roadmap", "project-state", "session-handoff", "abi", "design", "runbook",
     "lesson", "convention", "memory", "index", "log",
 }
+# memory-dialect subtypes: the agent-memory harness tags concepts with one of these as `type`
+# (the OKF `type` slot), with `node_type: memory` as the OKF concept type. Older memory files
+# carry only the subtype (no node_type wrapper); accept the subtype as the memory dialect.
+MEMORY_SUBTYPES = {"feedback", "project", "reference", "user"}
 SP_STATUS = {"GREEN", "RED", "DESIGN", "HONEST-NEGATIVE", "DRAFT", "ACTIVE", "SUPERSEDED"}
 ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:?\d{2})?)?$")
 MDLINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
@@ -46,7 +50,9 @@ def parse_frontmatter(text):
             if isinstance(d[cur_key], list):
                 d[cur_key].append(line.lstrip()[2:].strip())
             continue
-        m = re.match(r"^([A-Za-z0-9_]+):\s*(.*)$", line)
+        # allow leading whitespace: flatten nested mapping keys (e.g. metadata: node_type: ...)
+        # up to top level, which is how the memory dialect exposes node_type/type.
+        m = re.match(r"^\s*([A-Za-z0-9_]+):\s*(.*)$", line)
         if not m:
             continue
         k, v = m.group(1), m.group(2).strip()
@@ -70,12 +76,22 @@ def validate_file(path, bundle_root, strict_links):
     fm, _ = parse_frontmatter(text)
     if fm is None:
         return ["no YAML frontmatter (expected leading '---' ... '---')"], []
-    # REQUIRED: type
+    # REQUIRED: type (with memory-dialect acceptance via node_type).
+    # The minimal YAML parser flattens nested `metadata:` keys to top-level, so memory files
+    # (metadata: node_type: memory + a subtype `type: feedback|project|reference|user`) expose
+    # node_type=memory (in SP_TYPES) and type=<subtype> (not in SP_TYPES). Accept that dialect.
     t = fm.get("type")
-    if not t:
-        errs.append("missing required field `type`")
-    elif t not in SP_TYPES:
+    nt = fm.get("node_type")
+    if t and t in SP_TYPES:
+        pass                                                      # ordinary SP-OKF concept
+    elif nt in SP_TYPES:
+        pass                                                      # memory dialect; subtype `type` allowed
+    elif t and t in MEMORY_SUBTYPES:
+        pass                                                      # memory dialect (legacy: subtype only, no node_type)
+    elif t:
         errs.append(f"`type: {t}` not in SP vocabulary (register in SP-OKF-PROFILE §2 first)")
+    else:
+        errs.append("missing required field `type`")
     # reserved OKF fields, if present
     if "tags" in fm and not isinstance(fm["tags"], list):
         errs.append("`tags` must be a YAML list")
@@ -118,6 +134,26 @@ def main():
             if fn.endswith(".md"):
                 md.append(os.path.join(dp, fn))
     md.sort()
+    # optional .okfignore: one glob per line (matched against bundle-relative path), # = comment
+    ignore_path = os.path.join(root, ".okfignore")
+    if os.path.exists(ignore_path):
+        pats = []
+        for ln in open(ignore_path, encoding="utf-8"):
+            ln = ln.strip()
+            if ln and not ln.startswith("#"):
+                pats.append(ln)
+        if pats:
+            kept = []
+            n_ignored = 0
+            for p in md:
+                rel = os.path.relpath(p, root).replace(os.sep, "/")
+                base = os.path.basename(p)
+                if any(fnmatch.fnmatch(rel, g) or fnmatch.fnmatch(base, g) for g in pats):
+                    n_ignored += 1
+                else:
+                    kept.append(p)
+            md = kept
+            print(f"[ignored {n_ignored} files via .okfignore]")
     n_err = n_warn = n_ok = 0
     for p in md:
         e, w = validate_file(p, root, strict)
