@@ -276,7 +276,7 @@ supplied 0th-stream embedding at that token, with normal PLE/AltUp gathers. That
 
 ## 2026-06-16 — CORRECTION (the above L1/L5 were against the WRONG model)
 
-Everything in the "AltUp gauntlet / Option 2" entry above was diagnosed against **gemma3n**, which was
+Everything in the "AltUp gauntlet / Option 2" entry above was diagnosed against the wrong model — an AltUp / per-layer-embedding Gemma variant that is **not part of our stack** (we run gemma-4-12B + E2B) — which was
 the wrong model. The real `google/gemma-4-12B` config (`/mnt/d/Files/Models/Gemma4/gemma-4-12b-bucket/
 config.json`) says: `architectures=['Gemma4UnifiedForConditionalGeneration']`, `model_type=gemma4_unified`,
 **`hidden_size_per_layer_input = 0`** ⇒ **NO per-layer embeddings, NO AltUp.** Single residual stream;
