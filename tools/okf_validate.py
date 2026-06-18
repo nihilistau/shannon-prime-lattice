@@ -20,7 +20,7 @@ import os, re, sys, datetime
 SP_TYPES = {
     "research-paper", "paper-bite", "paper-provenance", "contract", "gate-receipt",
     "roadmap", "project-state", "session-handoff", "abi", "design", "runbook",
-    "lesson", "convention", "memory",
+    "lesson", "convention", "memory", "index", "log",
 }
 SP_STATUS = {"GREEN", "RED", "DESIGN", "HONEST-NEGATIVE", "DRAFT", "ACTIVE", "SUPERSEDED"}
 ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:?\d{2})?)?$")

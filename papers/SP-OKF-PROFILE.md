@@ -58,6 +58,8 @@ OKF leaves `type` to the producer; we fix a controlled vocabulary so consumers c
 | `lesson` | a banked failure/principle | `lattice/lessons.md` |
 | `convention` | a standard (this doc) | `SP-OKF-PROFILE.md` |
 | `memory` | a persistent-memory fact | `memory/*.md` |
+| `index` | a bundle's progressive-disclosure map (reserved `index.md`) | `<bundle>/index.md` |
+| `log` | a bundle's chronological history (reserved `log.md`) | `<bundle>/log.md`, `LEDGER.md` |
 
 New types are added here first (single source of truth), then used.
 
