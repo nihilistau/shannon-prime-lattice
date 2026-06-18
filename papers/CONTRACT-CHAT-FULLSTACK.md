@@ -85,4 +85,16 @@ A1 (fast decode) → A2 (sampler) → **Stage-A exit gate** → B1 (byte-exact t
 
 **A2-polish (follow-on, surfaced by the B2 diagnosis):** the control-token suppression covers only `<image|>` (not `<audio|>`/`<|turn>` etc. — extend the set, sampled path); and turn-stop never fires because this artifact's tokenizer has **no `<end_of_turn>` token** (it has `<|turn>`/`<turn|>`) so the model runs on past the turn — needs a turn-stop heuristic (e.g. stop on `<|turn>` / a double-newline + "Question:" guard). Chat is usable (coherent) without these; they are quality polish.
 
-**STAGE B — REMAINING after the B2 ring is fixed: B2-ring debug + coherence gate → B3 ARM → B4 NIGHTSHIFT, per §3. Each registers any new session knob in `sp_l1.h`/`PPT-LAT-L1-ABI-v0.md` first, then builds + gates (now incl. a coherence gate).**
+## 6. ARCHITECTURE DIRECTIVE — the single latent entry point (operator, 2026-06-18)
+
+**The governing principle for all of Stage B and beyond:** the model has ONE true input — a stream of continuous latent vectors in its residual space — and **every modality enters through the one proven seam, `gemma4_kv_inject_seq`** (the KAI-2/KAI-3 "voice mechanism," residual-entry override → model mints K/V natively → RoPE + per-layer variance correct *by construction*). Three SOURCES feed that one entry:
+- **text** → BPE ids (`sp_tokenizer_encode`) → `embed_tokens × √E` → inject_seq. (BPE doesn't disappear; it becomes the text→latent *projector*, beside the EAR audio projector. KAI-2's EMB control already PASSED 2/2 injecting real token embeddings through this seam — so this is proven, not speculative.)
+- **audio** → EAR (GNA) frames → KAI-3 projector → inject_seq.
+- **episodic recall** → `gemma4_kv_replay` (the ONE deeper seam: K/V cache, not entry — recalled memory, not fresh input; phase-exact placement, magnitude correct by construction; do NOT use the m=0 / σ-π^k math — that contradicts the proven path).
+
+**Why this matters (no-spin):** it collapses the two-path (BPE-prefill vs residual-inject) design into one auditable channel; text and audio interleave seamlessly; and it is the architecture the byte-exact container was built to make safe. **The A2/ring fixes below are entry-agnostic** (they live in the shared decode loop / SWA cache), so they remain valid and come first.
+
+### STAGE B5 — unify chat input onto the single inject seam
+Re-route the daemon's text chat input from token-id `prefill_chunk` to **`gemma4_kv_inject_seq` over `embed_tokens(ids)×√E`** (the residual seam). **Gate G-CHAT-B5:** inject-path output is semantically equivalent to (ideally bit-identical to, else coherence-equal + documented delta) the prefill path on a fixed prompt set at temp=0; coherence gate (real factual prompts answered correctly); null-floor (prefill path remains available + untouched). Then the console + daemon expose all three sources (text / audio-frame / episode-recall) through the one entry. New session verb (e.g. `sp_session_inject_embeds`) registers in `sp_l1.h` append-only FIRST.
+
+**STAGE B — REMAINING ORDER (operator-authorized): A2-polish (clean coherent text, coherence-gated) → B2-ring debug + coherence gate (the O(1) win) → B5 single-entry unification + surface the proven replay/inject channels in the console → B3 ARM → B4 NIGHTSHIFT. Each registers any new session knob in `sp_l1.h` first; each gates on COHERENCE, not just determinism (the B2 false-green lesson).**
