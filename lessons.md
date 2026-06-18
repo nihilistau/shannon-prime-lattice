@@ -5,6 +5,31 @@ the rule that prevents the repeat. Receipts-first: cite the run/commit where it 
 
 ---
 
+## 2026-06-18 — The byte-exact linear algebra was ALREADY in the crate — grep before building exact arithmetic
+
+Closing the byte-exact gemma-4-12B forward, the offline ATTN-NTT / ATTN-FULL prototypes and the
+CUDA `bx_*` kernels **re-derived code that already existed, bounded and bit-exact-gated**, in the
+universal Rust crate `engine tools/sp_dsp_smoke` (the §3-HX / NTT-sprint line — a `git worktree` of
+the engine, NOT in the four mounted folders, which is exactly why it was easy to miss). The crate
+already owned: dual-prime **Barrett** (`sp_barrett_oracle.rs`, the same q1/q2/μ), **mod-q matmul +
+Garner CRT** (`sp_matmul_q_ref.rs` — including `Q1_INV_MOD_Q2 = 894602413`, the *very constant* the
+CUDA hand-roll re-derived from scratch — plus `matmul_60bit_ref` + a `T_GARNER_BIT_EXACT` gate), and
+the **full NTT ladder** (`sp_ntt_0..5b`, INTT round-trip gated). The genuinely-new piece was only the
+**four nonlinear islands** (RMSNorm/softmax/GELU/RoPE) — added as `sp_islands_q_ref.rs` (+ math-core
+`core/exact_islands/`), G-ISLANDS-Q-REF GREEN. Everything *linear* was a solved, tested asset.
+
+**THE RULE: before building byte-exact / exact-integer arithmetic, grep the universal crate
+`tools/sp_dsp_smoke` (and the whole engine, worktrees included) for the primitive.** The crate is L2 =
+the universal orchestrator + the scalar bit-exact REFERENCE; if it's a Barrett/Garner/NTT/mod-q
+operation, it is almost certainly already there and gated. Re-deriving it is wasted motion AND a
+divergence risk (a second implementation of the same exact op is exactly the kind of silent drift the
+byte-exact mission forbids — cf. the decision-B OK_Q4B loader reconciliation: one decode path, not two).
+This is the same standing failure mode as re-deriving a solved seam (the KAI-2 arc) — default to READ
+the crate first. Banked as [[reference-byteexact-already-in-rust-crate]]. Receipts: `CONTRACT-BYTEEXACT-forward.md`
+§8; engine `69c0588` + math-core submodule `d9d96f3`; gates `G-ISLANDS-Q-REF` / `G-BYTEEXACT-FORWARD-12B`.
+
+---
+
 ## 2026-06-18 — The boundary thesis: the substrate wins on the container, never on the content
 
 This is the keystone lesson of unifying XBAR onto the exact-integer O_K substrate (Q(√−163), the

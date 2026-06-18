@@ -16,6 +16,8 @@
 
 Every run banner echoes its geometry from the loaded config (`kvfs`/`period`/per-class dims), never from prose — the banner-echoes-getenv rule extends to geometry.
 
+> **One-substrate note (2026-06-18).** The byte-exact gemma-4-12B forward (closed GREEN this day, `CONTRACT-BYTEEXACT-forward.md` §7/§8) computes its exact-integer **attention** (Q·K / p·V) on the **same dual-prime CRT-NTT** (q1=1073738753, q2=1073732609, M=q1·q2≈2⁶⁰) that this XBAR memory ring uses for the Ring-3 bind / Ring-2 store — `core/ntt_crt` + `core/poly_ring`, `sp_pr_mul`. The forward's exact attention and the crossbar's memory are **one substrate**, which is exactly why the byte-exact attention "overlaps the XBAR KV work" (the contract's own framing): moving the KV cache to the integer/CKKS-encoded representation serves both the forward's cross-machine determinism and the ring's exact recall. No P3 gate or law below changes; this is a cross-reference, not a scope edit.
+
 **Non-goals (each owned elsewhere):**
 - NOT the trained Memo / learned curator — that is C2 (the P2.b adapter lane), currently adapter-limited per the k-sweep verdict.
 - NOT NIGHTSHIFT (N1) — the offline schtasks loop composes on P3's persisted episodes but is its own contract.

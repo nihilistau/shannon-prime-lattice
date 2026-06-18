@@ -360,6 +360,8 @@ Final logits are pruned by CRT decomposition of the LM head weight matrix and Me
 
 We now state the load-bearing theorems with proof sketches and validation status. Where a theorem has been validated empirically — typically against Gemma3-1B as the reference model — we cite the validation number.
 
+> **Status upgrade (2026-06-18) — the discrete forward is now REALIZED + 12B-gated; the proofs below are UNCHANGED.** The exact-integer substitution these theorems formalize has crossed from validated-on-1B to **byte-exact on the production gemma-4-12B**. The four nonlinear "islands" (RMSNorm / softmax / GELU-tanh / RoPE) and the **attention** (Q·K / p·V) — the operations that were still float in the engine — now run **exact-integer** behind a default-off `SP_BYTEEXACT` flag, on the same dual-prime CRT-NTT (T6) the memory ring uses, so the whole forward's logits are bit-identical across reduction-order and machine. Gate **G-BYTEEXACT-FORWARD-12B GREEN** (OFF = PPL 4.6665 byte-identical null floor / ON = 4.6569 parity / run-to-run bit-identical). This is the *realization* of the substitution, not a change to it — the theorem statements and proof sketches stand exactly as written. Record: `papers/CONTRACT-BYTEEXACT-forward.md` §5.2/§7; receipts engine `tests/fixtures/xbar_r3/G-BYTEEXACT-FORWARD-12B.log`.
+
 ### T1 — Endomorphism realization
 
 **Statement.** The hidden-state trajectory through $L$ transformer layers, viewed as a sequence $h_0, h_1, \dots, h_L$ in the residual stream, embeds into $E^L$ where $E$ is a CM elliptic curve over the Hilbert class field $H_K = K$ of $K = \mathbb{Q}(\sqrt{-163})$. The embedding is *exact* on the natural distribution of residual-stream activations and commutes with the layer transitions of Section 7.
@@ -390,7 +392,7 @@ We now state the load-bearing theorems with proof sketches and validation status
 
 **Proof sketch.** The Q8 representation stores $W_{ij} = \Phi_p(\tilde W_{ij}) \cdot s_i$ where $\tilde W_{ij}$ is the lifted weight and $s_i$ is the per-row scale. The matmul $\sum_j W_{ij} v_j = s_i \sum_j \Phi_p(\tilde W_{ij}) v_j = s_i \Phi_p(\sum_j \tilde W_{ij} \Phi_p^{-1}(v_j))$. When $v_j$ is itself a Frobenius-stable activation — which the residual-stream points on $E(K)$ are by construction — $\Phi_p^{-1}(v_j) = v_j$, so the formula collapses to $s_i \Phi_p(\sum_j \tilde W_{ij} v_j)$, which is exact up to the scale. The "exact up to scale" form is what fp32 reference computes, so the Frobenius-quantised matmul is bit-identical to the reference.
 
-**Validation.** Bit-identical at 6 significant figures on Gemma3-1B: PPL 13.11 native Frobenius-quantised path vs 13.12 fp32 reference. Delta is below the noise floor of any practical PPL measurement.
+**Validation.** Bit-identical at 6 significant figures on Gemma3-1B: PPL 13.11 native Frobenius-quantised path vs 13.12 fp32 reference. Delta is below the noise floor of any practical PPL measurement. **Status upgrade (2026-06-18):** T4 is now operational on the XBAR Ring-2 episode store as an INTEGER store (G-R2-FROB, sub-ULP at 24b) and the per-tensor π^k scale is confirmed FREE; in the byte-exact-Q4 forward the per-block scale is exactly *applied* in fixed-point (no `__int128`) rather than exactly *cancelled* (the cancellation forces 8-bit / OK_Q8 ≈ 18 GB which does not fit the 2060 — see `CONTRACT-BYTEEXACT-forward.md` §1). T4 of the 9.4 GB model WEIGHTS is the named NEXT lever. Proof unchanged.
 
 ### T5 — Deuring lift and CM Sato–Tate asymmetry
 
@@ -406,7 +408,7 @@ We now state the load-bearing theorems with proof sketches and validation status
 
 **Proof sketch.** Each component multiplication $f_i \otimes g_i \pmod{q_i}$ uses at most 30+30 = 60-bit intermediates, fitting in a 64-bit register. The Garner reconstruction step uses two 30-bit multiplications by the CRT coefficients, again fitting in 64 bits. By the Chinese Remainder Theorem the reconstructed value equals the value that a true 60-bit computation would have produced. No rounding, no truncation, no `__int128` is used.
 
-**Validation.** Bit-identical PPL 14.2856 on Gemma3-1B between the CRT path and the (now retired) 60-bit reference path. Verified on both Linux gcc and Windows MSVC builds.
+**Validation.** Bit-identical PPL 14.2856 on Gemma3-1B between the CRT path and the (now retired) 60-bit reference path. Verified on both Linux gcc and Windows MSVC builds. **Status upgrade (2026-06-18):** this same dual-prime CRT-NTT (q1=1073738753, q2=1073732609, Garner inv 894602413, M=q1·q2≈2⁶⁰ fits u64 ⇒ no `__int128`) is now the substrate of the **byte-exact gemma-4-12B forward's exact-integer attention** (Q·K / p·V negacyclic-convolution dot) AND the XBAR memory ring's Ring-3 bind — one substrate, two jobs (G-BYTEEXACT-FORWARD-12B + G-R3-BIND-on-O_K, both GREEN, run-to-run bit-identical). Proof unchanged.
 
 ### T7 — Three-Gap Optimality and Phase-Space Equidistribution
 

@@ -286,6 +286,30 @@ that get memcpy'd in), (c) bit pattern that's unlikely to be produced
 by misaligned shifts of legitimate Spinor payload bytes. `0xA5` =
 `0b10100101` satisfies all three.
 
+## 6.5 OK_Q4B loader reconciliation — the universal crate consumes the engine's resident weights (decision B, 2026-06-18)
+
+**ADDITIVE NOTE (no format change).** When the universal Rust crate
+(`engine tools/sp_dsp_smoke`, the L2 orchestrator) was wired to drive
+the byte-exact gemma-4-12B forward, a weight-loading conflict surfaced:
+the crate's own `.sp-model` loader (`sp_model_layer.rs`) reads single
+**OK_Q8** tiles for the HVX track, but the 12B GPU vehicle is **OK_Q4B**
+(per-32-block-scaled int4 — the only sub-5-bit gemma-4-12B that hits
+gold PPL and fits the 2060-12GB; see STATE §5.13). Two loaders could
+diverge on the dequant.
+
+**Decision B (chosen, engine `e9fb9b0`):** the crate does **not**
+re-decode OK_Q4B. The CUDA L1 backend (registered via the §6b hooks)
+keeps the engine's already-resident `qwen3_model*` / `g_w` device
+weights; **OK_Q4B is decoded engine-side, once.** The crate consumes
+those device weights through the backend dispatch rather than loading a
+second copy — eliminating any risk of a divergent dequant (a second
+decode path is exactly the kind of silent drift the byte-exact mission
+forbids). The crate's HVX `sp_model_layer.rs` **OK_Q8** tile loader is
+retained but scoped **HVX-track-only**; it is not on the 12B CUDA
+byte-exact path. Companion doc: engine `SP-MODEL-Q4B-RECONCILIATION.md`.
+This is a loader-routing decision, **not** an `.sp-model` byte-layout
+change — the format in §1–§6 is untouched.
+
 ## 7. Companion `.sp-tokenizer` file
 
 ```

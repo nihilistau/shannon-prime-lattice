@@ -175,6 +175,79 @@ Production runs with `deterministic=false` (ULP-tolerance gate).
 Toggling mid-session is forbidden because reduction order and stream
 topology are baked into kernel selection at create time.
 
+## 6b. Pluggable backends — forward (prefill) and persistent-KV decode
+
+**ADDITIVE / APPEND-ONLY (2026-06-18). The ABI GREW; nothing changed.**
+These hooks let a heterogeneous L1 backend (CUDA / Vulkan / HVX) own
+the per-step compute under the universal `sp_session` while L2 (the
+`sp_daemon` Rust crate) stays the orchestrator. They were added without
+touching any §1–§6 signature, so a v0 caller that never registers a
+backend behaves exactly as before (the scalar reference path = the null
+floor).
+
+### 6b.1 The existing forward backend (prefill-only)
+
+```c
+typedef sp_status (*sp_forward_dispatch_fn)(
+    sp_session*, const int32_t* tokens, size_t n_tokens,
+    float* logits_last, size_t logits_capacity, void* backend_handle);
+
+sp_status sp_session_register_forward_backend(
+    sp_session*, void* backend_handle, sp_forward_dispatch_fn);
+```
+
+Registers a *prefill* backend: the dispatch fn is the device twin of
+`sp_prefill_chunk` (§3). Wired for CUDA as `cuda_forward_dispatch.rs`
+(`sp_wire_cuda_forward_dispatch`) → C glue `sp_daemon_cuda_glue.c`
+(arch-routes to the gemma4 CUDA forward), feature `wire_cuda_backend`,
+gate `T_WIRE_CUDA_RUNTIME_ACTIVE`. **Proven on the real 12B**
+(G-WIRE-CUDA-GEMMA4): the daemon drives `gemma4_forward_cuda`,
+`cuda_forward_count 0→1`, `wire_cuda_active:true`. By contract this
+hook is **prefill-only** — it has no notion of a persistent decode
+position, rewind, or an evictable cache. That gap is §6b.2.
+
+### 6b.2 The persistent-KV decode backend (NEW verb)
+
+A *resident* decode path (the `gemma4_kv_*` cache: open once, decode
+token-by-token against a persistent device KV, rewind/evict in O(1))
+needs a stateful sibling to §6b.1. Added as one new registration verb
+plus a six-entry dispatch table:
+
+```c
+typedef struct {
+    sp_status (*open)        (sp_session*, const int32_t* prompt, size_t n_prompt,
+                              void* backend_handle);   // open the resident KV
+    sp_status (*prefill)     (sp_session*, const int32_t* tokens, size_t n_tokens,
+                              void* backend_handle);    // ingest into the resident cache
+    sp_status (*decode_step) (sp_session*, int32_t token,
+                              float* logits, size_t logits_capacity,
+                              void* backend_handle);    // one resident decode step
+    sp_status (*rewind)      (sp_session*, size_t n_tokens, void* backend_handle); // O(1) shear
+    sp_status (*position)    (const sp_session*, size_t* pos, void* backend_handle);
+    sp_status (*close)       (sp_session*, void* backend_handle);
+} sp_kvdecode_dispatch_fn;
+
+sp_status sp_session_register_kvdecode_backend(
+    sp_session*, void* backend_handle, const sp_kvdecode_dispatch_fn*);
+```
+
+This is the ABI surface of the persistent-KV decode (§4's
+`sp_session_rewind`/`sp_session_position` generalized to a registered
+device backend that owns its own KV arena). Wired for CUDA via
+`cuda_kvdecode_dispatch.rs` → C glue + `sp_daemon` AppState slot,
+feature `wire_cuda_backend`. The one additive engine ABI it required —
+`gemma4_kv_decode_logits` (the resident decode returns logits, not just
+argmax ids) — was added behind the same null-floor discipline (the
+one-shot `gemma4_decode_cuda` stays byte-untouched).
+
+**Proven on the real 12B** (G-WIRE-CUDA-DECODE-GEMMA4, submodule
+`d9d96f3` → engine `6b9a786`): the universal daemon decodes the 12B
+token-by-token through this verb — **32/32 tokens bit-identical to the
+`gemma4_kv_decode` oracle, VRAM flat (O(1) cache)**. Submodule-first
+ABI discipline followed. This is the decode half of the byte-exact
+forward (`CONTRACT-BYTEEXACT-forward.md` §8 bridge-plan step 4 — the
+named "persistent-KV L1 verb").
+
 ## 7. Error surface
 
 `sp_status` is a signed int. `SP_OK = 0`. Negative = error. Positive
