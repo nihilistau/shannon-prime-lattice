@@ -1,0 +1,82 @@
+---
+type: contract
+title: CONTRACT-CHAT-FULLSTACK — bring the served /v1/chat onto the full Shannon-Prime substrate
+description: "Pre-registration: route the daemon's served gemma-4-12B chat off the vanilla forward+decode onto the real stack — fast resident gemma4_kv decode + L2 sampler (Stage A), then byte-exact + XBAR ring/recall/replay + ARM + NIGHTSHIFT (Stage B). Each stage gated, bit-exact-when-off."
+tags: [contract, chat, xbar, abi, daemon, gemma4]
+timestamp: 2026-06-18T00:00:00Z
+resource: shannon-prime-system-engine/tools/sp_daemon
+sp_status: ACTIVE
+sp_gate: G-CHAT-A1+A2
+sp_commit: engine 91b4177
+sp_repro: run_console.bat ; curl -N -X POST :3000/v1/chat
+---
+
+# CONTRACT-CHAT-FULLSTACK — the served chat on the real substrate
+
+**Status: PRE-REGISTRATION (DRAFT), 2026-06-18.** Operator chose **A + B**. This contract scopes the whole program, contract-first (prompt.md §7 rule 2), and is the single place the chat↔substrate integration is gated. Parents: `PPT-LAT-L1-ABI-v0.md` (the L1 ABI: §6 forward, §6b kvdecode verb), `CONTRACT-BYTEEXACT-forward.md` (SP_BYTEEXACT), `CONTRACT-XBAR-P3-ring-on-exec.md` (ring/spill/SWA/LSH-recall/SP_REPLAY), `CONTRACT-XBAR-C2-memo-curator-loop.md` (#222 replay/rewind), `CONTRACT-XBAR-R3-consolidation.md` (Ring-3 / NIGHTSHIFT), `CONTRACT-KAIROS-K0-K1.md` (persistent-KV ABI). Terminology per prompt.md §7.4 (ABM/ARM/Ring 1/2/2′/3, Spinor, Frobenius, PPT, LAT).
+
+## 0. The finding this contract responds to (audited, file:line)
+
+The daemon's served `/v1/chat` (`tools/sp_daemon/src/routes.rs` `v1_chat` + `run_kvdecode_chat`) runs a **vanilla forward+decode** through the L1 session ABI. Layer status on the served path TODAY:
+
+| Layer | Status | Evidence |
+|---|---|---|
+| fast CUDA decode (`gemma4_kv_decode_logits`) | **registered but SLOW** — chat takes `run_kvdecode_chat` (routes.rs:322-330) → `kv::decode_step` → `gemma4_kv_decode_logits`, but measured **0.27 tok/s** (per-step velocity path, no CUDA-graph; cf. paper-06 graph decode 26 tok/s) | routes.rs:417-564; daemon log `register_kvdecode_backend OK` |
+| byte-exact (`SP_BYTEEXACT`) | DORMANT (off-by-default null floor; never set on the chat path) | cuda_forward.cu; CONTRACT-BYTEEXACT |
+| XBAR P3 (ring/spill/SWA-ring/LSH-recall/`SP_REPLAY`) | DORMANT (the resident cache is a plain full KV cache; no `SP_XBAR_*`/`SP_ARM_*` on chat) | cuda_forward.cu overlays; only `test_gemma4_cuda` drives them |
+| ARM two-ring + canonical `decode.c` | DORMANT (qwen3/CPU path + harnesses only) | core/forward/decode.c |
+| Ring-3 / NIGHTSHIFT | NOT-WIRED (offline host-Python + native core/ring3) | tools/ring3, core/ring3 |
+| sampling | **greedy argmax**, hardcoded in the HTTP handler | routes.rs:566 `fn argmax`, called at :499/:544 |
+
+**Symptoms:** decode loops (`<image|>` attractor) = greedy argmax + no turn-EOS for this artifact; 0.27 tok/s = the resident decode is not on the fast (graph) kernels. Both must be fixed at the right layer, not as `routes.rs` hacks.
+
+## 1. Non-negotiables (inherited)
+
+- **Bit-exact-when-off / null floor.** Every new path is a flag that is a strict no-op by default; the one-shot `gemma4_decode_cuda` and the existing `gemma4_kv_*` byte-exact gates stay byte-identical. No citable gate (paper-06 26.1 tok/s @ PPL 5.12, G-BYTEEXACT-FORWARD-12B, G-WIRE-CUDA-DECODE-GEMMA4 32/32==oracle) may regress.
+- **Pre-registered gates**, thresholds pinned BEFORE code. **No silent gate revision** — surface upstream + amend this contract.
+- **Scope travels with every number.** Honest negatives stay attached.
+- **The ABI grows append-only.** Any new verb registers in `PPT-LAT-L1-ABI-v0.md` first.
+
+## 2. STAGE A — chat on the fast decode substrate (the prerequisite for B)
+
+### A1 — fast resident decode (the speed)
+**Problem:** `gemma4_kv_decode_logits` on the resident `sp_g4_kv` cache runs the per-step *velocity* path (0.27 tok/s). The fast 12B decode (paper-06, 26 tok/s) is the **CUDA-graph** decode in `gemma4_decode_cuda`.
+**Work:** make the resident-KV decode use the fast kernels/graph (capture the jagged gemma4 decode topology over the persistent cache, or route the resident decode through the same graph path the one-shot decode uses — without breaking the persistent-KV semantics or the O(1) rewind). Pin GPU clocks for the timing leg (2060 mem clock is unlockable — within-leg slope only, cf. `feedback_pin_clocks_for_tests`).
+**Gate G-CHAT-A1 (pre-registered):** on the real 12B via `/v1/chat`, decode ≥ **15 tok/s** sustained (target ≥20; floor well above the 0.27 scalar/velocity), AND token-identical output to the current `run_kvdecode_chat` greedy path on a fixed prompt (the speedup is kernel/graph, not a numerics change), AND `G-WIRE-CUDA-DECODE-GEMMA4` still 32/32==oracle. Falsify: any token divergence, or < 10 tok/s.
+
+### A2 — L2 sampler (the looping)
+**Problem:** greedy argmax in the HTTP handler → `<image|>` loop; no temperature/top-p/repetition-penalty; the gemma4-12b-b1 artifact has no `<end_of_turn>` *token* (control toks `<|turn>`=105 / `<turn|>`=106; turn-end is a stop-*string*).
+**Work:** a sampler module at the L2 decode boundary (the kvdecode ABI deliberately returns full-vocab logits so "L2 owns sampling", cuda_kvdecode_dispatch.rs:139) — temperature, top-p, top-k, repetition/frequency penalty, seedable RNG. Plumb the knobs through `ChatRequest` (+ defaults) and surface them in the console (`console.html`). Keep the turn-stop-string handling; greedy (temp=0) stays bit-deterministic.
+**Gate G-CHAT-A2 (pre-registered):** on a fixed set of ≥5 regression prompts (incl. the two that looped), temp=0.7/top-p=0.95/rep-pen=1.1 produces coherent, non-looping completions that terminate at the turn boundary; temp=0 == the current greedy output bit-for-bit (determinism preserved). Falsify: any loop, or temp=0 nondeterminism.
+
+**Stage A exit:** `/v1/chat` is fast (≥15 tok/s), coherent, non-looping, on the resident `gemma4_kv_*` substrate — the doorway B builds on.
+
+## 3. STAGE B — the full stack on chat (each a flag-gated overlay on the A substrate)
+
+All B overlays attach to the **same resident `gemma4_kv_*` decode** A lands on; each is off-by-default (null floor) and individually gated.
+
+### B1 — byte-exact chat (`SP_BYTEEXACT`)
+Route the resident decode through the exact-integer islands+attention (CONTRACT-BYTEEXACT). **Gate G-CHAT-B1:** flag-off == A output byte-identical; flag-on == run-to-run bit-identical, PPL parity; expose as a `ChatRequest`/console toggle ("auditable mode"). (This is the AUDITABILITY axis on chat — exact, reproducible generation.)
+
+### B2 — XBAR ring + recall + replay on chat
+Make the resident chat cache the **XBAR ring** (SWA-ring `pos%Wring` + compact global slab + learned-LSH sparse global recall, P3.2-b-2b) so chat is O(1)-VRAM in context; wire the C2 curator recall (`SP_REPLAY`/#222) so prior episodes can be recalled into a live chat turn. **Gate G-CHAT-B2:** ring-on == ring-off output token-identical at small context (the proven null), VRAM flat across a context doubling (the O(1) ladder), and a planted needle survives (NIAH) — reusing the P3 gates on the live chat path. Surfaces the `SP_XBAR_SWA_*`/`SP_ARM_*` knobs through the session (ABI addendum if needed — register in L1-ABI first).
+
+### B3 — ARM two-ring memory on chat
+Bring the ARM two-ring (Ring-1 working / Ring-2 verbatim Spinor-KV, the math-core `core/arm`) onto the gemma4 chat decode (today it's the qwen3/CPU path only). **Gate G-CHAT-B3:** Ring-2 spill/recall byte-exact under poison on the live chat cache; bit-exact-when-off.
+
+### B4 — NIGHTSHIFT between turns
+Run the (now native-C `core/ring3`) consolidation loop **between chat turns / on idle**: aging Ring-2 turns → Ring-3 gist under the irreversible G-R3-LOSS gate; recall-from-both on the next turn. **Gate G-CHAT-B4:** an unattended multi-turn session consolidates with net-positive gated promotions, zero canonical corruption, full receipt log (the N1 soak, applied to chat). Recall-time gist upsampling stays FORBIDDEN (R3 §1 trap).
+
+## 4. Build order (smallest falsifiable steps)
+
+A1 (fast decode) → A2 (sampler) → **Stage-A exit gate** → B1 (byte-exact toggle) → B2 (XBAR ring/recall) → B3 (ARM) → B4 (NIGHTSHIFT). B2–B4 may surface new session-level knobs; each registers in `PPT-LAT-L1-ABI-v0.md` §6c+ BEFORE building. Every stage: pin the gate here, build, run on the real 12B via the console, land the receipt + commit, update STATE/SESSION-HANDOFF.
+
+## 5. Run-records
+
+**STAGE A — CLOSED GREEN (2026-06-18, engine `91b4177`, lineage `1375e65→91b4177`; +632/−15, 6 files).**
+
+- **G-CHAT-A2 (sampler / the loop) — GREEN.** New `tools/sp_daemon/src/sampler.rs` (temperature, top-k, top-p, repetition + frequency penalty over generated history, seedable SplitMix64); knobs in `ChatRequest` + a controls row in `console.html`; both decode loops route through `Sampler::sample` (old `fn argmax` → `sampler::argmax`). The `<image|>` attractor is killed by suppressing the image-placeholder control token to −∞ on the **sampled path only** (`tokenizer.suppress_token_ids()`, id-agnostic via `id_to_bytes`) — so **temp=0 reproduces the prior greedy output byte-for-byte** (SHA-equal incl. the original loop; the greedy null floor is untouched). 5 regression prompts (incl. the two that looped) → coherent, non-looping, turn-terminated; seeded sampling reproducible (seed 999 A==B). 4 sampler unit tests pass.
+- **G-CHAT-A1 (fast decode) — GREEN on the floor + an honest scope correction.** Added off-by-default CUDA-graph resident decode (`SP_G4_KV_GRAPH=1`, `g4_kv_launch_full` captured once / replayed; position kernels read device `dpos` so one capture replays at any position) — **bit-identical armed or not, `G-WIRE-CUDA-DECODE-GEMMA4` 32/32==oracle both ways**. **Measured 15.4–15.9 tok/s** (slope, prefill cancelled, SM pinned 1605; 2060 mem clock unlockable). **Root cause correction:** the resident decode is **memory-bandwidth bound** (9.4 GB Q4B dp4a GEMV/token), NOT launch-bound — graph-on == graph-off tok/s. The contract's "0.27 tok/s" premise was an artifact of `/v1/metrics` (`tokens_decoded/uptime`, a lifetime average over idle+load), NOT the decode rate; the served path with the standard daemon env was already ~15 tok/s. ≥15 floor cleared; ≥20 target needs sustained mem boost the 2060 won't pin. The graph overlay is retained as a correct null-floor-safe path; **bandwidth is the ceiling on this box, so the B-stage VRAM/O(1) (XBAR ring) work is the higher-leverage axis here.**
+- **Null floor preserved.** No closed gate regressed. Daemon live on :3000 (run_console env). Receipts: engine `_a1_*`/`_a2_*`/`_gate_*.log`.
+
+**STAGE B — OPEN (next): B1 byte-exact toggle → B2 XBAR ring/recall → B3 ARM → B4 NIGHTSHIFT, per §3. Each registers any new session knob in `PPT-LAT-L1-ABI-v0.md` first, then builds + gates.**
