@@ -1,6 +1,25 @@
 # SESSION-HANDOFF.md — where things stand
 
-**Updated:** 2026-06-18 (**XBAR / NIGHTSHIFT COMPLETE end-to-end** — the native-C `core/ring3` port closed the deploy gap: gate **T_RING3_NATIVE 42/42**, math-core `e0fccd3` / engine submodule `7b992d2`. Prior: XBAR unified onto the exact-integer O_K substrate, period-6 rebase + host-numpy→native Z_q/NTT port CLOSED. T4-weights convicted, KAIROS closed → the locked queue's prior top two are spent; NEXT is an open strategic call. **Nothing baking**).
+**Updated:** 2026-06-19 (**LIVE CHAT TO GEMMA-4-12B THROUGH THE FULL STACK — coherent, reproducible, byte-exact, O(1)-context, single-entry.** See §0c. Prior milestones below unchanged.)
+
+---
+
+## 0c. CHAT-FULLSTACK — the operator console chats the real 12B (2026-06-19)
+
+**`run_console.bat` → http://127.0.0.1:3000/ chats the real Gemma-4-12B through L2 daemon → L1 ABI → CUDA backend, COHERENT.** Contract + run-records: `papers/CONTRACT-CHAT-FULLSTACK.md`. Stages all GREEN (coherence-gated, not just SHA — the hard lesson of this arc):
+- **#115** daemon FFIs the proven engine C gemma4 BPE tokenizer (`58b6c2d` lineage; parity 5432/5432).
+- **A1/A2** L2 sampler (temp/top-p/top-k/rep-pen, seedable) + CUDA-graph resident decode (~15 tok/s, **memory-bandwidth-bound** on the 2060 = the physical ceiling, not a stall). Engine `91b4177`.
+- **A2-polish** id-agnostic control-token suppression + turn-stop. Engine `cc4e26c`.
+- **B1** per-session byte-exact "auditable mode" (ABI `sp_l1.h §6c`). Engine `66e30bc`.
+- **S1 (the coherence keystone)** ROOT CAUSE of the earlier token-soup: the daemon imposed the **gemma3** `<start_of_turn>` template on a **gemma4** model whose vocab has NO such tokens (real turn toks `<|turn>`=105/`<turn|>`=106; `<turn|>` was even being suppressed so it could never stop). Fixed: token-level template w/ real ids + **config-driven** suppress/eos from `generation_config.json` (`suppress_tokens:[258883,258882]`, eos=1) + **byte-exact integer decode as the DEFAULT** (build-independent determinism — kills the FP-reorder coherent↔garbage flip). 6/6 coherent, byte-identical across two builds. Engine `58b6c2d`.
+- **B5 (the single entry point — operator's image-1)** text/audio/memory all enter ONE residual seam (`gemma4_kv_inject_seq`). `gemma4_kv_inject_tokens` stages `embed×√E` device-side + steps the real id (PLE parity) ⇒ **text-via-seam == prefill 6/6 BIT-IDENTICAL**. `inject_frames` channel exposed for the audio/memory sources. ABI `sp_l1.h §6e`. Engine `18a5f78`, submodule `cb601e9`.
+- **B2-ring (O(1) VRAM)** the SWA ring is fixed + RE-ARMED (served default). Root cause: the float ring kernel lost S1's byte-exact FP-reorder immunity on 40 SWA layers → soup; fix = **`k_attn_decode_ring_bx`** (exact-integer ring) + journal auto-advance + reset-not-rewind. 3-leg coherence gate GREEN: coherent past 64 tok / ring==ring-off byte-identical / **VRAM flat ~10–20 MiB across 6k→12k**. Engine `7eb7231`.
+
+**Daemon currently LIVE on :3000** (ring-armed, byte-exact default). `run_console.bat` is the launcher (ring re-armed). No closed gate regressed throughout (`G-WIRE-CUDA-DECODE-GEMMA4` 32/32==oracle).
+
+**REMAINING (next stages, documented in CONTRACT-CHAT-FULLSTACK, NOT blocking a coherent chat):** B3 (ARM two-ring on the gemma4 decode — today log-only on gemma4, real on qwen3 CPU); B4 (NIGHTSHIFT between turns); wire the real AUDIO source (EAR/GNA / `voxtral-mini-realtime-rs`) + memory-as-residual into the B5 `inject_frames` channel (the channel exists; the projector wiring is the work); a **rank-2..N coherence assertion** in the decode gate (the determinism-gate-blindness lesson). HONEST artifact ceiling: the OK_Q4B b1 sometimes runs on past the turn at greedy (correct content, weak turn-discipline) — bounded by max_tokens.
+
+**⚠ REPO-HYGIENE TO RECONCILE (binding submodule lesson):** the standalone `shannon-prime-system` (`300d32c`) DIVERGED from the engine submodule (`cb601e9`, the canonical/ahead copy the engine builds against). Same §6e content, different history (B2's §6d was committed only to the submodule). The engine is correct (builds against `cb601e9`); the standalone needs a deliberate rebase onto the submodule lineage — do NOT auto-force; reconcile explicitly. Flagged, not silently left.
 
 ---
 
