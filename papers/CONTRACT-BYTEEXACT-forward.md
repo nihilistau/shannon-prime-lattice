@@ -36,6 +36,38 @@ All match float to ~1e-6 (lossless for inference) and are reduction-order-immune
 - **G-BYTEEXACT-FORWARD:** 12B logits **bit-identical** across reduction-order and machine (CPU/GPU), with the islands integer.
 - **G-BYTEEXACT-PPL:** PPL-parity vs the bf16 gold (4.68) — i.e. the integer islands cost nothing measurable (the ~1e-6 island fidelity predicts this; **measure on-model, do not assume**).
 
+### 5.1 G-BYTEEXACT-ISLANDS-CUDA — the verification scaffold (PRE-REGISTERED 2026-06-18)
+The full integer-island forward (§4.3) is a later big effort — converting `k_rmsnorm*` / the `k_attn` softmax / `k_gelu_mul` / `k_rope*` in `cuda_forward.cu` from float to exact-integer. **Before** that, this gate proves the crate's already-built exact-integer references (`sp_islands_q_ref.rs`: `rmsnorm_q_ref` / `softmax_q_ref` / `gelu_q_ref` / `rope_q_ref`, G-ISLANDS-Q-REF GREEN) **agree with the CUDA forward's actual float island outputs on REAL 12B per-layer activations** to the contract tolerance — i.e. the integer islands, when wired in, will cost nothing measurable. It de-risks §4.3 and §5's G-BYTEEXACT-PPL by measuring island fidelity *on-model* (not synthetic) first.
+
+**Thresholds (pre-registered; per-island, measured on real 12B activations — relerr = ‖cuda−ref‖₂ / ‖cuda‖₂):**
+
+| island | metric | threshold | rationale |
+|---|---|---|---|
+| RMSNorm (ffn_norm, E-wide) | relerr | **< 1e-4** | crate ref is eps-free `√(n/Σx²)`; CUDA is `1/√(mean+eps)`, gemma `rms_eps≈1e-6` → sub-threshold; host gate measured 5.8e-6 synthetic |
+| GELU-tanh (`k_gelu_mul`, fused ·up) | relerr | **< 1e-4** | tanh via the exp primitive; host gate 2.8e-6 synthetic |
+| RoPE (post-q-norm q, NEOX) | relerr | **< 1e-4** | CORDIC cos/sin vs `sinf/cosf`; freq table rebuilt from dumped `rbase`+`ff`; host gate 9.2e-6 synthetic |
+| softmax (attention logits) | max\|Δp\| | **< 1e-5** | gated offline by G-ISLANDS-Q-REF (1.3e-6) on the §3 prototype; the prefill comparator dumps the three POINTWISE islands and SKIPs softmax (a separate logit-dump seam closes it) |
+
+**Mechanism (additive, env-gated, default-off = byte-inert null floor — the one-shot decode path stays byte-untouched):**
+1. **Dump seam** — `cuda_forward.cu` `gemma4_cuda_probe`: `SP_BYTEEXACT_DUMP=<path>` writes the INPUT+OUTPUT of the three pointwise islands for ONE layer (`SP_BYTEEXACT_LAYER`, default = `n_layers/2` — a MID layer, since the `attn_only=1` driver breaks at the last layer *before* the FFN island captures) as a self-describing binary (header `BXI1` + per-record `{4-byte tag, rows, width}` + f32 payload; tags `RMSi/RMSw/RMSo`, `GELi/GELu/GELo`, `ROPi/ROPb/ROPf/ROPo`). Pure observation: D2H of the live device buffers around the existing kernels, no kernel behaviour change. (Independent of the §3q `SP_ARM_DUMP` K/q seam, which dumps post-RoPE K/q on the global owners during DECODE — wrong tensors/path for this gate, so a dedicated additive seam was added rather than overloading it.)
+2. **Driver** — `tests/test_gemma4_cuda.c` `SP_G4_BX_DUMP=1` (→ `run_bx_dump`): loads the 12B `.sp-model`, runs `gemma4_cuda_probe(…, attn_only=1)` so the layer loop executes every layer, fires the dump at the chosen layer, and breaks at the last layer's attention residual — **never reaching the tied head** (which 12B can't run without the resident f32 embd). Tokens from `SP_PPL_TOKENS` or a small synthetic id sequence; `SP_BX_NTOK` sets the count (default 16).
+3. **Comparator** — `tools/sp_dsp_smoke/src/bx_islands_compare.rs` (crate bin `bx_islands_compare`, host x86, no DSP/FFI): reads the dump, re-runs each island's dumped INPUT through the crate's `*_q_ref` (the SAME exact-integer references the future CUDA kernels gate against), and asserts the per-island thresholds above. Exit 0 iff all GREEN.
+
+**Run procedure** (needs the warm CUDA build `build-cuda-vs22/tests/test_gemma4_cuda.exe` + the 12B `gemma4-12b-b1.sp-model`):
+```
+# 1. dump real 12B islands (last layer, 16 tokens)
+set SP_GEMMA4_SPMODEL=D:\F\shannon-prime-repos\models\gemma4-12b-b1.sp-model
+set SP_GEMMA4_SPTOK=D:\F\shannon-prime-repos\models\gemma4-12b-b1.sp-tokenizer
+set SP_G4_BX_DUMP=1
+set SP_BYTEEXACT_DUMP=tests\fixtures\xbar_r3\bx_islands_12b.bin
+build-cuda-vs22\tests\test_gemma4_cuda.exe
+# 2. gate vs the crate refs (host cargo, no CUDA)
+cd tools\sp_dsp_smoke
+cargo run --release --bin bx_islands_compare -- ..\..\tests\fixtures\xbar_r3\bx_islands_12b.bin ^
+    | tee ..\..\tests\fixtures\xbar_r3\G-BYTEEXACT-ISLANDS-CUDA.log
+```
+Receipt: `engine tests/fixtures/xbar_r3/G-BYTEEXACT-ISLANDS-CUDA.log`. This gate is the named §8-step-2 precondition for wiring the integer islands into the CUDA forward.
+
 ## 6. Note for the gguf-v4 successor
 A *from-scratch* model would **choose** Mersenne hidden dims ({8191, 32767, 131071}) so RMSNorm/RoPE division becomes an exact bit-shift, closing all islands by construction — the natural end state this retrofit approximates with fixed-point. Out of scope here; in scope for the successor study.
 
