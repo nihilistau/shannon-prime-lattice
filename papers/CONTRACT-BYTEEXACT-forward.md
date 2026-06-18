@@ -56,7 +56,7 @@ The byte-exact **linear algebra was already built, bounded, and bit-exact-gated*
 
 **BRIDGE PLAN (do the obvious — the plumbing exists):**
 1. Add `case SP_ARCH_GEMMA4: return gemma4_forward_cuda(...)` to `sp_daemon_cuda_glue.c` (one line; entry already exported, same lib). Drives the real 12B through the existing `register_forward_backend` hook.
-2. Wire the islands into a CUDA exactness gate: diff `gemma4_forward_cuda`'s RMSNorm/softmax/GELU intermediates vs `*_q_ref`. Add the missing **RoPE** exact-integer reference to the crate (last island).
+2. Wire the islands into a CUDA exactness gate: diff `gemma4_forward_cuda`'s RMSNorm/softmax/GELU/RoPE intermediates vs `*_q_ref`. **(RoPE reference DONE — `rope_q_ref` + `cordic_cossin` in `sp_islands_q_ref.rs`, deterministic fixed-point CORDIC, G-ISLANDS-Q-REF GREEN; all FOUR islands now in-crate.)**
 3. Reconcile the `.sp-model` loader to OK_Q4B (crate currently reads OK_Q8 single tiles) — or pass the engine's resident `qwen3_model*`/`g_w` device weights rather than re-loading.
 4. (New sprint) a persistent-KV L1 verb (open/step/rewind/close) for the `gemma4_kv_*` decode path — the current hook is prefill-only by contract.
 5. End-to-end "byte-exact-when-off" gate: same tokens through the math-core reference forward and CUDA `gemma4_forward_cuda`, logits agree to tolerance — the universal contract, now spanning CUDA.
