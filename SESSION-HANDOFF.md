@@ -1,6 +1,64 @@
 # SESSION-HANDOFF.md — where things stand
 
-**Updated:** 2026-06-19 (**LIVE CHAT TO GEMMA-4-12B THROUGH THE FULL STACK — coherent, reproducible, byte-exact, O(1)-context, single-entry.** See §0c. Prior milestones below unchanged.)
+**Updated:** 2026-06-19 (**AUTONOMOUS LIBRARIAN LIVE — the learned W_c recall head is deployed on the real 12B chat. See section 0d.** Prior milestones below unchanged.)
+
+---
+
+## 0d. B3-WC AUTONOMOUS LIBRARIAN — learned-head recall LIVE on the 12B chat (2026-06-19)
+
+The autonomous-recall campaign is RESOLVED end-to-end (model + deploy). The learned W_c head
+selects the right stored episode for a chat query, or refuses if none is relevant, LIVE on the
+resident Gemma-4-12B. Engine `edc8079` (pushed). Receipt `tests/fixtures/chat_fullstack/G-CHAT-B3-WC-DEPLOY.log`.
+
+WHAT IT IS: recall.rs `WcHead`/`load_wc`/`wc_score` score each registry episode by the W_c projection
+with the **logsumexp-mean** reduction (stable LSE over positions via max-subtraction, then mean over
+(layer,head)) -- the metric the head trains on and the ONLY one that's int16-exact (max/top-m collapse).
+routes.rs `SP_B3_WC` branch: **(E+1)-way argmax over [episodes, NULL=s0]**; episode wins -> replay it
+(SP_REPLAY_MTARGET=42 clamps the injection mass); NULL wins -> clean prompt. Default-off (env unset) =
+null floor; runs WITHOUT SP_B3_DISPOSER / SP_B3_TAU_QK so the legacy q.K block stays telemetry-only.
+
+OFFLINE GATE (G-CHAT-B3-WC-DIV2, 90-needle diverse corpus): 360/361 instance recall + 50/50 foreign
+reject, f32==int16 lossless, s0=+0.102. Diversity (mint_corpus_v2, unique subjects) took instance top-1
+34%->100% -- corpus diversity was the binding constraint all along, not the machinery.
+LIVE on metal (this session): matched "Which recovery code authorizes the Marlock mag-rail depot?" ->
+RECALL ep_n_div_000 (9.858, clear argmax); foreign "What is the capital of France?" -> whole population
+negative (best ep_ctrl_paris -0.026 < s0) -> NULL -> clean "Paris."
+
+HOW TO RUN / PLAY (verified by parts -- recall env proven live this session; ring+web-console is the
+established run_console.bat path):
+  > run_console_recall.bat        (engine root)
+  wait for "listening", open http://127.0.0.1:3000/ , chat.
+  Watch the daemon console for  "B3-WC ... RECALL '<ep>'"  or  "NULL wins -> REJECT".
+  It = run_console.bat (coherent byte-exact SWA-ring chat) + 3 env vars:
+    SP_RECALL_REGISTRY=_needle_corpus_div\registry.jsonl   SP_B3_WC=_b3_wc\wc_deploy.bin   SP_REPLAY_MTARGET=42
+  Deploy blob rebuilt anytime via:  python tools\xbar_lsh\export_wc_deploy.py
+  Plain run_console.bat (no recall) still works unchanged.
+
+ARTIFACTS: head lsh_Wc_f32_div2.npz + int16 lsh_Wc_i16_s14.bin; deploy blob _b3_wc/wc_deploy.bin (WCB1
+hd=512 r=32 s0=+0.1021 sscale=0.17678); registry _needle_corpus_div/ (90 needles + ep_ctrl_paris control).
+
+NEXT (B4 NIGHTSHIFT -- between-turn consolidation, DEFERRED, pre-scoped):
+  Goal: after each chat turn, the daemon folds the turn's content into the episode store so memory GROWS
+  during a conversation (today the registry is static, captured offline by the curator).
+  Cheapest correct path (reuse, don't rebuild):
+   1) On turn end, mint an episode from the turn the SAME way the curator does (the turn's tokens ARE the
+      ep.tok; capture ep.k/ep.v/ep.mf via the existing SP_XBAR_RECALL_WRITE / sp_xbar_manifest_serialize
+      path used by _b3_capture_ep -- it already runs inside the resident decode).
+   2) ADMIT it through the teacher-forced ablation oracle (SP_B3_DISPOSER=2 + ep.secret) so only
+      load-bearing (non-parametric) turns enter -- the proven admission gate, collapse < TAU=-8.
+   3) Append the admitted episode to the in-memory registry (hot-add) so the W_c head scores it on the
+      NEXT turn. The W_c head needs NO retrain to score a new episode (it projects content, order-free);
+      only the s0 NULL threshold is fixed. Optional: NIGHTSHIFT consolidation = fold/dedup similar
+      episodes via the native Ring-3 bind (tools/ring3/ok_bind.py is the integer reference).
+  Effort: a daemon Rust change (turn->capture->admit->hot-append to the registry Vec) + rebuild + a
+  2-turn live test (state a secret turn 1, recall it turn 2). ~1 focused session. NOT started -- too
+  large to land safely in the remaining budget without risking a half-wired tree.
+
+WARN (recurring this session): the sandbox->Windows mount TRUNCATED a Python open().write() of routes.rs
+(82KB) mid-file -> "unclosed delimiter". RECOVERY THAT WORKED: restore intact via `git checkout`/`git show`
+on WINDOWS, re-insert the edit via PowerShell `[System.IO.File]::WriteAllText` (no-BOM UTF8, LF joins),
+then verify line-count + last-line + brace-balance on the Windows disk BEFORE building. bash `cat >>`
+append (recall.rs) survived fine; large Python/Edit writes are the risk.
 
 ---
 
