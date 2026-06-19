@@ -4,6 +4,53 @@ Running log of hard-won lessons. Newest on top. Each entry: what happened, the r
 the rule that prevents the repeat. Receipts-first: cite the run/commit where it applies.
 
 ---
+## 2026-06-20 — Autonomous recall: corpus DIVERSITY was the binding constraint, not the machinery; and hand-designed signals don't survive the open world
+
+The B3 autonomous-recall campaign spent ~12 measured iterations proving that **every hand-designed
+relevance signal fails open-world** — 6 verifiers + 4 Disposer signals (Yes/No bridge, Δ-continuation
+first-token, multi-token ΣΔLL, consensus(q·K ∧ ΔLL)) + cosine-qK normalization + ΔLL-polarity flip —
+each dominated by per-episode / shared-attractor bias at N=3 wiki. The two "principled" normalizations
+(cosine-qK, argmin-ΔLL) made it *worse*, for diagnosable reasons (question→passage angle is ~0.14 for
+EVERY episode, so magnitude was carrying the relevance; matched memory is mid-disruption, not an
+extremum). The thing that actually closed it was a **learned head on a DIVERSE corpus** — and diversity,
+not the head, was the bottleneck: a templated 200-needle corpus gave 34% instance top-1 because the
+shared carrier sentence made every query-Q collide intra-archetype; re-minting with unique subjects +
+varied carriers took it to **100%** with the SAME machinery (`f62e6ef`).
+
+**THE RULES (banked):**
+- **Hand-designed number-theoretic / geometric signals do NOT solve open-world selection** — they are
+  measured negatives, kept attached. Autonomous recall is a LEARNED-head problem. (Boundary thesis: the
+  O_K substrate wins on the exact-arithmetic *container*, not on structure imposed over high-entropy content.)
+- **When a learned selector underperforms, suspect the CORPUS before the model.** Diversity (unique
+  subjects, varied phrasings) was the binding constraint at every granularity — ranking, instance top-1,
+  foreign-reject. More memory / more normalization / more capacity did not help; corpus diversity did.
+- **You cannot measure episodic dependency on facts the model already knows.** Wiki facts are PARAMETRIC
+  (the 12B regenerates them from weights), so ablating the stored copy strands nothing — the ablation
+  oracle reads pure noise. The only measurable axis is NOVEL-vs-parametric (teacher-force the known
+  secret, ablate exactly its source KV rows, score ΣΔLL with/without → −33.56 novel vs −0.15 parametric).
+- **Reduction must match between train and serve.** The W_c int16 "degradation" was NOT quantization — it
+  was a wrong runtime reduction. Diagonal under max=12/361, top-8-mean=16/361, but **logsumexp-mean=361/361
+  and int16==f32 for all three**: logsumexp-over-positions-then-mean-over-heads both discriminates AND
+  quantizes losslessly. Aligning the *trainer* to max+top-m (the naive "train as you serve") was the WRONG
+  direction; the receipt flipped it. Measure the reduction, don't assume it.
+Receipts: engine `tests/fixtures/chat_fullstack/G-CHAT-B3-WC-{DIV2,DIV,DEPLOY}.log`; commits
+`27038d3`→`15738c1`→`b6470cc`→`f62e6ef`→`87044d8`→`edc8079`; record `papers/CONTRACT-CHAT-FULLSTACK.md`.
+
+## 2026-06-20 — Mount-truncation recovery (recurred): build in the workspace, `cp` to the mount, verify bytes
+
+Writing the lattice docs through the sandbox→Windows mount, large Write/Edit calls (and even PowerShell
+`[System.IO.File]::WriteAllText`) **silently TRUNCATED the file on disk** — the tool reported success but
+the file ended mid-word. This matches the engine-side note (routes.rs/cuda_forward.cu lost trailing bytes
+on Write/Edit). The recovery that WORKED here: **`git cat-file -p HEAD:<f>` to get a clean copy into the
+Linux workspace `/tmp`, apply all edits there with Python string-replace (assert each anchor matches
+exactly once), write `/tmp/<new>`, then `cp` it onto the mount in ONE shot, and immediately verify
+`wc -c` against the expected byte count + `tail -c` the last line.** The `cp`-of-a-workspace-file path did
+NOT truncate where Edit/WriteAllText did. Also: the Windows-MCP PowerShell tool mangled multi-statement
+output (returned only the first line, marked exit 1) — its reads are unreliable; trust the Linux `wc`/`tail`
+on the mounted file instead. Banked as the mount-write rule: never trust a large Edit/Write to the mount
+without a post-write byte-count + last-line check; prefer build-in-workspace + `cp`.
+
+---
 
 ## 2026-06-18 — The byte-exact linear algebra was ALREADY in the crate — grep before building exact arithmetic
 

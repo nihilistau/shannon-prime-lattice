@@ -28,6 +28,7 @@ Validate with gate **G-OKF-CONFORM**: `python tools/okf_validate.py papers` (run
 
 **Contracts** (`contract`) — the build/gate contracts:
 - [CONTRACT-BYTEEXACT-forward.md](CONTRACT-BYTEEXACT-forward.md) — the byte-exact forward (GREEN on the 12B).
+- [CONTRACT-CHAT-FULLSTACK.md](CONTRACT-CHAT-FULLSTACK.md) — the served 12B chat on the full substrate (GREEN: coherent + byte-exact + O(1) + single-entry + **B3-WC autonomous learned-head recall LIVE**).
 - [CONTRACT-C1-sp-model-OK-container.md](CONTRACT-C1-sp-model-OK-container.md), [CONTRACT-C2-ARM-spinor-kv-two-ring.md](CONTRACT-C2-ARM-spinor-kv-two-ring.md), [CONTRACT-C4-C5-C6-decisions.md](CONTRACT-C4-C5-C6-decisions.md)
 - [CONTRACT-KAIROS-K0-K1.md](CONTRACT-KAIROS-K0-K1.md), [CONTRACT-SPEED-wire-tok-s.md](CONTRACT-SPEED-wire-tok-s.md)
 - XBAR campaign: [P1](CONTRACT-XBAR-P1-inception-probe.md), [P2](CONTRACT-XBAR-P2-pseudo-token.md), [P2b](CONTRACT-XBAR-P2b-adapter.md), [P3](CONTRACT-XBAR-P3-ring-on-exec.md), [R3](CONTRACT-XBAR-R3-consolidation.md), [C1-lite](CONTRACT-XBAR-C1-lite-curator.md), [C2 memo loop](CONTRACT-XBAR-C2-memo-curator-loop.md)

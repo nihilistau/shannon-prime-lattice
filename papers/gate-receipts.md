@@ -33,6 +33,8 @@ Cross-references: the proven record is [PPT-LAT-STATE.md](PPT-LAT-STATE.md); the
 | G-R3-MOBIUS | Möbius-on-M sheds memories 1.000→0.969@N=32 (honest negative) | `tests/fixtures/xbar_r3/G-R3-MOBIUS.log` | engine `1e70763` | HONEST-NEGATIVE |
 | G-T2-WEIGHTS | T2-Möbius on the real 12B embedding — recon cos 0.032 == random (honest negative) | `tests/fixtures/xbar_r3/G-T2-WEIGHTS.log` | engine `ac76c8e` | HONEST-NEGATIVE |
 | **G-XBAR-ORGANISM-FULL** | Full real-episode loop: audio→C2 sig→native integer Ring-3→Hamming verify→Frobenius store→12B cache (checks=5 fails=0) (X-OK-ORG) | `tests/fixtures/xbar_organism/G-XBAR-ORGANISM-FULL.log` | engine `15e7051` | GREEN |
+| **G-CHAT-B3-WC-DEPLOY** | Learned W_c head does LIVE autonomous instance recall on the 12B chat: matched->RECALL (ep_n_div_000 9.858), foreign->NULL reject (clean Paris) | `tests/fixtures/chat_fullstack/G-CHAT-B3-WC-DEPLOY.log` | engine `edc8079` | GREEN |
+| **G-CHAT-B3-WC-DIV2** | W_c offline deploy gate, 90-needle diverse corpus: (E+1)-argmax over [episodes,NULL=s0] = 360/361 recall + 50/50 foreign reject, int16==f32, s0=+0.102 | `tests/fixtures/chat_fullstack/G-CHAT-B3-WC-DIV2.log` | engine `87044d8` | GREEN |
 | G-XBAR-ORGANISM (write) | Audio→Ring-2 write seam, signature separation | `tests/fixtures/xbar_organism/G-XBAR-ORGANISM-write.log` | engine `6600cf4` | GREEN |
 | G-PERIOD6-REBASE | C2/Ring-3 content-hash period 8→6 to the true gemma4 global layers {5,11,…,47} | `tests/fixtures/xbar_r3/G-PERIOD6-REBASE.log` | engine `d2d7ceb` | GREEN |
 | G-P3-SHARED (12B) | SP_REPLAY episode-replay into the resident cache: intact bit-exact, zeroed diverges 12/12 (X-222) | `tests/fixtures/xbar_p3_replay/G-P3-SHARED_12B_GREEN.log` | engine (P3.3 lineage) | GREEN |
