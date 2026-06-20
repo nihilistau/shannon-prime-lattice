@@ -6,6 +6,8 @@
 
 ## 0d. B3-WC AUTONOMOUS LIBRARIAN — learned-head recall LIVE on the 12B chat (2026-06-19)
 
+**DOC-SYNC COMPLETE (2026-06-20):** the fleet documentation sweep for this milestone is landed + pushed — lattice `d817dd5` (15 living docs) + `e3f8b4e` (README full-stack diagram redrawn, OKF papers 121/121 GREEN); engine `89832dd` (CLAUDE) + `50388be` (README recall-path ASCII + env table + run_console_recall quickstart + stop button); math-core `e09b904` (CLAUDE) + `3b0fcc2` (README ARM surface + four-ring diagram); public Position_Is_Arithmetic `bdba9a4` (papers 22/23/24 front-doors + LEDGER X-B3-* + SERIES + HF post `posts/hf_update_2026-06-20.md`) + `c74afe8` (paper.md long-forms + README tables). Formal PPT-ARM Part I/II (`papers/PPT-ARM/PPT-ARM-{Theory,System}.md`, non-git) carry a 2026-06-20 status note (proofs untouched; .tex/.pdf need a LaTeX regen). Non-blocking: regen stale .pdf; engine tree has pre-existing untracked artifacts + a local PMAX=20000 bump in run_console_recall.bat (committed 4096). The autonomous-recall campaign is fully CLOSED + documented; NEXT falsifiable step = B4 NIGHTSHIFT (pre-scoped below).
+
 The autonomous-recall campaign is RESOLVED end-to-end (model + deploy). The learned W_c head
 selects the right stored episode for a chat query, or refuses if none is relevant, LIVE on the
 resident Gemma-4-12B. Engine `edc8079` (pushed). Receipt `tests/fixtures/chat_fullstack/G-CHAT-B3-WC-DEPLOY.log`.
