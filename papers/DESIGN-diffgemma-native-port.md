@@ -37,5 +37,8 @@ sp_repro: "reference _diffgemma_reference/ (PR 24423 head ef5e2dcce); oracle bui
 ## Non-negotiables
 Reference-first (read `_diffgemma_reference/*.cpp/.cu` file:line before each kernel). Every stage gates byte-exact/output-parity vs the PR-24423 oracle. `SP_DIFFUSION` overlay default-off = byte-identical to the current AR engine. The four nonlinear islands (RMSNorm etc.) reuse the existing exact-integer kernels. Anti-contamination: our code, our O_K/Q4B containers — only the algorithm is referenced.
 
-## Start order
-N0 (transcode, CPU, now) → N1 (mask) → N2 → N3 → N4 (sampler) → N5 (MoE split) → N6 (judge) → N7 (drafter). N0 is GPU-free and is the authorized immediate step while G-DIFFJUDGE-1 holds the GPU.
+## ⚠ SEQUENCING CORRECTION (2026-06-21, discovered at N1a — verify-the-tree)
+N1a (loader) landed GREEN (`sp_model_to_diffusion_gemma` bridge, gate G_DG_N1 26/26, engine `68cd7ff`). But reading the tree revealed the "~70% reuse" is true at the MATH level only: **the engine's CUDA forward (`cuda_forward.cu`) is DENSE-ONLY — there is NO MoE/expert support on the GPU path** (no router, no top-8, no expert GEMM). The MoE forward exists ONLY on the CPU core (`qwen36.c`). DiffusionGemma is a 128-expert/8-used MoE. So **a CUDA MoE backbone (N5a) is a PREREQUISITE for the N1b region-aware forward**, not a late stage. N5 splits: **N5a = CUDA MoE forward** (port `qwen36.c` MoE → `cuda_forward.cu`: F32 router GEMV → top-8 softmax → per-expert OK_Q4B dp4a over the fused `ffn_gate_up_exps` + `ffn_down_exps`, weighted-sum; gate **G-DG-N5a** byte-exact vs the CPU MoE on one block) — comes FIRST; **N5b = heterogeneous GPU/CPU expert split** (the later 2-resident/2-paged optimization) — stays late. Once N5a exists, N1b is the small region-aware overlay (mask + canvas-rmsnorm-embed + enc/dec scalar) behind `SP_DIFFUSION`.
+
+## Start order (CORRECTED)
+N0 (transcode) ✓ → N1a (loader) ✓ → **N5a (CUDA MoE forward — the discovered prerequisite)** → N1b (region-aware [prompt|canvas] overlay + oracle logit-parity) → N2 (enc/dec scalar+rmsnorm, folds into N1b) → N3 (self-cond) → N4 (entropy sampler) → N5b (hetero MoE split) → N6 (native judge) → N7 (drafter).
