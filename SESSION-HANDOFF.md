@@ -1,6 +1,21 @@
 # SESSION-HANDOFF.md — where things stand
 
-**Updated:** 2026-06-19 (**AUTONOMOUS LIBRARIAN LIVE — the learned W_c recall head is deployed on the real 12B chat. See section 0d.** Prior milestones below unchanged.)
+**Updated:** 2026-06-21 (**PHASE 4 SEALED + PHASE 5 DIFFUSION JUDGE PROVEN SUPERIOR + native port begun. See §0.** Prior milestones below unchanged.)
+
+---
+
+## 0. PHASE 4 SEALED + PHASE 5 OPENED — diffusion judge beats AR on both axes; native port N0 GREEN (2026-06-21)
+
+Full detail in memory `project_generative_judge.md` (the canonical record for this arc).
+
+**PHASE 4 — SEALED (engine `81049bb`, pushed).** The open-set recall "terminus" was OVERTURNED: a GENERATIVE judge (12B reading candidate TEXTS via the chat template, tag-based copy-able selection) does query-conditioned open-set recall (85.7% recall@1 on `_needle_corpus_div`) where every geometric/W_c signal failed. Live conversational-memory organism end-to-end: observe→capture (NIGHTSHIFT)→index (C2 sig)→page (KAIROS recency+salience, routes.rs)→SELECT (generative judge)→RECITE (**text-in-context**, not lossy latent injection — the α-sweep proved latent inject of a live episode has NO recitation operating point; recall is generative). `SP_B3_JUDGE` default-off=null floor. Commits `447dfc5` (judge) → `4da0718` (KAIROS window) → `81049bb` (text-in-context sealer + cold-reset + inject attenuation). Honest caveats (AR-spine diseases, deferred): foreign selectivity wobble + NIGHTSHIFT question-echo capture (no admission gate).
+
+**PHASE 5 — diffusion judge PROVEN the structural cure (lattice `6bac6e1`).** Contract `CONTRACT-PPT-LAT-PHASE-5.md` + `DESIGN-diffgemma-native-port.md` (committed `6e9634b`/`bff897a`). **G-DIFFJUDGE-1 GREEN on the metal:** the bidirectional masked-diffusion judge (DiffusionGemma 26B-A4B, run via the PR-24423 oracle build) = **recall@1 95.6% (86/90) AND foreign-reject 96.0% (48/50)** — BEATS the AR judge (85.7%) on BOTH axes, incl. the wobble the AR judge couldn't fix. Constrained {tags,NULL} canvas + bidirectional attention = the antidote to both AR pathologies. Receipt `tests/fixtures/chat_fullstack/G-DIFFJUDGE-1.log`; harness `tools/xbar_lsh/diffjudge_recall_test.py`. **NATIVE-ONLY MANDATE (contract §5):** write the diffusion arch + MoE + entropy sampler into OUR O_K/Q4B CUDA backends; NO llama.cpp/ggml in the shipped engine. PR 24423 = reference (`_diffgemma_reference/ARCH-NOTES.md` + 8 source files) + parity oracle ONLY (`D:\F\llama-diffgemma-pr24423`). **N0 GREEN (G-DG-N0):** sp_transcode now parses diffusion-gemma → our `.sp-model` (`C:\sp_models\diffusiongemma-26B-A4B.sp-model`, 13.27GB, arch_id=9, canvas_length=256, 128/8 experts). Added SP_ARCH_ID_DIFFUSION_GEMMA=9, dg_* arch_info fields, SP_WDT_Q5_0, the new tensor maps + a `--stream` low-RAM path. **N0 code UNCOMMITTED** (clean working tree — engine sp_transcode.c + sp_model.h; submodule lib/shannon-prime-system 4 files: weight_dtype.c, sp_l1.h, sp_model.h, weight_dtype.h).
+
+### NEXT QUEUE (start here)
+1. **GIT HYGIENE (do first):** `lib/shannon-prime-system` submodule is **behind origin/main by 4** (cb601e9). Reconcile: in the submodule, `git fetch` → integrate origin/main's 4 commits → apply the N0 working-tree changes on top → commit + push the submodule → bump the engine submodule pointer + commit engine's N0 (sp_transcode.c, sp_model.h) → rebuild sp_transcode to confirm. Also sync the standalone math-core `shannon-prime-system` (at 0bfdbb3, pre-existing divergence) for the same 4 files. Then `git add -f` the G-DG-N0 .sp-model is OUT-OF-TREE (don't commit the 13GB).
+2. **N1 — the structural heart (GPU, free now):** native bidirectional region-aware `[prompt|canvas]` mask in `cuda_forward.cu` + the diffusion-gemma `.sp-model` loader (load arch_id=9 + the dg_* params + the new tensors). One bidirectional forward producing logits, gated byte-close to the PR-24423 oracle on the same `[prompt|canvas]` tokens (G-DG-N1). Then N2 (enc/dec scalar + canvas rmsnorm) → N3 (self-cond) → N4 (entropy sampler) → N5 (MoE GPU/CPU split) → N6 (native judge) → N7 (drafter). Stages + gates pre-registered in `DESIGN-diffgemma-native-port.md`.
+3. **ENV FLAG:** C: pagefile was switched fixed-16GB→system-managed during the N0 OOM workaround (reboot-pending); revert if desired.
 
 ---
 
