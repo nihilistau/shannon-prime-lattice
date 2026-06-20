@@ -24,8 +24,11 @@ Phase 4 closed on the metal (engine `81049bb`): the conversational-memory organi
 
 **NON-placement (from `DESIGN-diffusion-lane.md`, retained):** the Exec does NOT become a diffusion model. Diffusion is a specialist organ; the AR spine keeps token-granular interruptibility + the XBAR KV physics (a bidirectional block model has no KV-cache in our sense — XBAR does not transfer).
 
-## §2 Gate G-DIFFJUDGE-1 (pre-registered) — the cheap falsification, FIRST
-**Run BEFORE any engine work, on the EXISTING LMStudio DiffusionGemma bundle (no sp_daemon change).** Python proto, same `_needle_corpus_div` the AR judge ran (90 needles + 60 foreign). The constrained masked-infill judge must clear BOTH:
+## §2a TOOLING PREREQUISITE (recon 2026-06-21 — corrects the "existing bundle" assumption)
+**DiffusionGemma does NOT run on mainline llama.cpp yet**, so it does NOT run on the operator's current LMStudio bundle. llama.cpp support is PR #24427 (ggml-org/llama.cpp) — UNMERGED, conflicted as of 2026-06-18, needs rebase — and it requires a **dedicated DiffusionGemma branch + a separate `llama-diffusion-cli` runner** (standard `llama-cli`/`llama-server`, which LMStudio + Ollama build on, cannot load it). The model the operator currently has loaded ("gemma-4-19B/31B-A4B DECKARD Heretic Thinking") is an **autoregressive** Gemma-4 MoE finetune — NOT the diffusion model; running the judge on it tests another AR judge (same selectivity wobble), not the bidirectional cure. **So G-DIFFJUDGE-1 is BLOCKED until one of these stands up:** (i) build the dedicated DiffusionGemma llama.cpp branch (rebase PR #24427) + `llama-diffusion-cli` — fits the 2060/heterogeneous-MoE split, real setup work; (ii) vLLM/Transformers proto (needs the A100 lane after all, PROTO-only); (iii) wait for PR #24427 to land in mainline → then LMStudio works directly. RECOMMENDED first step next session: acquire `google/diffusiongemma-26B-A4B-it` GGUF + stand up option (i).
+
+## §2 Gate G-DIFFJUDGE-1 (pre-registered) — the cheap falsification, FIRST (once §2a tooling exists)
+**Run BEFORE any engine work, on a DiffusionGemma runner (per §2a — NOT the current mainline LMStudio bundle).** Python proto, same `_needle_corpus_div` the AR judge ran (90 needles + 60 foreign). The constrained masked-infill judge must clear BOTH:
 - **(a) recall@1 ≥ 85.7%** (match-or-beat the AR judge baseline), AND
 - **(b) clean `[NULL]` foreign-reject** (the precise caveat the AR judge wobbled on — mis-PICK-then-ignore).
 
