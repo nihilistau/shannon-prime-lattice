@@ -5,7 +5,7 @@ description: The unifying contract that anchors the episodic crossbar (XBAR), li
 tags: [integration, ppt-arm-lat, xbar, nightshift, kairos, ring2, spinor, ablation-oracle, bounded-n]
 timestamp: 2026-06-20
 resource: papers/CONTRACT-PPT-ARM-LAT-INTEGRATION.md
-sp_status: PRE-REGISTERED (design; awaiting operator sign-off; no C/Rust until locked)
+sp_status: DESIGN
 sp_gate: G-INT-1 (spinor→Ring-2 persistence) · G-INT-2 (bounded-N causal recall; ≥80% novel / 100% foreign-reject) · G-INT-3 (KAIROS ring governance) — all pre-registered below, default-off = null floor
 sp_commit: (none yet — this is the pre-registration)
 sp_repro: §6 per-gate commands
