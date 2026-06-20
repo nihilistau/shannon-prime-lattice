@@ -28,9 +28,11 @@ a single human-readable synthesis of where the project stands: the XBAR latent c
 O(1) rewind, the KAIROS resident loop, the headline numbers, and the tests that prove each
 (and why they can be trusted). It is the fastest way to get oriented.
 
-**Latest (2026-06-18) — the BYTE-EXACT FORWARD is CLOSED GREEN on the real gemma-4-12B.** The gemma-4-12B *forward pass itself* now runs **exact-integer end-to-end**: the four nonlinear fp32 islands (RMSNorm / softmax / GELU-tanh / RoPE) and the attention (Q·K / p·V) convert to exact-integer on the **same dual-prime CRT-NTT the XBAR memory ring uses** (q1=1073738753, q2=1073732609, Garner inv 894602413, M=q1·q2≈2⁶⁰ fits u64 ⇒ no `__int128`), behind a default-off `SP_BYTEEXACT` flag (the one-shot production decode stays byte-untouched = null floor). **Byte-exact here means EXACT ARITHMETIC → logits bit-identical across reduction-order and machine — an auditability / cross-machine-determinism property, explicitly NOT a compression result.** Gates on the real 12B (`gemma4-12b-b1.sp-model`, RTX 2060): **G-BYTEEXACT-FORWARD-12B GREEN** — OFF = PPL 4.6665 byte-identical to baseline / ON = 4.6569 parity (−0.21% n=42) / run-to-run **bit-identical**; the universal daemon drives the 12B prefill + token-by-token decode through a new L1 verb `sp_session_register_kvdecode_backend` (**G-WIRE-CUDA-DECODE-GEMMA4: 32/32 bit-identical to the `gemma4_kv_decode` oracle, VRAM flat / O(1)**). The byte-exact *linear* algebra was already built + gated in the universal crate `tools/sp_dsp_smoke`; the new piece was the four nonlinear islands (`sp_islands_q_ref.rs` + math-core `core/exact_islands/`). Only the external 2-physical-GPU bit-identical check remains. Engine `69c0588`, math-core submodule `d9d96f3`; record `papers/CONTRACT-BYTEEXACT-forward.md`.
+**Latest (2026-06-20) — the AUTONOMOUS LIBRARIAN is LIVE on the served Gemma-4-12B chat.** The byte-exact, O(1)-context, single-entry 12B chat (`CONTRACT-CHAT-FULLSTACK`) now has an autonomous, instance-level episodic memory. A learned **W_c head** (`HD=512 → r=32`; relevance = logsumexp-over-positions then mean-over-heads) scores every stored episode against the live query, takes an **(E+1)-way argmax over [episodes, NULL=s0]**, and either **replays the winning episode at a bounded mass budget (`M=42`)** or **rejects to a clean prompt** — default-off (env unset) is byte-identical to the null floor. The relevance foundation is a **teacher-forced ablation knockout** (cudaMemset-ablate a needle's source KV rows and re-score: a genuinely-novel needle collapses −**33.56** nats, a parametric fact only −**0.15** — `TAU=−8.0`), which is both the admission oracle and the head's labeler; a curator mints the diverse corpus the head trains on. **Gates:** G-CHAT-B3-WC-DIV2 = **360/361 instance recall + 50/50 foreign-reject, int16==f32 lossless, s0=+0.102**; **G-CHAT-B3-WC-DEPLOY = LIVE on the metal** (matched query → RECALL `ep_n_div_000`; foreign "capital of France" → whole population negative → NULL → clean "Paris"). It is **host-side in the engine daemon (`recall.rs`/`routes.rs`); NO frozen-ABI change and NO `.sp-model` format change.** Boundary thesis: autonomous recall is won by a **learned head on a diverse corpus, not hand-designed number-theoretic signals** (all ~10 hand-designed signals are measured negatives; corpus DIVERSITY — instance top-1 **34% → 100%** — was the binding constraint). Launch `run_console_recall.bat`; the console Send button toggles to an interrupt (`/v1/abort/:id`). Engine `edc8079`; record `papers/CONTRACT-CHAT-FULLSTACK.md` + public Paper **24** ("the learned librarian").
 
-**Also (2026-06-18):** **The XBAR memory architecture is now UNIFIED onto the exact-integer O_K substrate** (`Q(√-163)` / the dual-prime negacyclic CRT-NTT, frozen primes q1=1073738753 q2=1073732609 M=1152908312643096577) — the organism breathes end-to-end on the discrete container, no generic float carriers. **G-R3-BIND-on-O_K** (engine `0019b86`): the Ring-3 VSA bind re-carried onto native `sp_pr_mul`/`ntt`/`sp_pr_score_kstore` is **256/256 bit-identical** to the native path, ±1 carrier int==float, and **reduction-order-immune** (M byte-identical across permutations vs float 4.44e-15 drift). **G-R3-ORGANISM-NATIVE** (`1f0f6be`): the live dualroute+nightshift loop runs on native `sp_pr_mul` (D=1024 = two 512-blocks; CAP=32). **G-R2-FROB** (`dbe4103`/`d076797`): a Frobenius π^k INTEGER Ring-2 episode store (rank-2 O_K lattice; a16 ~lossless / a16b8 sub-ULP relL2 1.2e-7 at 0.76× store) — honest: "lossless" is by reconstruction fidelity (the n=42 PPL gate is blind below ~1%; no fake +0.000%). **G-XBAR-ORGANISM-FULL** (`15e7051`): the full loop on **real episodes** — continuous audio (EAR) → C2 256-bit sig → native integer Ring-3 superposition (with text decoys) → audio-cue top-1 retrieve → C2 Hamming verify (accept audio / reject text) → Frobenius integer store → continuous float lands clean into the 12B resident cache (checks=5 fails=0). **G-PERIOD6-REBASE** (`d2d7ceb`): the C2/Ring-3 content-hash period 8→6 to the true gemma4 global layers {5,11,…,47}, re-gated GREEN. **The boundary thesis** the receipts bore out: O_K wins on **exact arithmetic** (the container); every structure-on-*content* lever is measured-inert and kept as an honest negative — split-prime O_K Dirichlet carriers (`d7d96fe`, operationally inert), Möbius-on-M (`1e70763`, 1.000→0.969@N=32), entropy-coding the Frob codes (`e6d17bb`, 1.02× dead weight), T2-Möbius on the real 12B embedding (`ac76c8e`, recon cos 0.032 == random). **NEXT: T4 Frobenius π^k of the 9.4GB model WEIGHTS** (validated lever, untouched), then KAIROS post-organism.
+**Prior (2026-06-18) — the BYTE-EXACT FORWARD is CLOSED GREEN on the real gemma-4-12B.** The gemma-4-12B *forward pass itself* now runs **exact-integer end-to-end**: the four nonlinear fp32 islands (RMSNorm / softmax / GELU-tanh / RoPE) and the attention (Q·K / p·V) convert to exact-integer on the **same dual-prime CRT-NTT the XBAR memory ring uses** (q1=1073738753, q2=1073732609, Garner inv 894602413, M=q1·q2≈2⁶⁰ fits u64 ⇒ no `__int128`), behind a default-off `SP_BYTEEXACT` flag (the one-shot production decode stays byte-untouched = null floor). **Byte-exact here means EXACT ARITHMETIC → logits bit-identical across reduction-order and machine — an auditability / cross-machine-determinism property, explicitly NOT a compression result.** Gates on the real 12B (`gemma4-12b-b1.sp-model`, RTX 2060): **G-BYTEEXACT-FORWARD-12B GREEN** — OFF = PPL 4.6665 byte-identical to baseline / ON = 4.6569 parity (−0.21% n=42) / run-to-run **bit-identical**; the universal daemon drives the 12B prefill + token-by-token decode through a new L1 verb `sp_session_register_kvdecode_backend` (**G-WIRE-CUDA-DECODE-GEMMA4: 32/32 bit-identical to the `gemma4_kv_decode` oracle, VRAM flat / O(1)**). The byte-exact *linear* algebra was already built + gated in the universal crate `tools/sp_dsp_smoke`; the new piece was the four nonlinear islands (`sp_islands_q_ref.rs` + math-core `core/exact_islands/`). Only the external 2-physical-GPU bit-identical check remains. Engine `69c0588`, math-core submodule `d9d96f3`; record `papers/CONTRACT-BYTEEXACT-forward.md`.
+
+**Prior (2026-06-18):** **The XBAR memory architecture is UNIFIED onto the exact-integer O_K substrate** (`Q(√-163)` / the dual-prime negacyclic CRT-NTT, frozen primes q1=1073738753 q2=1073732609 M=1152908312643096577) — the organism breathes end-to-end on the discrete container, no generic float carriers. **G-R3-BIND-on-O_K** (engine `0019b86`): the Ring-3 VSA bind re-carried onto native `sp_pr_mul`/`ntt`/`sp_pr_score_kstore` is **256/256 bit-identical** to the native path, ±1 carrier int==float, and **reduction-order-immune** (M byte-identical across permutations vs float 4.44e-15 drift). **G-R3-ORGANISM-NATIVE** (`1f0f6be`): the live dualroute+nightshift loop runs on native `sp_pr_mul` (D=1024 = two 512-blocks; CAP=32). **G-R2-FROB** (`dbe4103`/`d076797`): a Frobenius π^k INTEGER Ring-2 episode store (rank-2 O_K lattice; a16 ~lossless / a16b8 sub-ULP relL2 1.2e-7 at 0.76× store) — honest: "lossless" is by reconstruction fidelity (the n=42 PPL gate is blind below ~1%; no fake +0.000%). **G-XBAR-ORGANISM-FULL** (`15e7051`): the full loop on **real episodes** — continuous audio (EAR) → C2 256-bit sig → native integer Ring-3 superposition (with text decoys) → audio-cue top-1 retrieve → C2 Hamming verify (accept audio / reject text) → Frobenius integer store → continuous float lands clean into the 12B resident cache (checks=5 fails=0). **G-PERIOD6-REBASE** (`d2d7ceb`): the C2/Ring-3 content-hash period 8→6 to the true gemma4 global layers {5,11,…,47}, re-gated GREEN. **The boundary thesis** the receipts bore out: O_K wins on **exact arithmetic** (the container); every structure-on-*content* lever is measured-inert and kept as an honest negative — split-prime O_K Dirichlet carriers (`d7d96fe`, operationally inert), Möbius-on-M (`1e70763`, 1.000→0.969@N=32), entropy-coding the Frob codes (`e6d17bb`, 1.02× dead weight), T2-Möbius on the real 12B embedding (`ac76c8e`, recon cos 0.032 == random). **NEXT: B4 NIGHTSHIFT** (between-turn memory consolidation, pre-scoped), then **T4 Frobenius π^k of the 9.4GB model WEIGHTS** (the validated, untouched lever) and KAIROS post-organism.
 
 *(Prior: full XBAR memory stack CLOSED — P3 (P3.0→P3.4), C2 Memo curator, #222 O(1) rewind, Ring-3 Path A, G-XBAR-ORGANISM step 1; KAIROS KAI-1/1b/1c + 6h soak GREEN; KAI-2 CLOSED-BOUNDED; KAI-3 CLOSED GREEN; GNA EAR CLOSED on silicon.)*
 
@@ -58,6 +60,8 @@ Three things, in order:
    the cyclotomic rings and communicate through **latent state, not tokens**,
    every write receipted, gated, and rewindable. Lanes: XBAR-P (probe /
    physics), XBAR-C (curator), XBAR-M (modality), XBAR-N (NIGHTSHIFT).
+   **The autonomous librarian (B3-WC) is LIVE** — a learned `W_c` head
+   selects or rejects episodes on the served 12B chat (see §0/§3).
    Spec: `papers/RFC-XBAR-auditable-latent-crossbar.md` (v1.1).
 
 3. **Position Is Arithmetic is the public face** — the receipts-first paper
@@ -80,38 +84,50 @@ vocabulary: **[PROVEN]** evidence cited · **[WIRED]** built + gated ·
 **[DESIGN]** spec'd, unbuilt · **[TARGET]** a number to measure.
 
 ```
-      ┌────────────────────────── VRAM / RAM (owned arena) ───────────────────────────┐
-      │                                                                               │
-      │  Exec (gemma-4-12B, OK_Q4B) [PROVEN]      Memo (small curator)                │
-      │  causal forward, generates                heuristic loop [PROVEN, C1-lite];   │
-      │       │            ▲                      trained compaction organ [TARGET]   │
-      │       ▼ write      │ attend                     │ propose        ▲ read       │
-      │  ┌─ Ring 1 ─────┐  ┌─ Ring 2 (hippocampus) ─┐   ▼                │            │
-      │  │ working KV   │  │ verbatim Spinor KV,    │  ┌─ Ring 2′ (shadow) ────────┐  │
-      │  │ window+sinks │  │ Optane episodic store  │◄─│ proposals, promote-on-    │  │
-      │  │ [PROVEN]     │  │ [PROVEN, qwen3 CPU     │  │ accept or REWIND [PROVEN, │  │
-      │  └──────────────┘  │  ring; Exec path = P3] │  │ C1-lite]                  │  │
-      │       ▲            └────────────────────────┘  └──────────┬────────────────┘  │
-      │       │ recall from BOTH                                  │ promote (gated)   │
-      │       │            ┌─ Ring 3 (neocortex) ─────────┐◄──────┘                   │
-      │       └────────────│ adapter pseudo-tokens,       │  G-R3-LOSS bounded        │
-      │                    │ consolidated long-term       │  (irreversible) [DESIGN]  │
-      │                    └──────────────────────────────┘                           │
-      │                                                                               │
-      │       modality lanes — one CRT prime per modality [DESIGN; audio first,       │
-      │       GNA 2.0 envelope pinned in SW-emu, HW bring-up kit staged]              │
-      └───────────────────────────────────────────────────────────────────────────────┘
-        NIGHTSHIFT [DESIGN, v0 next]: idle-time consolidation — read aging Ring 2
-        episodes → adapter compress n→k → propose to Ring 2′ → gate → promote to
-        Ring 3. schtasks-owned, banner echoes getenv, every promotion receipted.
+   user query ──► served Gemma-4-12B chat  (run_console_recall.bat → :3000)
+                  coherent · byte-exact · O(1)-context (SWA ring) · ONE inject seam
+                            │                                       [PROVEN — CHAT-FULLSTACK]
+                            ▼
+   ┌──────────────── AUTONOMOUS LIBRARIAN  (W_c head, host-side) ───────────────┐
+   │  score every stored episode  e1…eE   (relevance = logsumexp-over-pos,      │
+   │                                        mean-over-heads; HD=512 → r=32)      │
+   │                       │                                                     │
+   │                       ▼   (E+1)-way argmax over [ e1 … eE , NULL=s0 ]       │
+   │            ┌──────────┴───────────┐                                         │
+   │       winner ≠ NULL          argmax = NULL                                  │
+   │            │                       │                                        │
+   │   replay episode @ M=42      reject → clean prompt   [PROVEN — G-B3-WC      │
+   │   (bounded mass budget)      (no false fire)          DIV2 360/361+50/50,   │
+   │            │                       │                  LIVE G-B3-WC-DEPLOY]  │
+   └────────────┼───────────────────────┼───────────────────────────────────────┘
+                │ inject KV (gated)      │ foreign → "Paris."
+                ▼                        ▼
+   ┌──────────────────── TWO-RING EPISODIC MEMORY ───────────────────────────────┐
+   │  Ring 1  working KV window+sinks  [PROVEN]   Memo curator: mint → admit      │
+   │  Ring 2  verbatim Spinor KV, Optane store     (ablation oracle TAU=−8.0) →   │
+   │          (hippocampus)  [PROVEN]              label → train W_c  [PROVEN]     │
+   │  Ring 2′ shadow: propose → gate → promote/REWIND  [PROVEN — C1-lite]         │
+   │  Ring 3  consolidated (neocortex); G-R3-LOSS bounded  [PROVEN — native core] │
+   │          B4 NIGHTSHIFT idle-time consolidation  [DESIGN, pre-scoped, next]   │
+   └─────────────────────────────────────────────────────────────────────────────┘
+                ▼  every bind / store / replay rides the discrete container
+   ┌──────────── O_K EXACT-INTEGER SUBSTRATE  (Q(√−163), dual-prime CRT-NTT) ─────┐
+   │  q1=1073738753  q2=1073732609  M≈2^60  ·  Frobenius lift / OK_Q4B packed     │
+   │  byte-exact forward (4 islands + attention, SP_BYTEEXACT) = auditability     │
+   │  reduction-order-immune · run-to-run bit-identical  [PROVEN — BYTEEXACT-12B] │
+   └─────────────────────────────────────────────────────────────────────────────┘
+                ▲
+   KAIROS — the time/agency axis: resident daemon, idle-tick NO_OP/ACTION, EAR
+   audio → KV pivot, the consolidation clock that drives NIGHTSHIFT.  [PROVEN]
 ```
 
 | Tier | Substrate | Representation | Biological analogue | Status |
 |---|---|---|---|---|
 | **Ring 1** | RAM working window | verbatim KV, full attention | working memory | [PROVEN] — sink+W ring buffer, 910× resident shrink @32k (CONTRACT-C2 §C2.1) |
-| **Ring 2** | Optane raw episodic store | verbatim Spinor KV blocks | **hippocampus** | [PROVEN] on the qwen3 CPU ring (7.57 µs/read, byte-identical spill/recall); Exec (gemma4-CUDA) wiring = P3, pending |
+| **Ring 2** | Optane raw episodic store | verbatim Spinor KV blocks (+ Frobenius integer store) | **hippocampus** | [PROVEN] qwen3 CPU ring (7.57 µs/read, byte-identical) **+ on the 12B Exec via P3 + the native O_K organism** (G-XBAR-ORGANISM-FULL) |
 | **Ring 2′** | transient staging shadow | proposals awaiting the gate | (the audit mechanism) | [PROVEN] — C1-lite clone/gate/atomic-promote/rewind, tag `xbar-c1-lite-complete` |
-| **Ring 3** | Optane consolidated store | P2.b-adapter pseudo-tokens (n→k gist) | **neocortex** | [DESIGN] — under the irreversible-aware G-R3-LOSS gate |
+| **Ring 3** | Optane consolidated store | VSA-bound consolidated long-term | **neocortex** | [PROVEN] — native-C core (`core/ring3/`, T_RING3_NATIVE 42/42) under the irreversible-aware G-R3-LOSS step-gate |
+| **Recall** | learned W_c head (host-side) | logsumexp-mean relevance → (E+1)-NULL argmax | **the librarian** | [PROVEN] — G-CHAT-B3-WC-DIV2 360/361 recall + 50/50 reject (int16==f32), LIVE G-CHAT-B3-WC-DEPLOY; replay@M=42 / NULL-reject; engine `edc8079` |
 
 Beneath the rings, the substrate everything rides on (all [PROVEN], see
 STATE §1–§2): the 13-step PPT discrete forward (argmax bit-exact on Qwen3,
@@ -128,9 +144,9 @@ mesh (loopback-proven).
 
 | Result | Number | Receipt |
 |---|---|---|
+| **Autonomous recall on the 12B chat (B3-WC)** | a learned **W_c** head (HD=512→r=32, logsumexp-mean) does LIVE instance-level episodic recall on the served chat: (E+1)-argmax over [episodes, NULL=s0] = **360/361 recall + 50/50 foreign reject, int16-exact** offline; live matched→RECALL, foreign→NULL reject (clean "Paris"). Corpus DIVERSITY (not machinery) was the binding constraint: instance top-1 **34%→100%**. Hand-designed signals all failed open-world (honest negatives). | `CONTRACT-CHAT-FULLSTACK.md` · receipts `tests/fixtures/chat_fullstack/G-CHAT-B3-WC-{DEPLOY,DIV2}.log` · engine `edc8079` |
 | **Gemma-4-12B on one RTX 2060 12GB** | **26.1 tok/s @ wikitext PPL 5.12** (24/24 gates, CUDA-graph path EXACT 256/256, dp4a top-1 256/256); llama.cpp on the same card: 31.29 tok/s @ PPL **192–506** (broken artifacts); SP engine bandwidth 245 vs 207 GB/s (+18%) | public LEDGER **06-R10** · `CONTRACT-SPEED` · receipts `tests/gemma4_gold/` |
 | **Byte-exact forward (Gemma-4-12B)** | the whole forward (4 nonlinear islands + attention) runs **exact-integer** on the dual-prime CRT-NTT: OFF = PPL **4.6665 byte-identical** null floor / ON = **4.6569** parity / **run-to-run bit-identical** (cross-machine determinism proxy). Auditability, NOT compression. Daemon-driven prefill + decode (new L1 kvdecode verb, 32/32 == oracle, VRAM O(1)) | `CONTRACT-BYTEEXACT-forward.md` §5.2/§7/§8 · receipts `tests/fixtures/xbar_r3/G-BYTEEXACT-FORWARD-12B.log` · engine `69c0588` |
-| **Autonomous recall on the 12B chat (B3-WC)** | a learned **W_c** head (HD=512→r=32, logsumexp-mean) does LIVE instance-level episodic recall on the served chat: (E+1)-argmax over [episodes, NULL=s0] = **360/361 recall + 50/50 foreign reject, int16-exact** offline; live matched→RECALL, foreign→NULL reject (clean "Paris"). Corpus DIVERSITY (not machinery) was the binding constraint: instance top-1 **34%→100%**. Hand-designed signals all failed open-world (honest negatives). | `CONTRACT-CHAT-FULLSTACK.md` · receipts `tests/fixtures/chat_fullstack/G-CHAT-B3-WC-{DEPLOY,DIV2}.log` · engine `edc8079` |
 | **The gemma-4 GGUF ecosystem ships broken weights** | hand-written gold reference forward = TRUE PPL **4.6776**; every GGUF (incl. post-fix rebuilds) 192–506; llama.cpp's *forward* exonerated, the *artifacts* convicted | LEDGER 06-R8 · `CONTRACT-SPEED` gold-instrument addendum · community fix `GEMMA4-QUANT-FIX.md` (public repo) |
 | **X-R1 — latent crossbar physics** | a 12B's generation steered by **direct KV-cache transplant, no tokens**: 15/15 lexical incorporation (5×3 matrix), 15/15 selectivity (double dissociation), max 3.69-orders rank pull, measured dose-response, G0 null bit-identical | public LEDGER **X-R1** · `CONTRACT-XBAR-P1` |
 | **KV sparsification** | **8× at +0.69% PPL** (2×/4× go negative), NIAH 6/6 at ≤8× @N=2k, Möbius-pinned sinks | `CONTRACT-C2` §C2.1 G2 · paper 01 |
@@ -206,8 +222,7 @@ episode non-causally: heuristic select/merge/evict in v0, P2.b-adapter n→k
 span compression into Ring 3 in v1, always promote-on-accept), and the
 operational discipline (OS-owned runs, getenv-echo banners). The
 association-strength signal already exists — the measured LRU temporal-
-locality telemetry. Status: [DESIGN], v0 next; episode bound ≤8k tokens
-until the B∝N recall-budget question is answered (the C2.4 lesson).
+locality telemetry. **Status: the R3.4 idle-loop mechanism is GREEN** (G-R3-NIGHTSHIFT: SELECT→BIND→SHADOW-GATE→PROMOTE+EVICT→SEAL, native-C `core/ring3/`); **B4 — between-turn consolidation on the live chat — is the named next piece (pre-scoped, [DESIGN]).** Episode bound ≤8k tokens until the B∝N recall-budget question is answered (the C2.4 lesson).
 
 **The latent-space direction.** XBAR's premise is that inter-model memory
 should be a thing with receipts: a block of internal state provably
