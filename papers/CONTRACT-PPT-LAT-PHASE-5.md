@@ -34,6 +34,8 @@ Phase 4 closed on the metal (engine `81049bb`): the conversational-memory organi
 
 PASS ⇒ the structure-beats-comprehension bet is proven; the substrate build (§3/§4) is justified. FAIL ⇒ **honest negative: keep the AR judge for selection, use DiffusionGemma only for the T8 drafter.** Either outcome is a banked receipt.
 
+**INTERIM (2026-06-21, oracle = PR 24423 build, run auto-completing):** **recall@1 = 96.9% (31/32 matched), tracking GREEN — the diffusion judge is BEATING the AR judge (85.7%).** The bidirectional+constrained structure overcomes the weaker model's comprehension deficit, as theorized. Foreign-reject % + final verdict completing over ~2h (the AR judge's wobble point — the decisive half). Harness `tools/xbar_lsh/diffjudge_recall_test.py`, receipt `G-DIFFJUDGE-1.log`.
+
 ## §3 MoE-on-substrate — ADAPTATION, not greenfield (verify-Gemini correction)
 Gemini framed "Phase 4.5: Native Heterogeneous MoE Routing" as a from-scratch build. **CHECK THE TREE — it is largely already built (qwen35moe):**
 - `tools/sp_transcode/sp_transcode.c` already parses MoE + slices experts (3D expert transcode, tasks #22–29 GREEN).
@@ -53,7 +55,7 @@ So ~70% of "MoE routing" is **REUSE**. The **genuinely-new** pieces (these are r
 - **P5.4 (only if G-DIFFJUDGE-1 GREEN):** wire the diffusion judge as the Stage-2 selector, replacing the AR judge; re-run the Phase-4 live-loop + foreign-reject; must beat the two AR caveats.
 
 ## §5 Non-negotiables
-Byte-exact-when-off null floor on every overlay (verify it). The **AR 12B remains the guarantor of correctness** — the drafter is verified EXACT (quality only affects speed); the judge is gated by G-DIFFJUDGE-1 (never trusted unproven). Receipts-first: no number without a reproducing command + a LEDGER row. Honest negatives stay attached. The Exec stays AR. Run the OKF validator (`G-OKF-CONFORM`) on this bundle before commit.
+**NATIVE IMPLEMENTATION ONLY (operator-locked 2026-06-21).** The diffusion-gemma arch, the heterogeneous MoE routing/splitting, and the entropy-bounded denoising sampler are written into OUR custom O_K/Q4B CUDA + engine backends. **NO llama.cpp / ggml dependency in the shipped Shannon-Prime engine.** llama.cpp PR 24423 is the **REFERENCE** (stashed `_diffgemma_reference/` + `ARCH-NOTES.md`) and the **PARITY ORACLE** ONLY — exactly as llama.cpp served the Gemma-4 byte-exact port (anti-contamination doctrine: read the reference with file:line, write our own, gate against the oracle). Byte-exact-when-off null floor on every overlay (verify it). The **AR 12B remains the guarantor of correctness** — the drafter is verified EXACT (quality only affects speed); the judge is gated by G-DIFFJUDGE-1 (never trusted unproven). Receipts-first: no number without a reproducing command + a LEDGER row. Honest negatives stay attached. The Exec stays AR. Run the OKF validator (`G-OKF-CONFORM`) on this bundle before commit.
 
 ## §6 Honest risk register
 1. **Weaker model may not clear G-DIFFJUDGE-1** → the judge placement dies, the drafter survives (still a win). Most likely failure mode; cheapest to test → tested first.
