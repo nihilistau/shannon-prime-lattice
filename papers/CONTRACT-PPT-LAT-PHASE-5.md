@@ -46,8 +46,8 @@ So ~70% of "MoE routing" is **REUSE**. The **genuinely-new** pieces (these are r
 - **(N3) THE DIFFUSION FORWARD** — masked block denoising + bidirectional in-block attention. **Completely unlike the AR decode**; no KV-cache in our sense. This is the real new kernel and the bulk of the engine effort. Byte-exact-when-off discipline applies (a diffusion overlay defaults off = null floor).
 
 ## §4 Sequencing (receipts-first, LOCKED)
-- **P5.0 (CHEAP, FIRST):** `G-DIFFJUDGE-1` on the existing LMStudio bundle. Falsify the bet before any engine work. **This is the only authorized next build.**
-- **P5.1 (only if P5.0 GREEN):** adapt the qwen35moe MoE machinery to Gemma-4-A4B (N1) + the heterogeneous split (N2); `sp_transcode` DiffusionGemma → `.sp-model`; PPL/parity gate vs the LMStudio bundle (oracle).
+- **P5.0 (CHEAP, FIRST):** `G-DIFFJUDGE-1` on a DiffusionGemma runner — `llama-diffusion-cli` (llama.cpp PR 24423; mainline LMStudio CANNOT load it, see §2a), driven in `-cnv` conversation mode (model loaded once) via stdin/stdout. Falsify the bet before any engine work. **This is the only authorized next build.**
+- **P5.1 (only if P5.0 GREEN):** adapt the qwen35moe MoE machinery to Gemma-4-A4B (N1) + the heterogeneous split (N2); `sp_transcode` DiffusionGemma → `.sp-model`; PPL/parity gate vs `llama-diffusion-cli` (oracle).
 - **P5.2:** the diffusion forward kernel (N3) on the substrate; default-off null floor; gate vs the bundle oracle.
 - **P5.3:** wire the **T8 drafter** (spec-decode, exact verify) — the PRIMARY integration; tok/s gate vs AR-only.
 - **P5.4 (only if G-DIFFJUDGE-1 GREEN):** wire the diffusion judge as the Stage-2 selector, replacing the AR judge; re-run the Phase-4 live-loop + foreign-reject; must beat the two AR caveats.
