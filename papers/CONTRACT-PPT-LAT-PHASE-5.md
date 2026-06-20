@@ -34,7 +34,7 @@ Phase 4 closed on the metal (engine `81049bb`): the conversational-memory organi
 
 PASS ⇒ the structure-beats-comprehension bet is proven; the substrate build (§3/§4) is justified. FAIL ⇒ **honest negative: keep the AR judge for selection, use DiffusionGemma only for the T8 drafter.** Either outcome is a banked receipt.
 
-**INTERIM (2026-06-21, oracle = PR 24423 build, run auto-completing):** **recall@1 = 96.9% (31/32 matched), tracking GREEN — the diffusion judge is BEATING the AR judge (85.7%).** The bidirectional+constrained structure overcomes the weaker model's comprehension deficit, as theorized. Foreign-reject % + final verdict completing over ~2h (the AR judge's wobble point — the decisive half). Harness `tools/xbar_lsh/diffjudge_recall_test.py`, receipt `G-DIFFJUDGE-1.log`.
+**FINAL — GREEN (2026-06-21, oracle = PR 24423 build, full run 90 matched + 50 foreign):** **recall@1 = 95.6% (86/90) vs AR 85.7%, AND foreign-reject = 96.0% (48/50) — the diffusion judge BEATS the AR judge on BOTH axes, including the foreign-reject WOBBLE the AR judge could not fix.** The constrained {tags,NULL} canvas + bidirectional attention is the empirical antidote to BOTH autoregressive pathologies (selectivity wobble + recall). Cost: ~92s/query @ngl=20 partial offload, 48 denoise steps (the native O_K/Q4B forward + heterogeneous MoE split + prompt-KV-cache decode target exactly this). The native port (§3/§4) is JUSTIFIED. Harness `tools/xbar_lsh/diffjudge_recall_test.py`, receipt `G-DIFFJUDGE-1.log`.
 
 ## §3 MoE-on-substrate — ADAPTATION, not greenfield (verify-Gemini correction)
 Gemini framed "Phase 4.5: Native Heterogeneous MoE Routing" as a from-scratch build. **CHECK THE TREE — it is largely already built (qwen35moe):**
