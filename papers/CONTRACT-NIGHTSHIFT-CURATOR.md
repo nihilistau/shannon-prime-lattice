@@ -5,10 +5,10 @@ description: "Pre-registers G-NIGHTSHIFT-CURATOR: an idle KAIROS phase drains th
 tags: [nightshift, curator, mem-okf, pouw, ablation-oracle, kairos, b4, contract, anti-rebuild]
 timestamp: 2026-06-21T00:00:00Z
 resource: shannon-prime-system-engine/tools/sp_daemon/src/kairos_runner.rs
-sp_status: DESIGN
-sp_gate: "G-NIGHTSHIFT-CURATOR (pre-registered below)"
-sp_commit: TBD
-sp_repro: "TBD (gate not yet run; this is the pre-registration)"
+sp_status: GREEN
+sp_gate: "G-NIGHTSHIFT-CURATOR (criteria 1-4 GREEN on synthetic; criterion 5 live pending)"
+sp_commit: "engine 6107f3e (9ad7ede step0 + 9ee4668 step1 + 6107f3e extractor)"
+sp_repro: "_curator_gate.bat (SP_NIGHTSHIFT_OFFLINE=1, _nightshift_test); receipt tests/fixtures/chat_fullstack/G-NIGHTSHIFT-CURATOR.log"
 ---
 
 # CONTRACT — NIGHTSHIFT offline curator
@@ -66,3 +66,20 @@ Verified surfaces (file:line): `kv` FFI in `cuda_kvdecode_dispatch.rs` (`open` 2
 2. **A B4-hook persistence brick is now step 0.** The B4 capture (`routes.rs:1850`, where `text` + `toks` are already in scope) must also persist `ep.txt` (raw user text) + `ep.tok` (the tokens) alongside `ep.k/v/mf`. Only then can the offline curator read `ep.txt` → extract `ep.secret` → run the admit oracle. This is additive, default-off-safe (it only writes extra files when `SP_B4_NIGHTSHIFT=1`).
 
 **Reordered build:** (step 0) B4-hook persists `ep.txt`+`ep.tok` → (1) `run_kairos_curator` iterates `_nightshift_live/`, distills `ep.secret` from `ep.txt`, opens a kvdecode handle (`kv::open`), runs the admit oracle, emits MEM-OKF on accept → (2) compile (CUDA daemon bake) → (3) G-NIGHTSHIFT-CURATOR on the 12B (bake). The gate criteria in §3 are unchanged.
+
+## 7. RUN RECORD — G-NIGHTSHIFT-CURATOR GREEN (2026-06-21, synthetic gate)
+
+Built across engine `9ad7ede` (step 0: B4 hook persists `ep.txt`/`ep.tok`) → `9ee4668` (step 1: `run_kairos_curator` compiles, features `wire_cuda_backend`+`kairos`) → `6107f3e` (the §5 model-call `ep.secret` extractor + emit fix). Receipt: `tests/fixtures/chat_fullstack/G-NIGHTSHIFT-CURATOR.log`.
+
+**Synthetic 2-episode gate on the real 12B** (`_nightshift_test/`: one novel needle + one parametric control, real captured `ep.k/v/mf/tok` + faithful `ep.txt`):
+
+| episode | extracted secret | collapse ΣΔLL | verdict |
+|---|---|---|---|
+| ep_novel (KAI-3 vault) | `8-FALCON-7729` | **−33.59** | ACCEPT ✓ |
+| ep_param (capital of France) | `Paris` | **0.00** | REJECT ✓ |
+
+`accepted=1 rejected=1`. ~33-nat separation, both cleanly across TAU=−8.
+
+**The §5 lever resolved by the model-call extractor.** The first run used a last-sentence heuristic → whole-sentence secret → ablating *all* of Paris's 9 positions destroyed the context (collapse −22.01, false-accept). The 12B generative extractor pulls the *surgical* invariant (`8-FALCON-7729`, `Paris`), so the ablation measures fact-dependency, not context-destruction: the needle snapped to **−33.59** (matching the v12 oracle's −33.56 to two decimals) and parametric Paris to a flat **0.00**. Token-rarity was rejected as fragile (a common-vocabulary novel fact would evade it); the offline budget is what NIGHTSHIFT was realigned to spend.
+
+**Criteria status:** (1) iterate ✓ (2) admission discriminates ✓ (3) conformant emit + addr-join ✓ (`okf_mem` rc=0, episode record `c2sig_80c4…`, `verify` GREEN) (4) null-floor ✓ (gated `SP_NIGHTSHIFT_OFFLINE`). **(5) live B4 in-distribution — PENDING:** validated only on synthetic captures; the live path (re-capture turns under the step-0 B4 hook, then curate) is the remaining work. **NEXT:** criterion-5 live run + the fleet doc promotion (prompt/CLAUDE/STATE) + Track 2 (OOD diffusion kill-test).
