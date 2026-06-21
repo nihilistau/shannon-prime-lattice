@@ -2,7 +2,9 @@
 
 You are Claude (Shannon-Prime hat on, no spin), opening a session on **Shannon-Prime**. Read this file, then the live-state docs it points to, then **check the code, the commits, and `git status` before you trust anything**. Memory and summaries prime you; the tree is ground truth.
 
-Last rewritten: 2026-06-09 (XBAR campaign; C1-lite complete; P2.b recall operating-point decided). Current-state addendum 2026-06-20 — see §2.
+Last rewritten: 2026-06-09 (XBAR campaign; C1-lite complete; P2.b recall operating-point decided). Current-state addendum **2026-06-21** — see §2 + the verified box-by-box map `papers/STATUS-MAP-2026-06-21.md`.
+
+**PRE-FLIGHT (binding, do this before building ANYTHING):** `python tools/okf_mem.py lookup --root memory-okf <keyword>` — the content-addressed memory LUT (Tier-0). A new file for a capability that already exists is a *defect*, not progress; this project has rebuilt the same subsystems 20+ times because sessions forgot what was already built. The LUT + `grep` the tree first. Spec: `papers/MEMORY-OKF-PROFILE.md`.
 
 ---
 
@@ -17,6 +19,8 @@ Last rewritten: 2026-06-09 (XBAR campaign; C1-lite complete; P2.b recall operati
 ---
 
 ## 2. Where we are (verify against STATE + LEDGER + commits; don't trust this list blind)
+
+**ADDENDUM 2026-06-21 (read `papers/STATUS-MAP-2026-06-21.md` for the verified box-by-box tiers).** The served-chat spine is GREEN-LIVE: coherent + byte-exact + O(1) 12B chat (`CONTRACT-CHAT-FULLSTACK`) with **autonomous recall via the learned latent W_c head** (`SP_B3_WC`, `G-CHAT-B3-WC-DEPLOY`, engine `edc8079`). Two clarifications that keep biting: (1) the **deployed recall selector is LATENT (W_c), not generative** — the Phase-5 diffusion judge is an *unproven, I/O-blocked aspiration* (the oracle's 95.6% is the external llama.cpp PR-24423 number, NOT ours; our native single-forward was falsified ~25%, N5b is design-only). Before N5b burns more GPU, the diffusion judge must beat W_c **head-to-head** on `_needle_corpus_div`. (2) Proven features hide behind default-off flags (`SP_BYTEEXACT`, `SP_B3_WC`, `SP_B4_NIGHTSHIFT`) — *unset == null floor == looks broken*; check the flag before calling it broken. **New: MEM-OKF** (`papers/MEMORY-OKF-PROFILE.md`, `tools/okf_mem.py`) — the content-addressed tiered memory (LUT→summary→full) for BOTH agent facts and XBAR/NIGHTSHIFT episodes; curated by NIGHTSHIFT, receipted by PoUW. **Lookup it before you build (PRE-FLIGHT above).**
 
 **CURRENT EDGE (2026-06-20) — (C) B3-WC AUTONOMOUS-RECALL CAMPAIGN RESOLVED: a learned W_c head does LIVE instance-level episodic recall on the served gemma-4-12B chat; prior closes (A) XBAR memory UNIFIED onto the exact-integer O_K substrate, (B) the BYTE-EXACT FORWARD CLOSED GREEN on the real gemma-4-12B.**
 
@@ -91,6 +95,9 @@ Single host (**all commits are mine, on this box — no other machines**): Beast
 - `papers/SESSION-CLOSED-*.md` — per-stage closure detail.
 - `Position_Is_Arithmetic/LEDGER.md` + `METHODOLOGY.md` — the master public claims ledger + gate vocabulary.
 - Auto-memory `MEMORY.md` (the per-space index) — user feedback + project facts + the operational gotchas above. One-line entries; detail in topic files.
+- **`memory-okf/` + `tools/okf_mem.py`** — the **MEM-OKF content-addressed tiered memory** (Tier-0 LUT → Tier-1 summary → Tier-2 full, hash-addressed). The Tier-0 LUT is the *always-loadable, lookup-before-you-build* surface. Spec: `papers/MEMORY-OKF-PROFILE.md`. Gate: `python tools/okf_mem.py verify --root memory-okf` (G-MEM-OKF-CONFORM).
+- **`papers/STATUS-MAP-2026-06-21.md`** — the verified GREEN-LIVE / BUILT-DEFAULT-OFF / DESIGN-ONLY box-by-box map (the antidote to "two memories disagree").
+- `papers/SP-OKF-PROFILE.md` + `papers/MEMORY-OKF-PROFILE.md` — the knowledge-format conventions (everything is an OKF concept; everything links; `okf_validate.py` / `okf_mem.py verify` keep it honest).
 
 ---
 
@@ -121,6 +128,7 @@ Does NOT want: suggestions to wrap up / sleep / "come back fresh" · cross-conta
 2. Read `papers/PPT-LAT-STATE.md` (PROVEN record) + `papers/PPT-LAT-Roadmap.md` (current phase) + the active contract(s).
 3. Read `MEMORY.md` (user feedback + project facts + gotchas).
 4. **Check the tree:** `git status` + `git fetch` + `git log --oneline -15` on each repo you'll touch; reconcile against STATE. Verify, don't assume.
-5. Confirm the phase / next falsifiable step (recommend one); then execute, test as you go, commit + push per milestone, write closure paperwork + bank memory at the end.
+5. **Before building any subsystem: `python tools/okf_mem.py lookup --root memory-okf <keyword>` + `grep` the tree.** If it already exists, USE it — a new file for an existing capability is a defect (this is THE 20×-repeated failure). Read the cited file/ABI/commit, don't reconstruct it.
+6. Confirm the phase / next falsifiable step (recommend one); then execute, test as you go, commit + push per milestone, write closure paperwork + **bank durable facts into MEM-OKF (`okf_mem.py add`, especially "X already exists — don't rebuild") + the auto-memory** at the end.
 
 Style: terse, no emoji unless asked, code/receipts over prose, cite the gate + commit when reporting ("G-C1L-2 Step 2 PASS 45/45, system b2d672b"), absolute paths.
