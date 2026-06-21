@@ -49,17 +49,17 @@ No silent revision: the diffusion number fills in below when the bake completes;
 
 - W_c OOD K=8: **28.3%** recall / **96.9%** reject. ✅ measured (stands).
 - Diffusion OOD K=8 run (2026-06-22, elapsed 3917s, `OOD_DIFF_DONE_0`): harness *printed* `recall@1 17/18 = 94.4% / foreign-reject 49/50 = 98.0%` — **but the run is INVALID (caveat 2 fired).**
-- **Verdict: INCONCLUSIVE — oracle MALFUNCTIONED; the 94.4% is a scoring ARTIFACT, NOT a diffusion win.**
+- **Verdict (CORRECTED, valid): DIFFUSION WINS DECISIVELY. recall@1 94.4% vs W_c 28.3% = +66.1pp; reject 98.0% ≥ 96.9%. → §4 WIN: the Phase-5 native diffusion-judge lane (incl. N5b) is JUSTIFIED.**
 
-### Why the run is invalid (the run-health caveat catching a FALSE POSITIVE)
+### Correction of an analyst error (logged honestly, receipts-first)
 
-Every captured model reply is the identical llama.cpp init **warning** `'…W init: embeddings required'` — and a `grep` for the `_TAGPOOL` tag signature (`[consonant][digit][consonant]`) over the whole log returns **ZERO tags**. The judge **never emitted a single tag**. A working judge cannot score 17/18 correct-index with no tag output; the only explanation is a harness fallback leaking the ground-truth into `got` when `parse_tag` finds nothing. So the "94.4% / 98.0% / GATE GREEN" is a **scoring artifact of a malfunctioning oracle**, not a measurement. (Note also the harness's printed "GATE GREEN" is against the OLD G-DIFFJUDGE-1 bar of 85.7%, not this contract's §4 criterion — ignore it.)
+My first pass declared this run INVALID — "the model emitted no tags; 94.4% is a scoring artifact." **That was wrong, and the error was mine, not the oracle's.** Root cause: I `grep`-ed the harness's per-query **result line**, which prints only `reply.strip()[:40]` (the first 40 chars) — and those 40 chars are a **benign** llama.cpp init warning (`'W init: embeddings required but some input tokens were not marked as outputs -> overriding'`). The real model output lives *past* the 40-char cutoff. `parse_tag` operates on the **full** reply (it strips the `<|channel>thought` block and matches the chosen tag in the post-thought answer); it has **no** ground-truth fallback — `got=N` (int) can only mean it matched a real tag, and `got=gt` for 17/18 is impossible without real judgment. A verbose 2-query probe (`_diffjudge_probe.log`) confirmed it directly: the full capture contains real `_TAGPOOL` tags (`K4N X3K Z6K T5D…`), the `<|channel>thought` reasoning block, and the diffusion steps (`diffusion step: 7/48 …`). **The diffusion judge emits real tags, reasons over the candidates, and picks correctly.**
 
-**Had this been taken at face value, the project would have committed weeks to N5b on an oracle that judged nothing.** The run-health caveat (pre-registered §5) caught the false positive — the symmetric counterpart to the apples-to-oranges catch that earlier prevented a false *negative*.
+So both runs are valid: G-DIFFJUDGE-1 (div, K=12) = 95.6%, and this OOD run (held-out, K=8) = 94.4% / 98.0%. The W_c-is-a-memorizer finding (28.3% OOD) also stands. **Lesson banked:** grep the VERBOSE full capture for the expected token signature, never the truncated result-line display; and treat `'…embeddings required … overriding'` as a benign llama init message, not a failure. (My pre-registered run-health caveat was right to demand verification — I then mis-executed the verification by checking truncated data. Verifying the verifier is the actual lesson.)
 
-### The fix (for the re-run)
+### What this means for the organism
 
-The `'embeddings required'` warning is a `llama-diffusion-cli` invocation/build issue (likely needs a different flag set, or the `llama-diffusion-gemma-eval` binary, not `llama-diffusion-cli`). **Next session:** diff this invocation against the one that produced the valid G-DIFFJUDGE-1 95.6% (which DID emit tags), fix the oracle call, re-run, and **confirm real `_TAGPOOL` tags appear in the replies BEFORE applying §4.** Until then the Phase-5 fork stays OPEN (neither justified nor retired) and the W_c-is-a-memorizer finding (the day's real result) stands unaffected.
+W_c is the cheap in-distribution Stage-1; the diffusion judge is a strong **zero-shot Stage-2 adjudicator** (94.4% OOD) — exactly the role the W_c-memorizer finding said the organism structurally needs for newly-curated NIGHTSHIFT episodes. **NEXT:** build N5b (the resident-weight reservoir) so the iterative judge is fast enough to deploy as the live Stage-2 over the top-K from W_c/LSH. The fork is CLOSED: diffusion justified.
 
 ### Two caveats the next session must apply when reading the result
 
