@@ -55,3 +55,14 @@ Telemetry-then-pin: criteria 2/5 thresholds are pinned after the first measured 
 ## 5. Honesty
 
 The latent/episode tier of MEM-OKF and the live B4 hook are default-off and additive; the curator only *reads* the ledger and *writes* the store + sidecars — it never mutates the live cache. The ablation oracle is proven offline (v13 3-archetype matrix, TAU −8.0, ~16-nat separation) — the curator reuses it, it does not re-derive it. The one genuinely new line of reasoning is step-2's distillation of a live turn into a canonical `ep.secret`; everything else is wiring. If step-2's distillation is weak, the lever is the `ep.secret` extraction prompt, not the oracle or the store.
+
+## 6. Grounding receipts + the surfaced prerequisite (2026-06-21, reference-first reads)
+
+Verified surfaces (file:line): `kv` FFI in `cuda_kvdecode_dispatch.rs` (`open` 210, `replay` 367, `ablate` 388, `rewind` 296, `decode_step` 276, `position` 499, `capture_batched` 251); `recall::Episode` fields `{name,dir,npos,topic,sig:[u64;4],gk,gk_ng,tokens:Option<Vec<i32>>}` + `Projection::signature` (recall.rs 58) + `qk_relevance` (125); `main.rs:156` `SP_KAIROS_ALPHA` → `run_kairos_alpha` (the sibling insertion point, pre-clap, feature `kairos`); `SpinorReceipt` (dialogue.rs 41) = **hash-only** (`input_hash` = SHA-256(model_id‖turn_index‖tokens), 24 B; "payload lives elsewhere").
+
+**SURFACED PREREQUISITE (reorders the build — no silent revision).** On disk, a live B4 episode `_nightshift_live/ep_live_NNN/` contains **only `ep.k` / `ep.v` / `ep.mf`** — NOT `ep.tok`, NOT `ep.secret`, NOT raw text. The ablation oracle (`routes.rs:888-906`) REQUIRES `ep.secret` (teacher-force target) + `ep.tok` (ablation source rows), and skips episodes lacking them. Two consequences:
+
+1. **`SpinorReceipt` is hash-only**, so the curator's *payload* source is the `_nightshift_live/` episode dirs (the join to the ledger is by `input_hash`, audit-only) — NOT a ledger "drain" of content. §2 step-1 wording amended: iterate the live episode dirs; use the ledger as the provenance/audit join.
+2. **A B4-hook persistence brick is now step 0.** The B4 capture (`routes.rs:1850`, where `text` + `toks` are already in scope) must also persist `ep.txt` (raw user text) + `ep.tok` (the tokens) alongside `ep.k/v/mf`. Only then can the offline curator read `ep.txt` → extract `ep.secret` → run the admit oracle. This is additive, default-off-safe (it only writes extra files when `SP_B4_NIGHTSHIFT=1`).
+
+**Reordered build:** (step 0) B4-hook persists `ep.txt`+`ep.tok` → (1) `run_kairos_curator` iterates `_nightshift_live/`, distills `ep.secret` from `ep.txt`, opens a kvdecode handle (`kv::open`), runs the admit oracle, emits MEM-OKF on accept → (2) compile (CUDA daemon bake) → (3) G-NIGHTSHIFT-CURATOR on the 12B (bake). The gate criteria in §3 are unchanged.
