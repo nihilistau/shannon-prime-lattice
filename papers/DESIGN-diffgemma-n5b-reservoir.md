@@ -5,8 +5,8 @@ description: "Collapse the ~3min/step disk-I/O wall of the native DiffusionGemma
 tags: [diffusion-gemma, n5b, resident-reservoir, moe, streaming, io-bound, phase-5, diffusion-judge]
 timestamp: 2026-06-21T00:00:00Z
 resource: shannon-prime-lattice/papers/DESIGN-diffgemma-n5b-reservoir.md
-sp_status: DESIGN
-sp_gate: "G-DG-N5b (pre-registered below)"
+sp_status: RED
+sp_gate: "G-DG-N5b (premise REFUTED by measurement — see §RESULT)"
 sp_commit: TBD
 sp_repro: "forward = engine 0244800 diffusion_gemma_forward_cuda_sc; dg_dequant_resident_rows in cuda_forward.cu; mmap in lib/.../core/session/sp_model_load.c"
 ---
@@ -37,3 +37,15 @@ N5b (this) → re-run G-DIFFJUDGE-NATIVE-full at full depth (the real judge gate
 
 ## Honesty
 The byte-exact-vs-Q4_K_M-oracle confound persists (different quants) — the gate stays SELECTION fidelity, not logit byte-exactness. N5b is the I/O fix; if the full-depth judge STILL under-recovers after the depth is affordable, the remaining levers are the 0.005 confidence threshold, the SC feedback magnitude, and the step count — all tunable without touching the proven sampler/recurrence kernels.
+
+## RESULT (2026-06-22) — PREMISE REFUTED: reservoir engages but is INSUFFICIENT
+
+Built the host-RAM reservoir as a **per-tensor resident clone cache** (`dg_resident_pt`/`dg_reservoir_free` in `cuda_forward.cu`, gated `SP_DG_RESERVOIR`, default-off = byte-identical null floor). Builds GREEN. Clone telemetry **confirms it engages** — 143 `[N5b]` clone lines on one run (embed 369 MB, big layer tensors 253 MB ×2, …), i.e. the weight SOURCE is genuinely made resident in host RAM.
+
+**But it gives ~no speedup.** With the reservoir ON, per-query time was FLAT across queries: q1=785s, q2=+743s, q3=+747s … ≈186s/step. The warm query (q2 — cache hit, no clone, no disk) ≈ the cold query (q1 — includes the clone). So the per-forward cost is unchanged by the reservoir.
+
+**Root cause — the I/O premise was wrong.** The one-time clone (~14 GB read) costs only ~7s; the ~186s/**step** is the per-forward **dequant (14 GB OK_Q4B → 28 GB f32 on CPU) + cudaMalloc + cudaMemcpy H2D (28 GB f32 over PCIe)** done for every weight every forward in `dg_upload_arena_w`/`dg_upload_arena_rows`. The reservoir removes the disk read from the dequant *source* but leaves the dequant+upload — the actual wall — untouched. **The diffusion judge is dequant+upload-bound (compute/PCIe), not disk-I/O-bound.**
+
+**Real lever (N5c, the actual fix):** stop re-dequanting+re-uploading per forward — either (a) upload the PACKED OK_Q4B (14 GB) to VRAM once + dequant in a GPU kernel per forward (cuts the 28 GB f32 H2D; 14 GB packed > 12 GB VRAM ⇒ needs partial-resident + LRU), or (b) a VRAM hot-expert LRU cache (escalation (b) above) keeping the most-used dequanted experts on GPU. The host-RAM reservoir is kept as a building block (default-off, byte-identical) but is not the speed fix alone.
+
+**Harness note:** `test_diffjudge_denoise` ignores `SP_DJ_LIMIT`/`SP_DJ_FLIMIT` (ran the full 90+50 corpus both times → two runaway multi-hour bakes were killed). A tight N5b/N5c A/B needs a real per-query limit or a single-forward micro-harness with per-step `cudaEvent` timing. The `cuda_forward.cu` reservoir change builds GREEN + is byte-identical but is left **UNCOMMITTED** pending the N5c redirect. Receipts: `_n5b_diag.log` (143 clones), `_n5b_gate.log` (flat ~745s/query ON). Banked: MEM-OKF `6f5d228dc1990c87` (RED).
