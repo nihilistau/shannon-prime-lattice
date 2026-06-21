@@ -23,12 +23,29 @@ receipts-first front door: **[Position Is Arithmetic](https://github.com/nihilis
 Discord: [Shannon-Prime-Lattice](https://discord.gg/rre9XZmvV)
 License: MIT. See `LICENSE`.
 
-**New here (human or agent)? Read [`CURRENT-STATE-OF-PROJECT.md`](CURRENT-STATE-OF-PROJECT.md)** —
-a single human-readable synthesis of where the project stands: the XBAR latent crossbar, the
-O(1) rewind, the KAIROS resident loop, the headline numbers, and the tests that prove each
-(and why they can be trusted). It is the fastest way to get oriented.
+**New here?** Humans: read [`CURRENT-STATE-OF-PROJECT.md`](CURRENT-STATE-OF-PROJECT.md) —
+a single human-readable synthesis of where the project stands. **Agents: read [`AGENTS.md`](AGENTS.md)** —
+the entry + navigation guide (read order, the binding MEM-OKF lookup pre-flight, the
+non-negotiables). [`HISTORY.md`](HISTORY.md) is the hashed Tier-0 commit LUT (the git short-hash
+IS the content address; `git show <hash>` for the rest).
 
-**Latest (2026-06-20) — the AUTONOMOUS LIBRARIAN is LIVE on the served Gemma-4-12B chat.** The byte-exact, O(1)-context, single-entry 12B chat (`CONTRACT-CHAT-FULLSTACK`) now has an autonomous, instance-level episodic memory. A learned **W_c head** (`HD=512 → r=32`; relevance = logsumexp-over-positions then mean-over-heads) scores every stored episode against the live query, takes an **(E+1)-way argmax over [episodes, NULL=s0]**, and either **replays the winning episode at a bounded mass budget (`M=42`)** or **rejects to a clean prompt** — default-off (env unset) is byte-identical to the null floor. The relevance foundation is a **teacher-forced ablation knockout** (cudaMemset-ablate a needle's source KV rows and re-score: a genuinely-novel needle collapses −**33.56** nats, a parametric fact only −**0.15** — `TAU=−8.0`), which is both the admission oracle and the head's labeler; a curator mints the diverse corpus the head trains on. **Gates:** G-CHAT-B3-WC-DIV2 = **360/361 instance recall + 50/50 foreign-reject, int16==f32 lossless, s0=+0.102**; **G-CHAT-B3-WC-DEPLOY = LIVE on the metal** (matched query → RECALL `ep_n_div_000`; foreign "capital of France" → whole population negative → NULL → clean "Paris"). It is **host-side in the engine daemon (`recall.rs`/`routes.rs`); NO frozen-ABI change and NO `.sp-model` format change.** Boundary thesis: autonomous recall is won by a **learned head on a diverse corpus, not hand-designed number-theoretic signals** (all ~10 hand-designed signals are measured negatives; corpus DIVERSITY — instance top-1 **34% → 100%** — was the binding constraint). Launch `run_console_recall.bat`; the console Send button toggles to an interrupt (`/v1/abort/:id`). Engine `edc8079`; record `papers/CONTRACT-CHAT-FULLSTACK.md` + public Paper **24** ("the learned librarian").
+### Honest tier summary (the served system vs the gated experiments)
+
+This is a research repo. Tiers are exact and never inflated:
+
+| Capability | Tier | Evidence |
+|---|---|---|
+| Coherent + byte-exact + O(1)-context **12B chat** with **learned W_c autonomous recall** | **GREEN-LIVE** (served by default) | `CONTRACT-CHAT-FULLSTACK`, `G-CHAT-B3-WC-DEPLOY`/`-DIV2`, engine `edc8079` |
+| **Byte-exact exact-integer forward** (`SP_BYTEEXACT`) | **gated-GREEN / default-off** | `G-BYTEEXACT-FORWARD-12B`, engine `69c0588` + math-core `d9d96f3` |
+| **NIGHTSHIFT offline curator** (`SP_NIGHTSHIFT_OFFLINE`) | **gated-GREEN on the SYNTHETIC gate / default-off** — criteria 1-4 GREEN; criterion 5 (live B4 in-distribution) **PENDING** | `G-NIGHTSHIFT-CURATOR`, engine `6107f3e` |
+| Native **diffusion judge** (DiffusionGemma selector) | **UNPROVEN / in the drawer** — native single-forward was falsified ~25%; the 95.6% is the *external* llama.cpp PR-24423 oracle's number, not ours | `STATUS-MAP-2026-06-21.md` §4, `DESIGN-diffgemma-n5b-reservoir.md` |
+
+gated-GREEN is **not** GREEN-LIVE: a default-off flag is a null floor until set.
+The full box-by-box tier map is `papers/STATUS-MAP-2026-06-21.md`.
+
+**Latest (2026-06-21) — the NIGHTSHIFT offline curator is gated-GREEN (synthetic) and the MEM-OKF anti-rebuild store is ACTIVE.** `run_kairos_curator` (engine `6107f3e`, default-off `SP_NIGHTSHIFT_OFFLINE`) closes the offline-consolidation loop on the 12B: a model-call `ep.secret` extractor → teacher-forced causal-ablation **admit** (TAU=−8) → conformant **MEM-OKF** emit. **G-NIGHTSHIFT-CURATOR criteria 1-4 GREEN on the SYNTHETIC gate** (novel "8-FALCON-7729" collapse −33.59 ACCEPT / parametric "Paris" 0.00 REJECT, ~33-nat separation; emit rc=0, addr-join verified). **Criterion 5 (live B4 in-distribution on real chat turns) is PENDING** — so this is *gated-GREEN / default-off*, not GREEN-LIVE like the served chat. The recall organism's roles are fixed: the **causal ablation oracle (TAU=−8) is the ADMISSION gate**, the **learned latent W_c head (`SP_B3_WC`) is the live RECALL selector**, and the **native Diffusion Judge stays in the drawer pending an OOD kill-test** (it must beat W_c head-to-head first). **MEM-OKF** (`tools/okf_mem.py` + `memory-okf/`, spec `papers/MEMORY-OKF-PROFILE.md`) is the content-addressed LUT→summary→full store; its `okf_mem lookup` pre-flight is binding before building anything (see `AGENTS.md`). Record `papers/CONTRACT-NIGHTSHIFT-CURATOR.md` + `papers/STATUS-MAP-2026-06-21.md`.
+
+**Prior (2026-06-20) — the AUTONOMOUS LIBRARIAN is LIVE on the served Gemma-4-12B chat.** The byte-exact, O(1)-context, single-entry 12B chat (`CONTRACT-CHAT-FULLSTACK`) now has an autonomous, instance-level episodic memory. A learned **W_c head** (`HD=512 → r=32`; relevance = logsumexp-over-positions then mean-over-heads) scores every stored episode against the live query, takes an **(E+1)-way argmax over [episodes, NULL=s0]**, and either **replays the winning episode at a bounded mass budget (`M=42`)** or **rejects to a clean prompt** — default-off (env unset) is byte-identical to the null floor. The relevance foundation is a **teacher-forced ablation knockout** (cudaMemset-ablate a needle's source KV rows and re-score: a genuinely-novel needle collapses −**33.56** nats, a parametric fact only −**0.15** — `TAU=−8.0`), which is both the admission oracle and the head's labeler; a curator mints the diverse corpus the head trains on. **Gates:** G-CHAT-B3-WC-DIV2 = **360/361 instance recall + 50/50 foreign-reject, int16==f32 lossless, s0=+0.102**; **G-CHAT-B3-WC-DEPLOY = LIVE on the metal** (matched query → RECALL `ep_n_div_000`; foreign "capital of France" → whole population negative → NULL → clean "Paris"). It is **host-side in the engine daemon (`recall.rs`/`routes.rs`); NO frozen-ABI change and NO `.sp-model` format change.** Boundary thesis: autonomous recall is won by a **learned head on a diverse corpus, not hand-designed number-theoretic signals** (all ~10 hand-designed signals are measured negatives; corpus DIVERSITY — instance top-1 **34% → 100%** — was the binding constraint). Launch `run_console_recall.bat`; the console Send button toggles to an interrupt (`/v1/abort/:id`). Engine `edc8079`; record `papers/CONTRACT-CHAT-FULLSTACK.md` + public Paper **24** ("the learned librarian").
 
 **Prior (2026-06-18) — the BYTE-EXACT FORWARD is CLOSED GREEN on the real gemma-4-12B.** The gemma-4-12B *forward pass itself* now runs **exact-integer end-to-end**: the four nonlinear fp32 islands (RMSNorm / softmax / GELU-tanh / RoPE) and the attention (Q·K / p·V) convert to exact-integer on the **same dual-prime CRT-NTT the XBAR memory ring uses** (q1=1073738753, q2=1073732609, Garner inv 894602413, M=q1·q2≈2⁶⁰ fits u64 ⇒ no `__int128`), behind a default-off `SP_BYTEEXACT` flag (the one-shot production decode stays byte-untouched = null floor). **Byte-exact here means EXACT ARITHMETIC → logits bit-identical across reduction-order and machine — an auditability / cross-machine-determinism property, explicitly NOT a compression result.** Gates on the real 12B (`gemma4-12b-b1.sp-model`, RTX 2060): **G-BYTEEXACT-FORWARD-12B GREEN** — OFF = PPL 4.6665 byte-identical to baseline / ON = 4.6569 parity (−0.21% n=42) / run-to-run **bit-identical**; the universal daemon drives the 12B prefill + token-by-token decode through a new L1 verb `sp_session_register_kvdecode_backend` (**G-WIRE-CUDA-DECODE-GEMMA4: 32/32 bit-identical to the `gemma4_kv_decode` oracle, VRAM flat / O(1)**). The byte-exact *linear* algebra was already built + gated in the universal crate `tools/sp_dsp_smoke`; the new piece was the four nonlinear islands (`sp_islands_q_ref.rs` + math-core `core/exact_islands/`). Only the external 2-physical-GPU bit-identical check remains. Engine `69c0588`, math-core submodule `d9d96f3`; record `papers/CONTRACT-BYTEEXACT-forward.md`.
 
@@ -166,6 +183,8 @@ arm) is **not** claimed here — no number lands before its run record.
 
 | Question | Read |
 |---|---|
+| I'm an agent — how do I enter + navigate this repo? | [`AGENTS.md`](AGENTS.md) (read order, the MEM-OKF pre-flight, the non-negotiables) |
+| What's the commit history at a glance? | [`HISTORY.md`](HISTORY.md) — hashed Tier-0 LUT (`git show <hash>` for detail); regenerate with `tools/okf_history.py` |
 | I'm an agent starting a session — how do I bootstrap? | `prompt.md` (then follow its procedure) |
 | What is PROVEN, with what evidence? | `papers/PPT-LAT-STATE.md` — **the proven ledger; trust it, build on it** |
 | Where does the project stand right now (human-readable synthesis)? | `CURRENT-STATE-OF-PROJECT.md` (repo root) |
@@ -187,7 +206,53 @@ artifacts — amendable when reality contradicts them — except the L1 ABI and
 
 ---
 
-## 5. Methodology (why the numbers are believable)
+## 5. The knowledge system (this repo owns the OKFS tooling)
+
+Six months in, the binding constraint stopped being code and became *knowledge
+discipline* — sessions kept rebuilding subsystems that already existed. The
+answer is a small, content-addressed knowledge layer, and this repo owns its
+tooling (`tools/okf_validate.py`, `tools/okf_mem.py`, `tools/okf_history.py`).
+
+- **SP-OKF** (`papers/SP-OKF-PROFILE.md`) — Shannon-Prime's profile of Google's
+  **Open Knowledge Format v0.1**. Every knowledge `.md` is a *concept* with a
+  controlled `type` + receipts-first frontmatter
+  (`title/description/tags/timestamp/resource` + `sp_status/sp_gate/sp_commit/
+  sp_repro`). Cross-linked and validated by `tools/okf_validate.py` — gate
+  **G-OKF-CONFORM** (currently 130 concepts, 0 errors, GREEN). New `type`s
+  register in the profile §2 first.
+- **MEM-OKF** (`papers/MEMORY-OKF-PROFILE.md`, `tools/okf_mem.py`,
+  `memory-okf/`) — the content-addressed, tiered (**LUT → summary → full**)
+  **anti-rebuild memory**, addressed by sha256 (text) / C2-LSH-sig (latent
+  episode). One format for agent facts AND XBAR/NIGHTSHIFT episodes; the
+  NIGHTSHIFT curator emits into it. **The `okf_mem lookup` pre-flight is
+  binding: before building anything, look it up** — a new file for an existing
+  capability is a defect. Verify with `python tools/okf_mem.py verify --root
+  memory-okf` (gate `G-MEM-OKF-CONFORM`).
+- **HISTORY** (`HISTORY.md`, generated by `tools/okf_history.py`) — a hashed
+  MEM-OKF-style Tier-0 LUT of the last 80 commits: the git short-hash IS the
+  content address, dig deeper via `git show <hash>` (git = the Tier-2 store).
+- **AGENTS** (`AGENTS.md`) — the per-repo agent-navigation doc: read order, the
+  pre-flight, the non-negotiables. Human + agent readable.
+
+```
+agent enters ─► AGENTS.md ─► prompt.md ─► PPT-LAT-STATE.md (proven)
+                                │
+                                ▼  PRE-FLIGHT (binding, before any build):
+                   okf_mem lookup --root memory-okf <kw>  +  grep the tree
+                                │
+            ┌───────────────────┴────────────────────┐
+            ▼                                         ▼
+   memory-okf/LUT.md (Tier-0)              HISTORY.md (commit LUT)
+       │  follow addr                          │  git show <hash>
+       ▼                                       ▼
+   sum/<addr>.md → full/<addr>.md         full commit (Tier-2 = git)
+
+   every knowledge .md carries SP-OKF frontmatter → okf_validate.py (G-OKF-CONFORM)
+```
+
+---
+
+## 6. Methodology (why the numbers are believable)
 
 1. **Bit-exact when off.** Every mechanism is a flag, a strict no-op by
    default; the baseline is provably the unmodified model. On-state results
@@ -211,7 +276,7 @@ fallback fails loudly).
 
 ---
 
-## 6. NIGHTSHIFT and the latent-space direction
+## 7. NIGHTSHIFT and the latent-space direction
 
 **NIGHTSHIFT** (RFC-XBAR §7) is the idle-time consolidation loop — the
 Optane subconscious. The substrate is already proven (byte-exact Ring-2
@@ -222,7 +287,19 @@ episode non-causally: heuristic select/merge/evict in v0, P2.b-adapter n→k
 span compression into Ring 3 in v1, always promote-on-accept), and the
 operational discipline (OS-owned runs, getenv-echo banners). The
 association-strength signal already exists — the measured LRU temporal-
-locality telemetry. **Status: the R3.4 idle-loop mechanism is GREEN** (G-R3-NIGHTSHIFT: SELECT→BIND→SHADOW-GATE→PROMOTE+EVICT→SEAL, native-C `core/ring3/`); **B4 — between-turn consolidation on the live chat — is the named next piece (pre-scoped, [DESIGN]).** Episode bound ≤8k tokens until the B∝N recall-budget question is answered (the C2.4 lesson).
+locality telemetry. **Status (2026-06-21): the offline curator is gated-GREEN
+on the SYNTHETIC gate, default-off.** `run_kairos_curator`
+(`SP_NIGHTSHIFT_OFFLINE`, engine `6107f3e`) runs the full offline loop on the
+12B — model-call `ep.secret` extractor → teacher-forced causal-ablation admit
+(TAU=−8) → conformant MEM-OKF emit — and passes **G-NIGHTSHIFT-CURATOR criteria
+1-4** (novel −33.59 ACCEPT / parametric 0.00 REJECT, ~33-nat sep). **Criterion 5
+(live B4 in-distribution on real chat turns) is PENDING** — it has only run on
+synthetic captures, so it is *gated-GREEN / default-off*, not GREEN-LIVE. The
+underlying R3.4 idle-loop mechanism is GREEN (G-R3-NIGHTSHIFT:
+SELECT→BIND→SHADOW-GATE→PROMOTE+EVICT→SEAL, native-C `core/ring3/`). Moving
+consolidation offline through the proven minting pipeline is also plausibly the
+route around the measured live-B4 distributional-shape wall. Episode bound ≤8k
+tokens until the B∝N recall-budget question is answered (the C2.4 lesson).
 
 **The latent-space direction.** XBAR's premise is that inter-model memory
 should be a thing with receipts: a block of internal state provably
@@ -239,7 +316,7 @@ as motivation, not a project pivot.
 
 ---
 
-## 7. Getting started
+## 8. Getting started
 
 ```bash
 git clone https://github.com/nihilistau/shannon-prime-lattice.git
@@ -264,7 +341,7 @@ before building or committing).
 
 ---
 
-## 8. Repository layout
+## 9. Repository layout
 
 ```
 shannon-prime-lattice/
@@ -277,19 +354,24 @@ shannon-prime-lattice/
 │   ├── RFC-001 / CONTRACT-*.md   # north-star + forward specs with run records
 │   ├── RUNBOOK-cloud-compute.md  # cloud training mechanism
 │   ├── PPT-LAT-L1-ABI-v0 / -SP-MODEL-v0.md   # frozen specs
+│   ├── SP-OKF-PROFILE.md        # the knowledge-format standard (type vocabulary, validator)
+│   ├── MEMORY-OKF-PROFILE.md    # the content-addressed anti-rebuild memory spec
 │   └── SESSION-CLOSED-*.md       # per-sprint closure notes (audit trail)
+├── memory-okf/                   # MEM-OKF store: LUT.md (Tier-0) → sum/ → full/
 ├── tests/                        # integration receipts (e.g. gemma4_gold/)
-├── tools/                        # lattice-scope tools (curator, xbar_p2b)
+├── tools/                        # OKFS tooling: okf_validate.py / okf_mem.py / okf_history.py (+ curator, xbar_p2b)
 ├── scripts/                      # cross-repo helpers (m0_real SFT, render)
 ├── docs/superpowers/             # historical per-phase plan documents
 ├── frontends/                    # HTML mock-ups (daemon UI concepts)
 ├── demos/                        # phase demos
-└── prompt.md                     # session bootstrap (agents start here)
+├── prompt.md                     # session bootstrap (agents start here)
+├── AGENTS.md                     # agent entry + navigation guide
+└── HISTORY.md                    # hashed Tier-0 commit LUT (okf_history.py)
 ```
 
 ---
 
-## 9. Hard rules
+## 10. Hard rules
 
 Binding for any session that picks up the project:
 
@@ -313,7 +395,7 @@ Binding for any session that picks up the project:
 
 ---
 
-## 10. Contact
+## 11. Contact
 
 - GitHub Issues: project tracking lives in each repo.
 - Discord: [Shannon-Prime-Lattice](https://discord.gg/rre9XZmvV).
