@@ -47,9 +47,19 @@ No silent revision: the diffusion number fills in below when the bake completes;
 
 ## 5. RESULT (diffusion leg PENDING)
 
-- W_c OOD K=8: **28.3%** recall / **96.9%** reject. ✅ measured.
-- Diffusion OOD K=8: **PENDING** — oracle baking (`_diffjudge_ood.log` → receipt `tests/fixtures/chat_fullstack/G-DIFFJUDGE-OOD-H2H.log`).
-- Verdict: **PENDING** the diffusion number vs §4.
+- W_c OOD K=8: **28.3%** recall / **96.9%** reject. ✅ measured (stands).
+- Diffusion OOD K=8 run (2026-06-22, elapsed 3917s, `OOD_DIFF_DONE_0`): harness *printed* `recall@1 17/18 = 94.4% / foreign-reject 49/50 = 98.0%` — **but the run is INVALID (caveat 2 fired).**
+- **Verdict: INCONCLUSIVE — oracle MALFUNCTIONED; the 94.4% is a scoring ARTIFACT, NOT a diffusion win.**
+
+### Why the run is invalid (the run-health caveat catching a FALSE POSITIVE)
+
+Every captured model reply is the identical llama.cpp init **warning** `'…W init: embeddings required'` — and a `grep` for the `_TAGPOOL` tag signature (`[consonant][digit][consonant]`) over the whole log returns **ZERO tags**. The judge **never emitted a single tag**. A working judge cannot score 17/18 correct-index with no tag output; the only explanation is a harness fallback leaking the ground-truth into `got` when `parse_tag` finds nothing. So the "94.4% / 98.0% / GATE GREEN" is a **scoring artifact of a malfunctioning oracle**, not a measurement. (Note also the harness's printed "GATE GREEN" is against the OLD G-DIFFJUDGE-1 bar of 85.7%, not this contract's §4 criterion — ignore it.)
+
+**Had this been taken at face value, the project would have committed weeks to N5b on an oracle that judged nothing.** The run-health caveat (pre-registered §5) caught the false positive — the symmetric counterpart to the apples-to-oranges catch that earlier prevented a false *negative*.
+
+### The fix (for the re-run)
+
+The `'embeddings required'` warning is a `llama-diffusion-cli` invocation/build issue (likely needs a different flag set, or the `llama-diffusion-gemma-eval` binary, not `llama-diffusion-cli`). **Next session:** diff this invocation against the one that produced the valid G-DIFFJUDGE-1 95.6% (which DID emit tags), fix the oracle call, re-run, and **confirm real `_TAGPOOL` tags appear in the replies BEFORE applying §4.** Until then the Phase-5 fork stays OPEN (neither justified nor retired) and the W_c-is-a-memorizer finding (the day's real result) stands unaffected.
 
 ### Two caveats the next session must apply when reading the result
 
