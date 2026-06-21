@@ -1,3 +1,16 @@
+---
+type: design
+title: "Phase 6-NET: Multi-Node CRT Sharding over QUIC — Design Spec"
+description: "Date: 2026-05-28"
+tags: [design]
+timestamp: 2026-05-27T16:30:34Z
+resource: ./docs/superpowers/specs/2026-05-28-phase6-net-design.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
+
 # Phase 6-NET: Multi-Node CRT Sharding over QUIC — Design Spec
 
 **Date:** 2026-05-28  

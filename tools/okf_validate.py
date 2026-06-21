@@ -134,7 +134,11 @@ def main():
             if fn.endswith(".md"):
                 md.append(os.path.join(dp, fn))
     md.sort()
-    # optional .okfignore: one glob per line (matched against bundle-relative path), # = comment
+    # optional .okfignore: one glob per line, # = comment. A bare pattern is matched against BOTH
+    # the bundle-relative path and the basename (convenient for "ignore every X.md"). A pattern
+    # with a LEADING '/' is ROOT-ANCHORED (gitignore-style): matched only against the bundle-
+    # relative path, never the basename -- so `/README.md` ignores the root README without also
+    # catching nested `papers/*/README.md` concept files (whose basename is also README.md).
     ignore_path = os.path.join(root, ".okfignore")
     if os.path.exists(ignore_path):
         pats = []
@@ -143,12 +147,20 @@ def main():
             if ln and not ln.startswith("#"):
                 pats.append(ln)
         if pats:
+            def _ignored(rel, base):
+                for g in pats:
+                    if g.startswith("/"):
+                        if fnmatch.fnmatch(rel, g[1:]):        # root-anchored: rel-path only
+                            return True
+                    elif fnmatch.fnmatch(rel, g) or fnmatch.fnmatch(base, g):
+                        return True
+                return False
             kept = []
             n_ignored = 0
             for p in md:
                 rel = os.path.relpath(p, root).replace(os.sep, "/")
                 base = os.path.basename(p)
-                if any(fnmatch.fnmatch(rel, g) or fnmatch.fnmatch(base, g) for g in pats):
+                if _ignored(rel, base):
                     n_ignored += 1
                 else:
                     kept.append(p)

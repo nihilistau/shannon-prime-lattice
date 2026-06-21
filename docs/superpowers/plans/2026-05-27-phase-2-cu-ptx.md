@@ -1,3 +1,16 @@
+---
+type: design
+title: Phase 2-CU.PTX Implementation Plan
+description: "Goal. Replace generic nvcc-compiled CUDA C++ on the CUDA backend's lattice-specific kernels with hand-written PTX inline assembly."
+tags: [design]
+timestamp: 2026-05-26T18:19:19Z
+resource: ./docs/superpowers/plans/2026-05-27-phase-2-cu-ptx.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
+
 # Phase 2-CU.PTX Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

@@ -1,3 +1,16 @@
+---
+type: session-handoff
+title: SESSION-HANDOFF.md — where things stand
+description: "Updated: 2026-06-21 (PHASE 4 SEALED + PHASE 5 DIFFUSION JUDGE PROVEN SUPERIOR + native port begun."
+tags: [session-handoff]
+timestamp: 2026-06-21T02:55:56Z
+resource: ./SESSION-HANDOFF.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
+
 # SESSION-HANDOFF.md — where things stand
 
 **Updated:** 2026-06-21 (**PHASE 4 SEALED + PHASE 5 DIFFUSION JUDGE PROVEN SUPERIOR + native port begun. See §0.** Prior milestones below unchanged.)

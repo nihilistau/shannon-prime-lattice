@@ -1,3 +1,16 @@
+---
+type: design
+title: "Phase 6-NET: QUIC CRT Sharding Implementation Plan"
+description: "Goal: Build a QUIC transport layer for streaming dual-prime NTT residues from two shard workers to a coordinator for Garner CRT reconstruction, verified by three integration-test gates (M_NET_1 topolo"
+tags: [design]
+timestamp: 2026-05-27T16:49:02Z
+resource: ./docs/superpowers/plans/2026-05-28-phase6-net-quic-sharding.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
+
 # Phase 6-NET: QUIC CRT Sharding Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

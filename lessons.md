@@ -1,3 +1,16 @@
+---
+type: lesson
+title: lessons.md — Shannon-Prime session learnings
+description: Running log of hard-won lessons.
+tags: [lesson]
+timestamp: 2026-06-19T17:29:08Z
+resource: ./lessons.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
+
 # lessons.md — Shannon-Prime session learnings
 
 Running log of hard-won lessons. Newest on top. Each entry: what happened, the root cause,

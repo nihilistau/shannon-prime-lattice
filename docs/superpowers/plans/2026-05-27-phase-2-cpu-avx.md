@@ -1,3 +1,16 @@
+---
+type: design
+title: Phase 2-CPU.AVX Implementation Plan
+description: "Goal: Replace generic C fallbacks on the CPU backend with explicit AVX-512 intrinsics for four lattice-specific kernel families (SPINOR load, VNNI matmul, IFMA butterfly, TERNLOG hash), gated by M_AVX"
+tags: [design]
+timestamp: 2026-05-26T18:19:41Z
+resource: ./docs/superpowers/plans/2026-05-27-phase-2-cpu-avx.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
+
 # Phase 2-CPU.AVX Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.

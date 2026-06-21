@@ -1,3 +1,16 @@
+---
+type: runbook
+title: "ENVIRONMENT.md — the operational environment (tools, lanes, credentials, gotchas)"
+description: "Role: the single source of truth for HOW this project's compute, cloud, and credential"
+tags: [runbook]
+timestamp: 2026-06-19T17:33:41Z
+resource: ./ENVIRONMENT.md
+sp_status: ACTIVE
+sp_gate: none
+sp_commit: TBD
+sp_repro: none
+---
+
 # ENVIRONMENT.md — the operational environment (tools, lanes, credentials, gotchas)
 
 **Role:** the single source of truth for HOW this project's compute, cloud, and credential
