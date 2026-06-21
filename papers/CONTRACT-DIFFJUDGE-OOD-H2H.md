@@ -50,3 +50,8 @@ No silent revision: the diffusion number fills in below when the bake completes;
 - W_c OOD K=8: **28.3%** recall / **96.9%** reject. ✅ measured.
 - Diffusion OOD K=8: **PENDING** — oracle baking (`_diffjudge_ood.log` → receipt `tests/fixtures/chat_fullstack/G-DIFFJUDGE-OOD-H2H.log`).
 - Verdict: **PENDING** the diffusion number vs §4.
+
+### Two caveats the next session must apply when reading the result
+
+1. **Statistical power (small N).** The held-out set is 18 needles → ~72 matched queries; a recall proportion at N=72 has a ~±11% 95% CI. The **+10pp** bar is therefore at the noise floor *only if the result is marginal*. The test is decisive **because the expected gap is ~50pp** (W_c 28% vs diffusion's likely ~90%) — far outside the noise. **If diffusion lands marginal (≈35–48%), the honest call is INCONCLUSIVE → re-run with a larger held-out set, not a verdict.** Only a clearly large gap (or a clear miss below ~38%) is callable at this N.
+2. **Run-health (the bake itself).** The 26B Q4_K_M (15.65 GB) runs CPU-offloaded on a 12 GB 2060 → very high model-load + first-query latency. As of launch+20min the process was alive but had emitted no query output yet (still loading is the likely cause; a hang looks identical). **Before trusting any number, confirm `_diffjudge_ood.log` actually progressed through queries** (per-query lines appearing, `OOD_DIFF_DONE_0`). If it stalled (no query output after ~1h), the kill-test is blocked on run-health — tune `--ngl`/subsample or run a smaller K/needle batch; do NOT report a partial/empty log as a "loss."
