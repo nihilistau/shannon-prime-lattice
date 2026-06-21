@@ -13,7 +13,18 @@ sp_repro: none
 
 # SESSION-HANDOFF.md — where things stand
 
-**Updated:** 2026-06-21 (**PHASE 4 SEALED + PHASE 5 DIFFUSION JUDGE PROVEN SUPERIOR + native port begun. See §0.** Prior milestones below unchanged.)
+**Updated:** 2026-06-22 (**NIGHTSHIFT offline curator GREEN-on-synthetic + MEM-OKF anti-rebuild store ACTIVE + 4-repo fleet doc overhaul + the OOD diffusion kill-test IN FLIGHT.** Prior milestones below.)
+
+> ⚠ **CORRECTION to a prior header** ("Phase 5 diffusion judge PROVEN SUPERIOR"): that was an **apples-to-oranges artifact** — the diffusion 95.6% was *bounded-K*, W_c's 360/361 was *full-registry*. The diffusion judge is **UNPROVEN**; the fair OOD head-to-head is being measured RIGHT NOW (see §0 IN-FLIGHT).
+
+## §0 IN-FLIGHT (2026-06-22) — READ FIRST
+
+- **OOD diffusion kill-test (`G-DIFFJUDGE-OOD-H2H`) — BAKING.** The 26B llama.cpp diffusion oracle runs detached at K=8 over the 18 held-out div needles + foreign (`shannon-prime-system-engine/_needle_corpus_ood/`). Log `D:\F\_diffjudge_ood.log` → receipt `tests/fixtures/chat_fullstack/G-DIFFJUDGE-OOD-H2H.log`. **W_c floor already measured: K=8 = 28.3% recall / 96.9% reject** (W_c is an in-distribution MEMORIZER — full-registry OOD only 11.1%). **Kill-criterion pinned BEFORE the result** (`papers/CONTRACT-DIFFJUDGE-OOD-H2H.md`): diffusion must beat W_c **+10pp recall AND ≥96.9% reject** → else the Phase-5 native lane (incl. N5b) is RETIRED. **NEXT SESSION: read `_diffjudge_ood.log`, fill §5 of the contract, land the verdict.**
+- **Architectural finding (banked):** W_c does NOT generalize to unseen needles → NIGHTSHIFT-curated NEW episodes are OOD for the deployed head → a zero-shot Stage-2 adjudicator is the *structural* fix (this is what the kill-test evaluates the diffusion judge for).
+- **NIGHTSHIFT curator** = gated-GREEN-on-synthetic (`G-NIGHTSHIFT-CURATOR` criteria 1-4, engine `6107f3e`); **criterion-5 live = Strike 1** (re-capture real chat turns under the step-0 B4 hook → curate → in-distribution for W_c).
+- **MEM-OKF + OKFS** ACTIVE; the `okf_mem lookup` pre-flight is binding; fleet README/AGENTS/HISTORY overhaul done across all 4 repos; new RFC-ORGANISM + roadmap (two strikes).
+
+**Updated (prior):** 2026-06-21 (PHASE 4 SEALED + native diffusion port begun — but note the "proven superior" claim is CORRECTED above. See the older §0 below for the native-port detail.)
 
 ---
 
