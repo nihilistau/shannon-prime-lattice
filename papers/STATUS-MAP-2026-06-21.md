@@ -25,6 +25,13 @@ sp_repro: "verified via: git -C shannon-prime-system-engine log --oneline; grep 
 
 ---
 
+## UPDATE 2026-06-21 (later) — NIGHTSHIFT offline curator GREEN + MEM-OKF ACTIVE
+
+Promoted out of design-only, with honest tiers:
+
+- **NIGHTSHIFT offline curator (`run_kairos_curator`) — BUILT + gated-GREEN (synthetic), default-off** (`SP_NIGHTSHIFT_OFFLINE`). Full loop on the 12B: model-call `ep.secret` extractor → teacher-forced causal-ablation admit (TAU=−8) → conformant MEM-OKF emit. **G-NIGHTSHIFT-CURATOR** GREEN criteria 1-4: novel "8-FALCON-7729" collapse **−33.59 ACCEPT** / parametric "Paris" **0.00 REJECT**, ~33-nat sep; emit rc=0, addr-join verified. Engine `9ad7ede`→`9ee4668`→`6107f3e`; record `CONTRACT-NIGHTSHIFT-CURATOR.md` §7. **Criterion 5 (live B4 in-distribution) PENDING** — proven on *synthetic* captures only; it is NOT yet running on real chat turns, so it is *gated-GREEN / default-off*, not GREEN-LIVE like the served chat.
+- **MEM-OKF unified store — ACTIVE** (`tools/okf_mem.py` + `memory-okf/`, spec `MEMORY-OKF-PROFILE.md`). The content-addressed LUT→summary→full store + the `okf_mem lookup` **pre-flight** are wired into `prompt.md`/`CLAUDE.md`; the curator emits into it. The causal ablation oracle (TAU=−8) is the official admission gate; the learned **latent W_c head** (`SP_B3_WC`) is the live recall selector; the native Diffusion Judge stays in the drawer pending the OOD kill-test.
+
 ## The pipeline, box by box
 
 ### 1. Ingest & Admission — the causal ablation oracle
