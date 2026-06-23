@@ -41,7 +41,7 @@ So the **prompt block is already self-contained / block-causal on the prompt sid
 
 `SP_DG_PREFIXKV` was convicted on max|fresh - cached prompt K/V| = 6.9e-4 (matched) / NaN (foreign). In light of E1 that was almost certainly a FALSE refutation: the **NaN on foreign** was the `dg_self_cond` uninitialised-memory OOB (the SAME bug class fixed this session); the **6.9e-4 on matched** is consistent with fp / reduction-order nondeterminism, not the canvas->prompt coupling the architecture forbids.
 
-**So prefix-KV is VALID on the current model -- NOT a train-time property, NOT a Cola finetune.** It is an inference optimization the reference already implements. ACTION: re-run `SP_DG_PREFIXKV_PROOF` now the OOB is fixed (is the prompt-K/V delta now ~0 / fp-noise?), then PORT the reference `llm_graph_input_attn_diffusion_decode` rectangular mask -> forward only the 256 canvas tokens/step instead of the whole [prompt|canvas]. That is the real diffusion-judge speedup the fast path was reaching for.
+**So prefix-KV is VALID on the current model -- NOT a train-time property, NOT a Cola finetune.** It is an inference optimization the reference already implements. RESULT (2026-06-24): the proof was re-run -- the K/V byte-delta persists at 3.9e-4/6.6e-4 (fp non-associativity; our mask is verified asymmetric, `cuda_forward.cu:5477-5482`), so the byte-delta is the WRONG gate. The ANSWER-PARITY gate is GREEN (`G-DG-PREFIXKV-PARITY`): `SP_DG_PREFIXKV=0` (full) vs `=1` (canvas-only) are bit-identical on every pick AND ans_tok (3 items), fast quicker. **prefix-KV is answer-lossless and the fast path already exists behind `SP_DG_PREFIXKV` (the N6 port).** NEXT = wider parity + production speedup sweep, then gate + promote.
 
 ### Where that leaves Cola
 
