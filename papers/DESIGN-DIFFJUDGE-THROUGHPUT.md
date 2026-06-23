@@ -68,7 +68,7 @@ Note on **IQ2-resident** (make the whole 26B fit by quantizing to ~2-bit): it at
 Run immediately after `G-DG-PREFIXKV` completes (the GPU is then free). **One corpus, one config, three judges, same metric** -- the numbers pick the architecture, not the campaign's momentum.
 
 - **Corpus:** the held-out OOD suite (90 needles + 50 foreign). OOD is the only honest battlefield (in-distribution flatters memorizers).
-- **Config (identical for all three):** CANVAS=256, STEPS=12 (diffusion), greedy/temperature matched; full config, no reduced-canvas shortcuts (the 8.3% lesson).
+- **Config (identical for all three):** CANVAS=256, **STEPS matched to the reference oracle depth (48; see 5b -- STEPS=12 is a known under-denoising confound)**, greedy/temperature matched; full config, no reduced-canvas shortcuts (the 8.3% lesson).
 - **Judges:** (A) Gemma-4-12B **generative** (the Phase-4 harness, re-measured on OOD); (B) diffusion-26B **native** at full config (this is what the running gate's LEG A measures); (C) Gemma-4-E2B as a standalone judge AND as a Stage-1 filter (calibration of `tau1`).
 - **Variables tracked:** final-pick accuracy, retrieval recall@1, foreign-reject, aggregate latency (s/item), **peak VRAM** (validates the section-2 co-residence budget).
 
@@ -77,6 +77,21 @@ Run immediately after `G-DG-PREFIXKV` completes (the GPU is then free). **One co
 - **Cascade green-lit** -- if (and only if) native diffusion owns a real OOD accuracy band the 12B cannot reach, build the cascade, with E2B as Stage-1 **iff** its bake-off calibration shows it is a useful filter (else 12B->diffusion two-stage).
 - **Both fail the bar** -- if neither native judge clears a usable OOD recall, the judge problem is an *accuracy* problem (native sampler / N5b), not a throughput problem, and this whole doc waits behind that.
 
+
+## 5b. Why does the external llama.cpp oracle beat our native judge on the SAME model? (the divergence ladder)
+
+A large same-model gap (external 95.6% vs native ~53% at CANVAS=256/STEPS=12, in-flight) is a code-divergence smell, NOT proof the native judge is inherently weak. Two confounds are already visible in our own telemetry, and they revise the gap downward before any bug-hunt:
+- CANVAS: the killed run scored 8.3% at a reduced canvas; the same STEPS=12 at CANVAS=256 scores ~53%. Most of the "8.3%" was under-canvas.
+- STEPS (depth): the native judge climbs monotonically with denoise depth -- single-forward ~25% to 12-step ~53%. The reference oracle ran 48 steps; we run 12 (a 4x under-denoise). Discrimination in diffusion comes from refinement, so capping at 12 likely strands much of the recall.
+
+Ranked suspects, cheap to expensive to check (receipts-first):
+1. DEPTH (12 vs 48 steps). Simplest, best-evidenced (the 25-to-53 climb). Test: re-measure native at STEPS=48. If recall climbs toward the oracle, the "weak native judge" was largely under-denoising. Highest information per GPU-hour -- do this first.
+2. Self-conditioning divergence (identified in our OWN code). Our harness feeds the MASKED answer-row logits back as SC (tests/test_diffjudge_denoise.c:481-489 comment admits it); the reference feeds the RAW canvas logits. A masked/weakened SC signal degrades every refinement step. Test: feed raw (unmasked) canvas logits to SC.
+3. Sampler divergence. We reimplemented the EntropyBoundSampler (temperature lerp, accept/renoise, adaptive stop); any drift from the reference (diffusion-sampling.cu) compounds over steps. Test: per-step trace vs the reference on ONE item -- the step where the canvas argmax diverges localizes it.
+4. Quant (OK_Q4B vs the oracle Q4_K_M) -- likely SECONDARY. Different 4-bit quants; the once-cited "~40% attenuation" was on a degenerate all-BOS canvas (argmax-unstable), not a clean gap, and our OK_Q4B is PPL-gold (4.6665). Test: same-quant control only if 1-3 do not close it.
+5. Forward divergence (region mask / enc-dec scalar / canvas rmsnorm embed / RoPE). N1b claimed structural verification but the diffusion forward was never byte-exact-gated like the 12B was. The per-step trace (#3) catches this too.
+
+This corrects the bake-off (section 5): the native diffusion leg MUST run at the reference depth (STEPS=48, or a depth sweep), not 12 -- else we compare an under-denoised native judge against a full-strength resident 12B, an unfair fight that would wrongly bench diffusion. Depth-match first, then compare.
 ## 6. The honest fork + what this doc does NOT claim
 
 The strategy reduces to one belief, and the bake-off supplies the evidence to hold it:
