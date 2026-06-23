@@ -34,6 +34,7 @@ Validate with gate **G-OKF-CONFORM**: `python tools/okf_validate.py papers` (run
 - [PPT-LAT-Roadmap.md](PPT-LAT-Roadmap.md) — the forward plan (live NEXT = Strike 1 NIGHTSHIFT criterion-5 → Strike 2 OOD diffusion kill-test) (`roadmap`).
 - [STATUS-MAP-2026-06-21.md](STATUS-MAP-2026-06-21.md) — box-by-box honest-tier ground-truth of the recall organism (`project-state`).
 - [DESIGN-FLEET-OVERHAUL-BRIEF.md](DESIGN-FLEET-OVERHAUL-BRIEF.md) — canonical grounding + honest-tier vocabulary + anti-overclaim checklist (`design`).
+- [DESIGN-COLA-DLM-MAPPING.md](DESIGN-COLA-DLM-MAPPING.md) -- Cola DLM (block-causal continuous-latent diffusion) mapped onto PPT/ARM/LAT/XBAR/NIGHTSHIFT: the GOLD = block-causal attention EXPLAINS the prefix-KV refutation; the honest correction = it is a TRAIN-TIME property, not an inference mask flip; falsifiable E1-E4; north-star not a tonight-edit (`design`, 2026-06-24).
 - [ROADMAP-KAIROS.md](ROADMAP-KAIROS.md) — the KAIROS roadmap (`roadmap`).
 - [gate-receipts.md](gate-receipts.md) — claim → receipt registry (`index`).
 
