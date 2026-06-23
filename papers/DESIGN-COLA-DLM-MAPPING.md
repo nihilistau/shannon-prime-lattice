@@ -27,23 +27,25 @@ Three pillars, all genuinely in the paper:
 
 These are real and mutually reinforcing. The question is which of the three maps onto our discrete, exact-integer substrate — and at what cost.
 
-## 2. THE GOLD (verified): block-causal EXPLAINS our prefix-KV refutation
+## 2. THE REFRAME (verified from the reference, 2026-06-24): the prompt is ALREADY prompt-causal -- prefix-KV is VALID, not refuted
 
-This is the one place Cola pays off immediately as *understanding*, and it is a vindication, not a new idea.
+**This section CORRECTS the first draft of this doc.** The first draft claimed "diffusion-gemma is bidirectional, so the prompt attends the noisy canvas, so prompt K/V is not canvas-invariant, so block-causal (a train-time property) would be needed for prefix-KV." Reading the reference mask DIRECTLY (Cola experiment E1) refutes that mechanism.
 
-This session's `SP_DG_PREFIXKV` fast path was convicted: we measured that the prompt's K/V is **not canvas-invariant** — `max|fresh - cached prompt K/V| = 6.9e-4` on a matched needle (flips low-confidence argmax) and **NaN / uniform collapse** on a foreign one. The premise of prefix-KV (cache the prompt K/V once, reuse it across denoise steps) was **refuted empirically** (see the N6 prefix-KV record in `memory/` and `STATUS-MAP`). We crash-fixed the path (a wild host read from uninitialised MoE routing tables, `calloc` fix, engine `5276662`) precisely so the premise could be *measured* — and it fails.
+The reference attention mask (`_diffgemma_reference/diffusion-gemma.cpp:43-54`, `ARCH-NOTES.md:40-52`) is ASYMMETRIC, not simply bidirectional:
+- **prompt query -> causal over earlier prompt only, NEVER attends the canvas** (`allow = (!k_is_canvas) && (k <= q)`).
+- **canvas query -> bidirectional over ALL prompt + ALL canvas** (global), or last (n_swa-1) prompt + all canvas (SWA).
 
-Cola tells us **why**, exactly: diffusion-gemma's attention is **bidirectional** over `[prompt | canvas]`, so the prompt attends *forward* into the **noisy, changing** canvas. Therefore the prompt's K/V shifts every denoise step — by construction. Cola's block-causal mask (causal across blocks, bidirectional within) makes the condition's K/V **independent of the answer block** → prompt K/V becomes canvas-invariant → **prefix-KV becomes exact and free.** Our lever was not *wrong*; it was *unreachable on a bidirectionally-trained model.*
+So the **prompt block is already self-contained / block-causal on the prompt side.** Prompt K/V depends only on prompt tokens (fixed across denoise steps) -> **prompt K/V is canvas-invariant BY CONSTRUCTION.** And the reference SHIPS a prefix-KV decode variant for exactly this: `llm_graph_input_attn_diffusion_decode` (`diffusion-gemma.cpp:110-167`) caches the prompt K/V once and forwards ONLY the canvas (a rectangular [P+C, C] mask) every denoise step -- "big speedup for fixed prompts" (ARCH-NOTES:48-52).
 
-### The honest correction to "just flip the mask in cuda_forward.cu"
+### What this does to our prefix-KV refutation
 
-Block-causal is a **train-time property the weights are fit to.** Cola is *pretrained from scratch* under block-causal masks. diffusion-gemma was trained bidirectional — our own 6.9e-4 / NaN measurement is the proof the prompt is *meant* to see the canvas. Forcing a causal mask at **inference** feeds the network an attention pattern it never learned → degraded or garbage output, not a free speedup. So:
+`SP_DG_PREFIXKV` was convicted on max|fresh - cached prompt K/V| = 6.9e-4 (matched) / NaN (foreign). In light of E1 that was almost certainly a FALSE refutation: the **NaN on foreign** was the `dg_self_cond` uninitialised-memory OOB (the SAME bug class fixed this session); the **6.9e-4 on matched** is consistent with fp / reduction-order nondeterminism, not the canvas->prompt coupling the architecture forbids.
 
-- **Refuted as a tonight-edit:** there is no inference-only mask flip that yields lossless prefix-KV on the current model. (Falsifiable — see E2.)
-- **Valid as a model bet:** a block-causal *finetune* (or a from-scratch SP block-causal latent-diffusion core) makes prefix-KV exact. Cost = training, not a kernel patch. (See E4.)
+**So prefix-KV is VALID on the current model -- NOT a train-time property, NOT a Cola finetune.** It is an inference optimization the reference already implements. ACTION: re-run `SP_DG_PREFIXKV_PROOF` now the OOB is fixed (is the prompt-K/V delta now ~0 / fp-noise?), then PORT the reference `llm_graph_input_attn_diffusion_decode` rectangular mask -> forward only the 256 canvas tokens/step instead of the whole [prompt|canvas]. That is the real diffusion-judge speedup the fast path was reaching for.
 
-This retires the prefix-KV question *correctly*: stop trying to cache invariants that the bidirectional model does not have; either eat the recompute (current `SP_DG_WCACHE` / sealed N5c path) or change the model.
+### Where that leaves Cola
 
+Cola's block-causal pillar does NOT map to our prefix-KV problem (the model is already prompt-causal; nothing to retrain for prefix-KV). Cola's residual, still-valid contribution is the LATENT-diffusion kernel in section 3 (diffuse in a compressed latent, avoid the 262K-vocab softmax) -- a genuinely different, still-open direction.
 ## 3. The genuinely transferable kernel: diffuse in a compressed latent, avoid the vocab softmax
 
 The real, portable lesson under the Text-VAE pillar is: **keep the diffusion in a compressed continuous latent and never touch the 262K-token vocabulary softmax inside the loop.**

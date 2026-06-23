@@ -1,4 +1,10 @@
----
+-
+> WARNING **CORRECTION (2026-06-24, later in session) -- two claims in this section are SUPERSEDED by direct source reads; read this first:**
+> **(1) The "recall regression / self-cond was load-bearing" framing is WITHDRAWN.** The harness self-conditioning is CORRECTLY wired (verified `tests/test_diffjudge_denoise.c:437` `if (use_sc && have_prev)` -> step-0 = plain forward, steps 1+ feed the prior step's logits; matches the reference step-0-gated-off SC). The killed run scored 5/60 = 8.3% recall. That is NOT an OOB-fix regression: the 95.6% is the EXTERNAL llama.cpp oracle; our NATIVE judge was always weak (~25% single-forward, `f8f76a5`). Honest finding: the "iterative multi-step denoise rescues the native judge" hypothesis (the reason `test_diffjudge_denoise` exists) is **REFUTED** -- multi-step 8.3% is no better than single-forward ~25%. The dg_self_cond OOB fix remains a genuine correctness fix; it did not cause a recall regression.
+> **(2) The prefix-KV refutation is OVERTURNED (Cola E1, verified from source).** `_diffgemma_reference/diffusion-gemma.cpp:43-54` + `ARCH-NOTES.md:40-52`: the mask is ASYMMETRIC -- **prompt queries are causal-over-prompt and NEVER attend the canvas**; only canvas queries are bidirectional. So prompt K/V is canvas-invariant BY CONSTRUCTION, and the reference SHIPS a prefix-KV decode variant (`llm_graph_input_attn_diffusion_decode`, rectangular [P+C,C], cache prompt K/V, forward only canvas). Our 6.9e-4/NaN was FALSE (fp-noise + the now-fixed OOB NaN). **prefix-KV is VALID on the current model -- not a train-time property, not a Cola finetune.** Cola block-causal does NOT map to prefix-KV. See `papers/DESIGN-COLA-DLM-MAPPING.md` section 2 (corrected).
+> **(3) Async HOLD reason corrected:** SP_DG_ASYNC is byte-exact + correct; the HOLD was predicated on a regression that does not exist. Stays byte-exact / default-off as a conservative perf default.
+> **NEW TOP NEXT:** port the reference `llm_graph_input_attn_diffusion_decode` prefix-KV variant (forward only 256 canvas tokens/step) = the real diffusion-judge speedup; re-run `SP_DG_PREFIXKV_PROOF` first to confirm prompt-K/V invariance now the OOB is fixed.
+--
 type: session-handoff
 title: SESSION-HANDOFF.md — where things stand
 description: "Updated: 2026-06-21 (PHASE 4 SEALED + PHASE 5 DIFFUSION JUDGE PROVEN SUPERIOR + native port begun."
