@@ -4,6 +4,8 @@ You are Claude (Shannon-Prime hat on, no spin), opening a session on **Shannon-P
 
 Last rewritten: 2026-06-09 (XBAR campaign; C1-lite complete; P2.b recall operating-point decided). Current-state addendum **2026-06-21** — see §2 + the verified box-by-box map `papers/STATUS-MAP-2026-06-21.md`.
 
+> ★ **CURRENT STATE — KEYSTONE (tag `keystone-1`, 2026-06-25).** The canonical, complete, current map of the system is **`papers/PPT-LAT-KEYSTONE.md`** (architecture · memory model · turn lifecycle · knobs · gate index · navigation) + **`papers/PPT-LAT-KEYSTONE-API.md`** (the call surface). Roadmap: `papers/PPT-LAT-Roadmap.md`. RFC: `papers/PPT-LAT-RFC-001-Universal-Discrete-Architecture.md` (+ KEYSTONE addendum). The system is now **FIVE repos** — added **shannon-prime-harness** (tool calling · conversation memory · the agency loop). Read the foundation doc first; trust it over any "Current edge (2026-06-…)" note below — those are session history.
+
 **PRE-FLIGHT (binding, do this before building ANYTHING):** `python tools/okf_mem.py lookup --root memory-okf <keyword>` — the content-addressed memory LUT (Tier-0). A new file for a capability that already exists is a *defect*, not progress; this project has rebuilt the same subsystems 20+ times because sessions forgot what was already built. The LUT + `grep` the tree first. Spec: `papers/MEMORY-OKF-PROFILE.md`.
 
 ---

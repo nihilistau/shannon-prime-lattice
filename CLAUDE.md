@@ -1,5 +1,7 @@
 # CLAUDE.md — shannon-prime-lattice
 
+> ★ **CURRENT STATE — KEYSTONE (tag `keystone-1`, 2026-06-25).** Canonical map: **`papers/PPT-LAT-KEYSTONE.md`** + **`papers/PPT-LAT-KEYSTONE-API.md`**. Roadmap `papers/PPT-LAT-Roadmap.md`; RFC `papers/PPT-LAT-RFC-001-Universal-Discrete-Architecture.md` (+ KEYSTONE addendum). FIVE repos now — added **shannon-prime-harness**. Read the foundation doc before trusting the "Current edge" notes below (session history).
+
 **This is Shannon-Prime. Read `prompt.md` in this repo FIRST — it is the canonical session bootstrap** (what the project is, current state, methodology, the machine, the doc map, how the operator works). This file is the short version.
 
 **Repo role:** umbrella — `papers/` (STATE, Roadmap, the C2/SPEED/XBAR contracts, RFC-XBAR, RUNBOOK), `demos/`, `tests/`, integration glue. The math core is `shannon-prime-system`; the engine is `shannon-prime-system-engine`.
