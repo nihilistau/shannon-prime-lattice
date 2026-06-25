@@ -21,12 +21,13 @@ SP_TYPES = {
     "research-paper", "paper-bite", "paper-provenance", "contract", "gate-receipt",
     "roadmap", "project-state", "session-handoff", "abi", "design", "runbook",
     "lesson", "convention", "memory", "index", "log",
+    "foundation", "reference",
 }
 # memory-dialect subtypes: the agent-memory harness tags concepts with one of these as `type`
 # (the OKF `type` slot), with `node_type: memory` as the OKF concept type. Older memory files
 # carry only the subtype (no node_type wrapper); accept the subtype as the memory dialect.
 MEMORY_SUBTYPES = {"feedback", "project", "reference", "user"}
-SP_STATUS = {"GREEN", "RED", "DESIGN", "HONEST-NEGATIVE", "DRAFT", "ACTIVE", "SUPERSEDED"}
+SP_STATUS = {"GREEN", "GREEN-LIVE", "RED", "DESIGN", "HONEST-NEGATIVE", "DRAFT", "ACTIVE", "SUPERSEDED"}
 ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}([T ]\d{2}:\d{2}(:\d{2})?(Z|[+-]\d{2}:?\d{2})?)?$")
 MDLINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 

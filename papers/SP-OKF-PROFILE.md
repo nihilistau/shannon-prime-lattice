@@ -29,7 +29,7 @@ A concept is one `.md` file. Its path is its identity. It MUST carry YAML frontm
 
 Then the SP **receipts-first extension** (additive; the discipline baked into the frontmatter so every claim is auditable):
 
-- `sp_status` — one of `GREEN | RED | DESIGN | HONEST-NEGATIVE | DRAFT | ACTIVE | SUPERSEDED`.
+- `sp_status` — one of `GREEN | GREEN-LIVE | RED | DESIGN | HONEST-NEGATIVE | DRAFT | ACTIVE | SUPERSEDED`. (`GREEN-LIVE` = gated GREEN *and* running live on the metal, e.g. the served chat — added at KEYSTONE.)
 - `sp_gate` — the gate name that proves the concept (e.g. `G-BYTEEXACT-FORWARD-12B`), or `none`.
 - `sp_commit` — the citable commit hash(es) the concept is anchored to, or `TBD`.
 - `sp_repro` — the one-line command that reproduces the result, when applicable.
@@ -57,6 +57,8 @@ OKF leaves `type` to the producer; we fix a controlled vocabulary so consumers c
 | `runbook` | operational procedure | `lattice/papers/RUNBOOK-*` |
 | `lesson` | a banked failure/principle | `lattice/lessons.md` |
 | `convention` | a standard (this doc) | `SP-OKF-PROFILE.md` |
+| `foundation` | the canonical current-state map of the whole system (the Rosetta stone an agent reads first) | `lattice/papers/PPT-LAT-KEYSTONE.md` |
+| `reference` | a call-surface / API reference (the "how do I call it" tier paired with a `foundation`) | `lattice/papers/PPT-LAT-KEYSTONE-API.md` |
 | `memory` | a persistent-memory fact | `memory/*.md` |
 | `index` | a bundle's progressive-disclosure map (reserved `index.md`) | `<bundle>/index.md` |
 | `log` | a bundle's chronological history (reserved `log.md`) | `<bundle>/log.md`, `LEDGER.md` |
