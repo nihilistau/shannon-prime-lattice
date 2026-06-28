@@ -6,37 +6,33 @@ WHY THIS EXISTS: the project's recurring failure is a backend shipping its OWN c
 primitive (KV cache, forward, recall) that BYPASSES the L1 ABI / the foundation, then being
 called "the system". This gate makes that drift a tracked RED instead of an invisible regression.
 
-INVARIANT CHECKED: the served CUDA decode must route KV through the foundation KV contract
-(the L1 ABI codec sp/spinor_block.h + the kv_flags / SP_KV_SPINOR seam) — NOT a private raw
-float buffer in cuda_forward.cu.
+INVARIANT: the served CUDA decode must route KV through the foundation KV codec (the O_K Spinor
+carrier via the L1 ABI kv_flags / SP_KV_SPINOR seam), NOT a private raw-float buffer.
 
-  RED  = the CUDA decode allocates raw float K/V and the CUDA decode path contains no
-         SP_KV_SPINOR / spinor_block handling  -> KV bypasses the foundation (current regression).
-  GREEN= the CUDA decode honors the ABI KV codec (SP_KV_SPINOR / spinor_block present in the
-         decode/attention KV path)  -> KV is routed through the foundation.
+IMPORTANT (integrity, 2026-06-28): an earlier version of this gate matched on the mere PRESENCE
+of the strings "kv_flags" / "SP_KV_SPINOR". That FALSE-GREENED the moment the (inert) kv_flags
+ABI surface was added, even though the KV was still raw float. A gate you can satisfy by writing
+a comment is worthless. So this gate now keys on a REAL CARRIER SENTINEL that is added to
+cuda_forward.cu ONLY when the O_K Spinor KV store + inline-decode is actually implemented AND its
+runtime gates pass (G-WIRE-CUDA-DECODE-GEMMA4 bit-exact + G-CUDA-KV-RATIO). Do not add the
+sentinel to pass the gate; add it because the carrier is real.
+
+The static gate is a TRIPWIRE; the REAL proof is the runtime gates (bit-exact decode == oracle on
+the O_K Spinor KV + measured compression). This file just refuses to let the seam be mistaken for
+the carrier.
 
 Run:  python g_foundation_routing.py [engine_repo_root]
-Exit 0 iff GREEN. Intended to run in the Stage-0 battery and pre-commit.
+Exit 0 iff GREEN (carrier sentinel present). RED otherwise.
 """
 import os, re, sys
 
 DEFAULT_ENG = r"D:\F\shannon-prime-repos\shannon-prime-system-engine"
+CU = r"src\backends\cuda\cuda_forward.cu"
+DISPATCH = r"tools\sp_daemon\src\cuda_kvdecode_dispatch.rs"
 
-# (file, marker-of-bypass, marker-of-foundation-routing)
-CHECKS = [
-    {
-        "name": "CUDA decode KV storage",
-        "files": [r"src\backends\cuda\cuda_forward.cu"],
-        "bypass": [r"cudaMalloc\(\s*&?K(st)?\b.*sizeof\(float\)", r"cudaMalloc\(\s*&?V(st)?\b.*sizeof\(float\)"],
-        "foundation": [r"SP_KV_SPINOR", r"spinor_block", r"sp_spinor_decode", r"kv_flags"],
-    },
-    {
-        "name": "CUDA kvdecode dispatch honors ABI kv_flags",
-        "files": [r"tools\sp_daemon\src\cuda_kvdecode_dispatch.rs"],
-        "bypass": [],
-        "foundation": [r"SP_KV_SPINOR", r"kv_flags", r"spinor"],
-    },
-]
+# The carrier sentinel — a single, unambiguous marker. Add this EXACT token to cuda_forward.cu
+# only when the live-KV O_K Spinor store+inline-decode is implemented and its runtime gates pass.
+CARRIER_SENTINEL = "SP_KV_FOUNDATION_CARRIER_IMPL"
 
 
 def read(p):
@@ -46,40 +42,33 @@ def read(p):
         return ""
 
 
-def scan(eng):
-    rows, red = [], False
-    for c in CHECKS:
-        text = "".join(read(os.path.join(eng, f)) for f in c["files"])
-        has_bypass = any(re.search(p, text) for p in c["bypass"]) if c["bypass"] else False
-        has_found = any(re.search(p, text) for p in c["foundation"])
-        # A check is RED if it bypasses without foundation routing, OR (no bypass markers) it
-        # simply lacks any foundation-routing marker where one is required.
-        if c["bypass"]:
-            ok = (not has_bypass) or has_found
-        else:
-            ok = has_found
-        if not ok:
-            red = True
-        rows.append((c["name"], has_bypass, has_found, ok))
-    return rows, red
-
-
 def main():
     eng = sys.argv[1] if len(sys.argv) > 1 else DEFAULT_ENG
+    cu = read(os.path.join(eng, CU))
+    disp = read(os.path.join(eng, DISPATCH))
+
+    seam = ("set_kv_flags" in disp) and ("kv_flags" in disp)              # the ABI seam (done)
+    carrier = CARRIER_SENTINEL in cu                                       # the real carrier (sentinel)
+    # honesty check: if the live-decode KV is still a raw-float alloc AND no sentinel, it's a bypass.
+    raw_float_kv = bool(re.search(r"cudaMalloc\(\s*&?(K|V)st\[[^\]]*\][^;]*sizeof\(float\)", cu))
+
     print(f"G-FOUNDATION-ROUTING  (engine = {eng})")
-    print("invariant: served CUDA decode routes KV through the L1 ABI foundation codec, not a private float buffer\n")
-    rows, red = scan(eng)
-    for name, byp, fnd, ok in rows:
-        print(f"  [{'GREEN' if ok else 'RED  '}] {name:42}  bypass={byp!s:5}  foundation_routed={fnd!s}")
-    print("\n" + "=" * 60)
-    if red:
-        print("VERDICT: RED — KV bypasses the foundation (cuda_forward.cu stores raw float K/V,")
-        print("         CUDA decode does not honor SP_KV_SPINOR). This is the tracked regression.")
-        print("         Fix: CONTRACT-CUDA-KV-FOUNDATION. Gate goes GREEN when the CUDA backend")
-        print("         implements the ABI KV codec (exact default + SP_KV_SPINOR compressed mode).")
-        return 1
-    print("VERDICT: GREEN — served CUDA decode routes KV through the foundation.")
-    return 0
+    print("invariant: served CUDA decode routes KV through the O_K Spinor foundation carrier (not a private float buffer)\n")
+    print(f"  [{'GREEN' if seam else 'RED  '}] ABI seam present (kv_flags / set_kv_flags in cuda_kvdecode_dispatch.rs)")
+    print(f"  [{'GREEN' if carrier else 'RED  '}] CARRIER implemented (sentinel {CARRIER_SENTINEL} in cuda_forward.cu)")
+    print(f"  [{'note ' }] live-decode raw-float KV alloc still present: {raw_float_kv}")
+    green = seam and carrier
+    print("\n" + "=" * 64)
+    if green:
+        print("VERDICT: GREEN — served CUDA decode routes KV through the foundation carrier.")
+        print("  (Confirm the runtime gates too: G-WIRE-CUDA-DECODE-GEMMA4 + G-CUDA-KV-RATIO.)")
+        return 0
+    print("VERDICT: RED — KV not yet routed through the foundation.")
+    print(f"  seam={'ok' if seam else 'missing'}; carrier={'IN' if carrier else 'NOT IMPLEMENTED'}"
+          + ("; live KV is still raw float (the bypass)." if raw_float_kv else "."))
+    print("  Fix: CONTRACT-CUDA-KV-FOUNDATION (implement the O_K Spinor store+inline-decode in the")
+    print("  CUDA decode, reusing the XBAR store pattern; add the sentinel only when its runtime gates pass).")
+    return 1
 
 
 if __name__ == "__main__":
