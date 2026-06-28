@@ -1,14 +1,14 @@
 ---
 type: contract
-title: "CONTRACT-CUDA-KV-FOUNDATION — route the served CUDA decode KV through the L1 ABI foundation codec"
-description: "Root-caused regression: the live 12B CUDA decode (cuda_forward.cu) stores K/V as a private raw-float32 buffer and never honors the L1 ABI KV codec (SP_KV_SPINOR / sp/spinor_block.h), which is realized only on the CPU/math-core path. The served chat therefore bypasses the entire C2 foundation KV envelope (Spinor compression, ARM two-ring, Ring-2). This contract wires the CUDA backend to the ABI KV contract — exact KV as the default auditable mode, SP_KV_SPINOR as a selectable compressed mode — gated correctly (bit-exact for exact mode; top-1/KL for the lossy compressed mode), with a standing guardrail (G-FOUNDATION-ROUTING) so the drift cannot recur."
-tags: [contract, cuda, kv-cache, l1-abi, spinor, foundation-routing, regression, c2, anti-drift]
+title: "CONTRACT-CUDA-KV-FOUNDATION — add C2 Spinor compression to the (already-exact) served CUDA KV ring"
+description: "CORRECTED 2026-06-28 (measured, not grep): the served 12B CUDA decode KV COMPUTE is already routed through the exact-integer O_K foundation (byteexact bx kernel + dual-prime CRT-NTT, via the kvdecode L1 ABI verb, default-on; measured: byteexact serves coherent, float Stage-A garbage). There is NO bypass. The only gap is an OPTIMIZATION: the KV STORAGE is uncompressed float (~450 MB resident ring), not the C2 Spinor compression envelope. This contract adds the lossless O_K Spinor compression to the served KV ring (~320 MB headroom), gated bit-exact (O_K Spinor is lossless) + by footprint. The earlier 'foundation bypass' framing was a static-grep error and is retracted; G-FOUNDATION-ROUTING is superseded."
+tags: [contract, cuda, kv-cache, l1-abi, spinor, compression, c2, optimization, corrected]
 timestamp: 2026-06-28T00:00:00Z
 resource: shannon-prime-repos/shannon-prime-system-engine/src/backends/cuda/cuda_forward.cu
 sp_status: DESIGN
-sp_gate: G-FOUNDATION-ROUTING
+sp_gate: G-CUDA-KV-COMPRESS
 sp_commit: TBD
-sp_repro: "python shannon-prime-lattice/staging/foundation-routing/g_foundation_routing.py"
+sp_repro: "measured served path: byteexact default coherent / raw_logits garbage => compute already foundation-routed; footprint via nvidia-smi + arch (W=2048, 48 layers, KVD=512)"
 ---
 
 # CONTRACT-CUDA-KV-FOUNDATION
@@ -16,15 +16,16 @@ sp_repro: "python shannon-prime-lattice/staging/foundation-routing/g_foundation_
 > Parent: [RFC-001](PPT-LAT-RFC-001-Universal-Discrete-Architecture.md) §8 (crate boundaries: backends implement the SAME primitives, bit-exact, via the L1 ABI) · [CONTRACT-C2-ARM-spinor-kv-two-ring](CONTRACT-C2-ARM-spinor-kv-two-ring.md) (the foundation KV envelope) · [ROADMAP-REBUILD-2026-06](ROADMAP-REBUILD-2026-06.md) Stage 1.
 > Guardrail: `staging/foundation-routing/g_foundation_routing.py` (gate **G-FOUNDATION-ROUTING**, currently **RED**).
 
-## 0. The regression (root-caused, receipts)
+## 0. The measured state (corrected 2026-06-28 — there is NO bypass)
 
-The served Gemma-4-12B chat runs its forward on the exact-integer foundation (byte-exact islands + dual-prime CRT-NTT attention, default-on — `routes.rs:411-415`), **but its KV cache is a private CUDA float32 buffer**:
+> An earlier draft of this contract claimed the served KV "bypasses the foundation (private float buffer)." That was a **static-grep inference and it is wrong** — measurement through the served L1-ABI path refutes it. Corrected below; kept visible as an honest-negative on the methodology (assert-from-grep → measure-through-the-ABI).
 
-- `src/backends/cuda/cuda_forward.cu:1918-1919` — `cudaMalloc(&Kst[L], n_tok*kvd*sizeof(float))`, `Vst[L]` float. Raw fp32 K/V.
-- No `SP_KV_SPINOR` / `spinor_block` / `kv_flags` anywhere in the CUDA decode or `cuda_kvdecode_dispatch.rs` (the only CUDA "spinor" is `ptx_bench.cu`, a throughput bench, and `dialogue_runner.rs` `SpinorReceipt`, the memo receipt — neither is the KV path).
-- The L1 ABI **defines** the foundation KV codec — `sp_l1.h:156 SP_KV_SPINOR` ("persistent COMPRESSED KV: VHT2+Möbius 63-byte Spinor blocks, decoded inline"), `sp/spinor_block.h` — and it is honored on the **CPU/math-core** forward (where C2 was measured), but the **CUDA backend was built with its own KV and ignores the ABI flag.**
+**MEASURED (served `/v1/chat`, L1-ABI path):**
+- byte-exact default-ON → coherent ("The capital of Japan is Tokyo."); `raw_logits` float Stage-A → **garbage**. So the served **KV compute IS routed through the exact-integer O_K foundation** — the `k_attn_decode_ring_bx` kernel reads the (float-stored) K/V and runs the **dual-prime CRT-NTT** attention, dispatched via the kvdecode L1 ABI verb. The ABI is doing exactly its job: take not-natively-exact inputs, run them through the byte-exact O_K process. (`routes.rs:415` byteexact default true; `cuda_forward.cu:652` `k_attn_decode_ring_bx(const float *Kc, const float *Vc, …)`.)
+- **KV STORAGE is uncompressed float** — the resident SWA ring is a plain `float` K/V buffer (`const float *Kc/Vc`). It is **not** in the C2 Spinor/two-ring **compression** envelope.
+- **Footprint MEASURED/computed:** VRAM 11,973/12,288 MiB; resident KV ring ≈ **450 MB float** (40 SWA layers W=2048 ≈320 MB + 8 global layers Pmax=4096 ≈128 MB, KVD=512). Spinor ~3.5× ⇒ **~320 MB headroom** is the whole prize.
 
-Consequence: the served path bypasses the **entire C2 foundation KV envelope** — Spinor compression (~3.5×), ARM two-ring, Ring-2 offload (400–1190× effective context). The reason PPT-ARM exists is absent from the live chat. This is "built in isolation," exactly.
+**So this is not a regression or a bypass.** The exact-integer foundation is already in the served KV path. The only real item is an **optimization**: add the C2 **Spinor compression** to the (already-exact) served KV ring — a ~320 MB VRAM-headroom win for real bit-exact CUDA codec work. The big "unlimited context" envelope (Ring-2 offload, 400–1190×) is a **separate** feature the fixed-window served path doesn't exercise. `G-FOUNDATION-ROUTING` is therefore **superseded** (there was no bypass to catch); the live gate is `G-CUDA-KV-COMPRESS` (§4).
 
 ## 1. The spec'd Spinor KV IS byte-exact (corrected 2026-06-28)
 
