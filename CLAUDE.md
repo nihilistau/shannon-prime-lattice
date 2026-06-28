@@ -23,4 +23,6 @@
 
 **Start:** read `prompt.md` → `papers/PPT-LAT-STATE.md` + `papers/PPT-LAT-Roadmap.md` + active contract → `MEMORY.md` → check the tree → confirm next falsifiable step → execute, gate, commit/push, bank memory.
 
+**Build from clean (engine):** CPU/math-core builds with **clang-cl** (MSVC-ABI, supports `__int128` in `exact_islands.c`), **NOT `cl.exe`** (which can't — `C4235`). `env-cpu.bat` is pinned to clang-cl; **do not revert it** (that drift = clean-build RED, a recurring cause of restarts). Canonical from-clean chain + every gotcha + gate `G-CLEAN-BUILD`: **`papers/BUILD-ENV-TOOLCHAIN.md`** (verified GREEN 2026-06-28).
+
 **Environment & credentials (added 2026-06-11):** the toolbox — compute lanes (RunPod=bake / Colab=prototype / gws=Google APIs), the three shells and their traps, storage law, account map — lives in **`ENVIRONMENT.md`** (this repo, read it before touching any cloud). Secrets live ONLY in `D:\F\shannon-prime-repos\archive\notes_and_stuff\creds\claude-credentials.txt` (outside all repos; paths-not-values everywhere else; renewal procedures inside). **Where things stand right now** — in-flight runs, the decision queue — is **`SESSION-HANDOFF.md`** (this repo; update it at every session end).

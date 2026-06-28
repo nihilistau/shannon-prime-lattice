@@ -1,0 +1,120 @@
+// ============================================================================
+// G-SPEC-WIRE  —  DRAFT (do not compile in place; apply into the daemon + gate)
+// ----------------------------------------------------------------------------
+// Wires the PROVEN-but-dormant `spec_step` (engine tools/sp_daemon/src/spec.rs)
+// into the /v1/chat decode path. Today routes.rs runs a single-token loop and the
+// startup-loaded draft session (daemon.rs ~137-150) is never used.
+//
+// CONTRACT: papers/CONTRACT-C4-SPECDECODE-DSPARK.md  (stage C4-SPEC-WIRE)
+// GATE G-SPEC-WIRE: with SP_SPEC unset, served chat tokens are BIT-IDENTICAL to the
+//                   current single-token path (null floor). With SP_SPEC=1 + a draft
+//                   model, output is identical greedy tokens, fewer forward passes.
+// NON-NEGOTIABLE: default-off == byte-identical. spec_step accepts by ARGMAX EQUALITY
+//                 (T8), not probability — so at temperature 0 the accepted stream is
+//                 provably the same tokens as single-token greedy (T8 + Cor. T8.1).
+//
+// Reused as-is (DO NOT reimplement):
+//   spec.rs::spec_step(target, draft, target_logits, draft_logits, k, vocab) -> SpecResult
+//       SpecResult { accepted: Vec<i32>, next_target_logits: Vec<f32>,
+//                    next_draft_logits: Option<Vec<f32>> }
+//   session.rs: SpSession::clone_session(), ::rewind(), ::decode_step()
+//   daemon run_inner(): draft_model: Option<SpModel>, draft_session: Option<Mutex<SpSession>>
+// ============================================================================
+
+// ---- 1. config knob (env, default-off) -------------------------------------
+struct SpecCfg { enabled: bool, k: usize }     // SP_SPEC=1, SP_SPEC_K (default 4..8)
+fn spec_cfg() -> SpecCfg {
+    SpecCfg {
+        enabled: std::env::var("SP_SPEC").ok().as_deref() == Some("1"),
+        k: std::env::var("SP_SPEC_K").ok().and_then(|s| s.parse().ok()).unwrap_or(4),
+    }
+}
+
+// ---- 2. the decode driver: spec when possible, else the proven single-token --
+// Splice point: routes.rs v1_chat, replacing the single-token loop (~516-566).
+// `target` is the per-turn cloned+prefilled child session (today's `child`).
+// Returns nothing new to the caller contract: it still emits SSE {delta} per token.
+fn decode_emit(
+    target: &mut SpSession,
+    draft_model: &Option<SpModel>,
+    base_draft: &Option<Mutex<SpSession>>,
+    prompt_tokens: &[i32],
+    sampler: &mut Sampler,            // existing EOT-bias / stop-string / temp/top-p state
+    emit: &mut dyn FnMut(i32),        // existing SSE delta sink
+    max_new: usize,
+) -> Result<(), String> {
+    let cfg = spec_cfg();
+    let vocab = target.vocab_size();
+
+    // Fallback: no draft model, or spec disabled -> EXACT current behaviour (null floor).
+    if !cfg.enabled || draft_model.is_none() || base_draft.is_none() {
+        let mut logits = vec![0f32; vocab];
+        // (target already prefilled by caller; first logits available)
+        for _ in 0..max_new {
+            let tok = sampler.pick(&logits);          // argmax at temp 0
+            if sampler.is_stop(tok) { break; }
+            emit(tok);
+            target.decode_step(tok, &mut logits)?;    // the proven single-token verb
+        }
+        return Ok(());
+    }
+
+    // Spec path: per-turn draft child, prefilled to the SAME prompt as target.
+    // NOTE (real constraint, sp_session.c:792-799): clone does NOT carry the persistent
+    // kvdecode_backend; a clone falls back to math-core reference decode. For the resident
+    // 12B CUDA path, prefer cloning from a draft SpModel/session that owns its own decode
+    // backend rather than expecting the target's CUDA cache to transfer.
+    let dm = draft_model.as_ref().unwrap();
+    let mut draft = dm.clone_fresh_session()?;        // or base_draft.lock().clone_session()
+    draft.prefill(prompt_tokens)?;
+
+    let mut tgt_logits = vec![0f32; vocab];           // target's current logits (post-prefill)
+    let mut drf_logits = vec![0f32; vocab];           // draft's current logits (post-prefill)
+    target.current_logits(&mut tgt_logits)?;
+    draft.current_logits(&mut drf_logits)?;
+
+    let mut produced = 0usize;
+    'outer: while produced < max_new {
+        // ONE spec round: draft K by greedy, target verifies by argmax-equality, rewinds on reject.
+        let r = spec_step(target, &mut draft, &tgt_logits, &drf_logits, cfg.k, vocab)?;
+
+        // Emit accepted tokens through the EXISTING sampler/stop machinery, one at a time,
+        // so EOT-bias and stop-strings behave exactly as in single-token mode.
+        for &tok in &r.accepted {
+            if sampler.is_stop(tok) { break 'outer; }
+            emit(tok);
+            produced += 1;
+            if produced >= max_new { break 'outer; }
+        }
+
+        tgt_logits = r.next_target_logits;
+        match r.next_draft_logits {
+            Some(d) => drf_logits = d,                // all-K accepted: draft already aligned
+            None => {                                 // a reject happened: re-sync draft to target
+                draft.rewind_to(target.position())?;  // O(1) watermark (sp_session_rewind)
+                draft.current_logits(&mut drf_logits)?;
+            }
+        }
+        if r.accepted.is_empty() { /* safety: avoid stall -> force one target token */
+            let tok = sampler.pick(&tgt_logits);
+            if sampler.is_stop(tok) { break; }
+            emit(tok); produced += 1;
+            target.decode_step(tok, &mut tgt_logits)?;
+        }
+    }
+    Ok(())
+}
+
+// ---- 3. gate harness (operator, on the metal) ------------------------------
+// G-SPEC-WIRE-NULLFLOOR : SP_SPEC unset  -> token stream == pre-change single-token stream
+//                         (diff the SSE deltas for N prompts; must be byte-identical).
+// G-SPEC-WIRE-PARITY    : SP_SPEC=1, draft=target (self-draft) -> identical greedy tokens,
+//                         forwards(spec) < forwards(single) ; bit_identical_to_greedy=1.
+// G-SPEC-BASELINE-12B   : with the prompt-lookup draft, pin mean-accept/step + tok/s (the floor
+//                         the DSpark draft head in stage C4-SPEC-DRAFT must beat).
+//
+// Open handling to finish during wiring (tracked in the contract §9):
+//   * temperature>0: spec_step is argmax-accept; sampling-accept needs the discretized-sampling
+//     contract (RFC §5) before SP_SPEC is correct off greedy. Until then gate SP_SPEC to temp==0.
+//   * multi-token stop-string spanning a spec batch: handled above by replaying accepted tokens
+//     through sampler.is_stop one at a time (no batch-level shortcut).
