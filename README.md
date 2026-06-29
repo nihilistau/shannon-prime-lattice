@@ -33,6 +33,32 @@ compression lever the project tried is a *measured negative*, kept on the record
 negative; the win is the *container*. Every mechanism is a flag that is a **strict no-op when unset**
 (the "null floor"); every number has a reproducing command and a gate.
 
+## The Latent Interceptor & Telepathy (post-KEYSTONE)
+
+The finetuned EAGLE **draft body** is repurposed as a **latent-native router** — a shared 1024-d body plus
+tiny action/memory/tool heads that decide, recall, and route **on the latent manifold, without a tokenizer
+round-trip**. The heads are **near-miss-hardened**: on isolated cross-distribution tests they never fire a
+tool/action or write a memory on idle chatter (false-fire **0.000**; tool head 1.000, action head 0.979,
+KEEP recall 1.000).
+
+**Telepathy** is the named framework for **tokenizer-free latent→latent transfer between models** — a
+`LatentBridge` (`src → adapter → dst`) plus a pluggable adapter registry. The first **cross-family** bridge
+is proven: **gemma-3n-E2B ↔ qwen2.5-coder-0.5b** via a simple ridge affine map — geometry alignment
+(retrieval@1 **1.000**, round-trip **0.891**), foreign rejection (AUC **0.999**), and generation
+**steering** (an injected mapped latent measurably steers the destination, steer-accuracy **1.000** vs a
+matched control).
+
+> **Honest scope:** what's proven is *activation steering*, geometry alignment, and foreign rejection — **not**
+> verbatim text-forcing (a single pooled latent can't force exact output, and we don't claim it).
+>
+> **Licensing (by design):** Telepathy is a **separately-licensed, proprietary** component layered on the
+> MIT substrate (the base stays MIT). Commercial use is gated by a **fail-closed license-key + cryptographic
+> attestation** model — without a valid license the bridge runs inert; the protections only ever disable the
+> bridge's *own* operation and never reach the host. *(Enforcement mechanisms are SPEC; the commercial
+> boundary is policy from the jump.)*
+
+Spec: [`papers/PPT-LAT-TELEPATHY-LatentBridge-spec.md`](papers/PPT-LAT-TELEPATHY-LatentBridge-spec.md).
+
 ## The five repositories
 
 | Repo | Role | Lang | Entry |

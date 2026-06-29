@@ -278,6 +278,7 @@ the Linux mount** (the mount CRLF-churns + locks).
 | XBAR / boundary thesis | lattice `CONTRACT-XBAR-*`; Position_Is_Arithmetic papers 18-24 |
 | MEM-OKF format | lattice `papers/MEMORY-OKF-PROFILE.md`; `tools/okf_mem.py` |
 | RFC / Roadmap (current) | lattice `papers/PPT-LAT-RFC-001-*`, `PPT-LAT-Roadmap.md` |
+| Latent Interceptor + Telepathy | lattice `papers/PPT-LAT-TELEPATHY-LatentBridge-spec.md`; engine `tools/latent_interceptor/`, `tools/telepathy/` |
 | Public papers | Position_Is_Arithmetic `SERIES.md`, `papers/`, `LEDGER.md` |
 | Historical (archived) | lattice `papers/Archived/`, Position_Is_Arithmetic `Archived/` |
 
@@ -287,6 +288,21 @@ the Linux mount** (the mount CRLF-churns + locks).
 agency (store/forget/decide/merge); the harness end-to-end (daemon, tool calling, python exec,
 memory-as-tools, the agency loop + heartbeat tick); tiered conversation memory + capabilities; the
 live consolidation hook. ~90% of the envisioned organism.
+
+**Post-KEYSTONE additions (2026-06-29/30) — the Latent Interceptor + Telepathy [PROVEN, default-off]:**
+the finetuned EAGLE draft body is repurposed as a **latent-native router** (shared 1024-d body + tiny
+action/memory/tool heads). The heads are **near-miss-hardened**: on isolated cross-distribution OOD the
+tool head is 1.000 and the action head 0.979 with **false-fire 0.000** (it never fires a tool/action or
+writes memory on idle chatter; KEEP recall lifted 0.429→1.000). **Telepathy** is the named framework for
+tokenizer-free latent→latent transfer between models (`LatentBridge` + an adapter registry). The first
+**cross-FAMILY** bridge is proven — gemma-3n-E2B ↔ qwen2.5-coder-0.5b via a ridge affine adapter:
+**representation alignment** (retrieval@1 1.000, round-trip 0.891), **foreign reject** (AUC 0.999), and
+**generation steering** (injected mapped latent raises matching-text LL, steer-accuracy 1.000 vs a matched
+control). **Honest scope:** activation *steering* + geometry alignment + foreign rejection — it does **not**
+force verbatim output, and we don't claim it. **Licensing (SPEC):** Telepathy is a *separately-licensed
+proprietary component layered on the MIT substrate* — fail-closed license-key + cryptographic-attestation
+gating that only ever disables the bridge's own operation (no host-external effects). Spec:
+[PPT-LAT-TELEPATHY-LatentBridge-spec.md](PPT-LAT-TELEPATHY-LatentBridge-spec.md).
 
 **Open edges (next):** (1) **persistent O(1) conversation KV** — the daemon re-prefills the whole
 conversation each turn (correct but O(n)); the L1 stateful kvdecode verb can make "continue the
