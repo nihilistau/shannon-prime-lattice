@@ -15,7 +15,7 @@ sp_repro: "see §7 Gates — each gate names its reproducing command; same-famil
 
 **Status:** DRAFT for review/iteration. **Author:** Claude (SP hat), 2026-06-30, synthesizing operator intent + the empirical record (Latent Interceptor RP-1/TH-1, the served gemma4-12b-b1). **Disposition:** a constitution + adapter contract skeleton, not a decree. Nothing here is frozen until it is itself frozen.
 
-> **Receipts-first honesty up front.** Exactly ONE Telepathy path is PROVEN today: the **same-family identity bridge** (the 4-layer EAGLE draft body → the served 12B, via `gemma4_kv_inject` / `gemma4_kv_inject_tokens`, demonstrated in RP-1's strawberry trace). Every **cross-model / cross-family** claim in this document is **SPEC / PROPOSED** and carries no number until its gate is green. Do not cite the cross-model adapters as working.
+> **Receipts-first honesty up front.** PROVEN today: (1) the **same-family identity bridge** (EAGLE draft body → served 12B, `gemma4_kv_inject*`, RP-1 strawberry trace); (2) **TELE-1** — the cross-FAMILY affine adapter (gemma-3n-E2B ↔ qwen2.5-coder-0.5b) at the representation level (retrieval@1 1.000, round-trip 0.891, reject AUC 0.999); (3) **TELE-2** — the injected mapped latent causally **steers** Qwen (dLL_self +0.414, steer-accuracy 1.000 vs matched control). **Honest scope:** TELE-2 is *activation steering* — the matching latent measurably raises the matching text's likelihood and beats a control, with fluency preserved; it does NOT *force verbatim* output (a single mean-pooled vector can't, and we don't claim it). The license/attestation fail-closed mechanisms (§6) are SPEC. Don't overclaim beyond these gated numbers.
 
 ---
 
@@ -144,7 +144,8 @@ This achieves the objective — unauthorized commercial deployment is **commerci
 | `G-TELEPATHY-PARITY` | bridge off / no license ⇒ `dst` byte-identical to no-bridge | (per-bridge harness; null-floor diff) | identity path: inherited from RP-1 default-off |
 | `G-TELEPATHY-ROUNDTRIP` | source concept transferred+injected is recoverable at `dst` ≥ threshold | `fit_adapter.py` (cos / retrieval@k) | identity: PROVEN (RP-1); **gemma↔qwen: GREEN** (round-trip 0.891, retrieval@1 1.000, chance 0.016) |
 | `G-TELEPATHY-REJECT` | foreign/out-of-domain src latent is rejected, not injected | `fit_adapter.py` (nn-dist AUC) | **gemma↔qwen: GREEN** (AUC 0.999, in-domain 0.325 vs foreign 0.648) |
-| `G-ADAPTER-CONFORM` | a new adapter ships all five §3.1 deliverables + green gates | `python tools/okf_validate.py <adapter-bundle>` + the three gates | gemma↔qwen adapter meets the representation-level gates; KV-inject trigger PENDING |
+| `G-TELEPATHY-GEN-TRIGGER` | the *injected* mapped latent causally steers `dst`'s output (raises matching-text LL; beats a matched control) | `telepathy_steer.py` (ΔLL + steer-accuracy) | **gemma→qwen: GREEN** (L=20 α=0.25: dLL_self +0.414, dLL_cross −0.496, steer-acc 1.000) |
+| `G-ADAPTER-CONFORM` | a new adapter ships all five §3.1 deliverables + green gates | `python tools/okf_validate.py <adapter-bundle>` + the gates | gemma↔qwen adapter meets representation + generation-trigger gates |
 
 **Proven today:** (1) identity bridge, same-family, default-off parity + RP-1 round-trip; (2) **TELE-1 — the first cross-FAMILY adapter (gemma-3n-E2B ↔ qwen2.5-coder-0.5b), a ridge affine map: round-trip cos 0.891, retrieval@1 = 1.000 (chance 0.016), foreign-reject AUC 0.999, at the representation level (mean-pooled sentence latents).** **PENDING:** the deeper claim that an *injected* mapped latent makes `dst` generate the right continuation (needs the Qwen forward/inject wired — representation alignment proven, generation-trigger not yet). Tools: `tools/telepathy/{gen_pairs,extract_latents,fit_adapter}.py`; adapter `telepathy_adapter_g2q.npz`.
 
@@ -152,8 +153,8 @@ This achieves the objective — unauthorized commercial deployment is **commerci
 
 ## 8. Status & roadmap
 
-- **Now (PROVEN):** (1) same-family identity bridge (draft → 12B), `gemma4_kv_inject*`, RP-1/TH-1; (2) **TELE-1 cross-FAMILY affine adapter gemma-3n-E2B ↔ qwen2.5-coder-0.5b** — representation-level alignment GREEN on all three gates (round-trip 0.891, retrieval@1 1.000, reject AUC 0.999); a ridge affine map sufficed across different `d_model` (2048→896), MLP not needed.
-- **Next (the deeper claim):** wire a minimal Qwen forward/inject so a *mapped* gemma latent injected into Qwen makes Qwen generate the matching continuation (the generation-trigger gate, beyond representation alignment). Harden REJECT with in-domain-but-wrong negatives (not just gibberish/non-English).
+- **Now (PROVEN):** (1) same-family identity bridge (draft → 12B), `gemma4_kv_inject*`, RP-1/TH-1; (2) **TELE-1 cross-FAMILY affine adapter gemma-3n-E2B ↔ qwen2.5-coder-0.5b** — representation alignment GREEN (round-trip 0.891, retrieval@1 1.000, reject AUC 0.999); ridge affine sufficed across `d_model` 2048→896, no MLP; (3) **TELE-2 generation-trigger GREEN** — the *injected* mapped latent causally steers Qwen (dLL_self +0.414, steer-accuracy 1.000 vs matched control), fluency preserved. **The clean injection seam = the late residual (layers ~16–22, near where the aligned final-hidden vector lives) at gentle scale α≈0.1–0.5; early layers or large α disrupt.**
+- **Next:** harden REJECT with in-domain-but-wrong negatives (not just gibberish); push from "steer the distribution" toward stronger continuation control (multi-vector / per-position injection); test the reverse direction (qwen→gemma).
 - **Then:** wire the LatentBridge object into `eagle_accept.rs` behind `SP_TELEPATHY` (default-off); sew references into RFC-001, the KEYSTONE map, the roadmap, and the public README.
 
 ## 9. Open questions
