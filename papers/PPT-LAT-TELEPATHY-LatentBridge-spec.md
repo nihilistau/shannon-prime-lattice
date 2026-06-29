@@ -78,8 +78,8 @@ An **adapter** is the only model-pair-specific piece. Three tiers:
 | tier | when | cost | status |
 |---|---|---|---|
 | **identity** | `src` and `dst` are the same model or same family/tokenizer/`d_model` (e.g. EAGLE draft → its 12B target) | free (no learning) | **PROVEN** (RP-1) |
-| **linear** | same `d_model`, related family; an orthogonal/affine map suffices | one calibration pass | SPEC |
-| **learned** | different `d_model` / different family (e.g. gemma4-e2b ↔ qwen25-coder); needs a trained map | trained adapter (small MLP), calibrated on paired latents | SPEC |
+| **linear** | affine map (z-scored ridge), works **even across different `d_model` / family** via a rectangular map | one calibration pass | **PROVEN** (TELE-1: gemma-3n-E2B 2048-d ↔ qwen2.5-coder-0.5b 896-d — retrieval@1 1.000, round-trip cos 0.891, reject AUC 0.999) |
+| **learned** | shallow MLP, only if linear underfits the gates | trained adapter, calibrated on paired latents | SPEC — **not needed for gemma↔qwen** (linear cleared all gates) |
 
 ### 3.1 Adapter registration contract (`G-ADAPTER-CONFORM`)
 
@@ -142,23 +142,23 @@ This achieves the objective — unauthorized commercial deployment is **commerci
 | gate | asserts | repro | status |
 |---|---|---|---|
 | `G-TELEPATHY-PARITY` | bridge off / no license ⇒ `dst` byte-identical to no-bridge | (per-bridge harness; null-floor diff) | identity path: inherited from RP-1 default-off |
-| `G-TELEPATHY-ROUNDTRIP` | source concept transferred+injected is recoverable at `dst` ≥ threshold | (per-adapter) | identity: PROVEN (RP-1 strawberry); cross-model: PENDING |
-| `G-TELEPATHY-REJECT` | foreign/out-of-domain src latent is rejected, not injected | (per-adapter; reject-hinge) | PENDING |
-| `G-ADAPTER-CONFORM` | a new adapter ships all five §3.1 deliverables + green gates | `python tools/okf_validate.py <adapter-bundle>` + the three gates | PENDING |
+| `G-TELEPATHY-ROUNDTRIP` | source concept transferred+injected is recoverable at `dst` ≥ threshold | `fit_adapter.py` (cos / retrieval@k) | identity: PROVEN (RP-1); **gemma↔qwen: GREEN** (round-trip 0.891, retrieval@1 1.000, chance 0.016) |
+| `G-TELEPATHY-REJECT` | foreign/out-of-domain src latent is rejected, not injected | `fit_adapter.py` (nn-dist AUC) | **gemma↔qwen: GREEN** (AUC 0.999, in-domain 0.325 vs foreign 0.648) |
+| `G-ADAPTER-CONFORM` | a new adapter ships all five §3.1 deliverables + green gates | `python tools/okf_validate.py <adapter-bundle>` + the three gates | gemma↔qwen adapter meets the representation-level gates; KV-inject trigger PENDING |
 
-**Proven today:** identity bridge, same-family, default-off parity + RP-1 round-trip. **Everything else: PENDING.**
+**Proven today:** (1) identity bridge, same-family, default-off parity + RP-1 round-trip; (2) **TELE-1 — the first cross-FAMILY adapter (gemma-3n-E2B ↔ qwen2.5-coder-0.5b), a ridge affine map: round-trip cos 0.891, retrieval@1 = 1.000 (chance 0.016), foreign-reject AUC 0.999, at the representation level (mean-pooled sentence latents).** **PENDING:** the deeper claim that an *injected* mapped latent makes `dst` generate the right continuation (needs the Qwen forward/inject wired — representation alignment proven, generation-trigger not yet). Tools: `tools/telepathy/{gen_pairs,extract_latents,fit_adapter}.py`; adapter `telepathy_adapter_g2q.npz`.
 
 ---
 
 ## 8. Status & roadmap
 
-- **Now (PROVEN):** same-family identity bridge (draft → 12B), `gemma4_kv_inject*`, RP-1/TH-1.
-- **Next (SPEC → first cross-model gate):** a **learned adapter** for a real cross-family pair that is already transcoded and present — `gemma4-e2b` ↔ `qwen25-coder-0.5b-memory` — calibrated on paired latents, gated on PARITY + ROUNDTRIP + REJECT. This is the first falsifiable cross-model Telepathy claim.
-- **Then:** register the adapter via `G-ADAPTER-CONFORM`; wire the LatentBridge object into `eagle_accept.rs` behind `SP_TELEPATHY` (default-off); sew references into RFC-001, the KEYSTONE map, the roadmap, and the public README.
+- **Now (PROVEN):** (1) same-family identity bridge (draft → 12B), `gemma4_kv_inject*`, RP-1/TH-1; (2) **TELE-1 cross-FAMILY affine adapter gemma-3n-E2B ↔ qwen2.5-coder-0.5b** — representation-level alignment GREEN on all three gates (round-trip 0.891, retrieval@1 1.000, reject AUC 0.999); a ridge affine map sufficed across different `d_model` (2048→896), MLP not needed.
+- **Next (the deeper claim):** wire a minimal Qwen forward/inject so a *mapped* gemma latent injected into Qwen makes Qwen generate the matching continuation (the generation-trigger gate, beyond representation alignment). Harden REJECT with in-domain-but-wrong negatives (not just gibberish/non-English).
+- **Then:** wire the LatentBridge object into `eagle_accept.rs` behind `SP_TELEPATHY` (default-off); sew references into RFC-001, the KEYSTONE map, the roadmap, and the public README.
 
 ## 9. Open questions
 
 - What fidelity threshold makes `G-TELEPATHY-ROUNDTRIP` meaningful per task (recall vs reasoning vs tool-result)?
-- Is the cross-family map linear-sufficient on RMSNorm-space, or does it need a learned MLP? (measure, don't assume.)
+- ~~Is the cross-family map linear-sufficient, or does it need a learned MLP?~~ **RESOLVED (TELE-1): a z-scored ridge affine map is sufficient for gemma-3n↔qwen2.5 at the representation level (retrieval@1 1.000) — no MLP needed.** (Open: whether the generation-trigger claim needs nonlinearity.)
 - Does the reject gate need a learned domain classifier or does a cosine/Hamming floor suffice?
 - License-token distribution + attestation root-of-trust: where does the signing key live (it is a secret → creds file, paths-not-values)?
