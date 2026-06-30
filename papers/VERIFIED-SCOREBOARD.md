@@ -39,7 +39,7 @@ Grouped by the 4 roadmap axes:
 
 **Axis 2 — CRT residue split / multi-device.** Garner 2-prime constants PROVEN; residue-exchange multi-device is `[DESIGN]`; QUIC residue transport proven on **loopback only**. The 2-physical-GPU byte-exact bit-identical check is the one remaining external byte-exact item.
 
-**Axis 3 — Absolute faithfulness.** Model still leans on parametric priors over grounding facts; tiered memory is the structural answer, prompt primitives are the patch. Deepen tiered-recall reliability.
+**Axis 3 — Absolute faithfulness. SOLVED (2026-07-01, `184994b`).** Recall-path fact obedience = **100%** (G-FAITHFUL-RECALL-JACCARD 15/15) on a strong-prior conflict set. The chain: in-context obedience was already 100% (F1); pure-KV replay recall = 0% (F1b.1 — W_c mis-selects natural facts + attenuated K/V can't override a prior); the fix (F2b, `SP_RECALL_JACCARD`, default-off) = select the episode by token-overlap/Jaccard (`recall::token_overlap`, not the geometric W_c) + deliver text-in-context with the faithfulness system prompt. Rule: natural facts → Jaccard+text; novel high-entropy needles → keep W_c+replay. Receipts `tests/fixtures/faithful/`.
 
 **Axis 4 — Native consolidation.** Port host-Python XBAR tooling (C2 signatures, Frobenius episode codec) to C/Rust; T4 Frobenius of model **weights** (validated lever, unbuilt); single-binary deployment. Wire the proven P3 eviction slab from the test-bin into the live daemon (PORT, not rebuild — `lsh_R_r32_raw.bin` is already trained).
 
