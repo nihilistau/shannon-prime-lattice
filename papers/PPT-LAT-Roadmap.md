@@ -48,6 +48,7 @@ reproducing command and a gate.** This roadmap supersedes the "current state" of
 | **Deterministic recall/reject judge** | The production recall gate is a deterministic token-overlap (Jaccard) verifier @~0.6, not the 26B (83%/95% on a CPU string op; the 26B cascade retired). | G-JUDGE-BATTERY | GREEN |
 | **Latent Interceptor (hardened heads)** | The finetuned draft body as a latent-native router: shared 1024-d body + tiny action/memory/tool heads, **near-miss-hardened** so they never fire on idle chatter (false-fire 0.000 on isolated cross-dist OOD; KEEP recall lifted 0.429→1.000). | G-TH-HARD (tool OOD 1.000), G-ACT-HARD (action OOD 0.979) | GREEN |
 | **Telepathy — cross-family LatentBridge** | Tokenizer-free latent→latent transfer between model *families* via a ridge affine adapter + adapter registry: gemma-3n-E2B ↔ qwen2.5-coder-0.5b — alignment + foreign-reject + generation steering. The cemented architecture is **two-stage `decide_route`(latent) → `delegate_execute`(clean text)** (latent fusion degrades — honest negative). **TELE-14: standalone SOVEREIGN native delegate** — the coder runs fully in-engine (`SP_TELEPATHY_NATIVE`, L1 `prefill_chunk`/`decode_step`, zero Python); CPU L1 ⇒ **free live co-residency with the 12B, no `g_w` refactor**. **Honest scope: gist/intent steering, NOT verbatim symbolic forcing. Licensing (SPEC): proprietary component on the MIT substrate, fail-closed license-key + attestation, no host-external effects.** **PARKED.** [spec](PPT-LAT-TELEPATHY-LatentBridge-spec.md) | G-TELEPATHY-ROUNDTRIP (retr@1 1.000/rt 0.891), -REJECT (AUC 0.999), -GEN-TRIGGER (steer-acc 1.000), -TWOSTAGE, **-NATIVE** (engine `2f57520`) | GREEN (repr+steer+native delegate) |
+| **Persistent O(1) conversation KV** | A follow-up turn appends to the resident 12B cache instead of re-prefilling the whole conversation (`SP_PERSIST_KV`, **default-ON**): longest-common-prefix reuse of the committed sequence + suffix-only prefill + bounded-tail rewind. Excludes cache-mutating paths (replay/inject/agency-writers/speculative-recall); `=0` forces the O(n) null floor. | **G-PERSIST-KV** (engine `d211fd2`): 6-turn byte-identical on==off; TTFT off 7.47× growth vs on flat (~1s); default-run == baseline | GREEN-LIVE |
 
 Foundation context (the substrate these ride on): the two-ring ARM KV memory, the XBAR auditable
 latent crossbar (C2 256-bit sigs, native integer Ring-3 VSA bind, Frobenius Ring-2 store), NIGHTSHIFT
@@ -64,11 +65,12 @@ carriers, Möbius-on-M, entropy-on-codes, T2/T4-on-weights). The win is the cont
 
 These are the honest open edges, in no forced order — pick by the day's leverage.
 
-1. **Persistent O(1) conversation KV.** The daemon re-prefills the whole conversation each turn —
-   correct, but **O(n)**. The L1 stateful `sp_session_register_kvdecode_backend` verb already exists;
-   wiring "continue the cache" through it makes a follow-up turn true **O(1)** (append, don't re-prefill).
-   This is the structural fix that also makes long sessions cheap. *Kill: the persisted KV diverges from
-   a fresh re-prefill (must stay byte-identical).*
+1. **Persistent O(1) conversation KV — P1 DONE (now a DONE pillar above), P2/P3 open.** The append is
+   live and default-ON: **G-PERSIST-KV GREEN** (engine `d211fd2`) proved 6-turn byte-identity (on==off)
+   with TTFT off 7.47× growth vs on flat, and the kill-test held (persisted KV stays byte-identical to a
+   fresh re-prefill). Remaining: **P2** = larger `Pmax` + ring tuning for ~40K-token sessions (the SWA ring
+   is already on at W=2048); **P3** = evict the 8 GLOBAL layers (the O(n) floor) to the existing XBAR
+   Ring-2/Optane demotion tier for unbounded context. Scope: [PPT-LAT-OKV-Persistent-KV-SCOPE.md](PPT-LAT-OKV-Persistent-KV-SCOPE.md).
 
 2. **The 2-physical-GPU byte-exact check.** The one remaining EXTERNAL item for byte-exact: a
    bit-identical logit check across **two physical GPUs** (needs a 2nd machine). On-machine we have
