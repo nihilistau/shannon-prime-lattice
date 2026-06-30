@@ -55,21 +55,29 @@ RoPE, softmax attention) assembled per Qwen's (simpler) config. Qwen-specific co
 the QKV-bias add, SiLU, standard RMSNorm, uniform RoPE θ=1e6. The Gemma path is **untouched** (zero
 regression risk — its gates stay green by construction).
 
-## 3. Tiering — ship the live transmit first, optimize later
+## 3. Tiering — CORRECTED (operator tip, 2026-06-30): the native forward ALREADY EXISTS
 
-- **v1 — Qwen SIDECAR (recommended, minimal-viable, ~days, ZERO engine risk).** Productionize the
-  already-proven `telepathy_prefix.py` (HF Qwen, embedding-prefix inject + unfold + stream — TELE-5) as a
-  small callable runner. The daemon's `LatentBridge`, on `decide_route → Telepathy`, hands the
-  embedding-prefix to the sidecar (subprocess/local socket); the sidecar streams the delegate tokens back
-  into the daemon's SSE. **This makes the full Gemma→Qwen transmit live end-to-end with no change to the
-  Gemma engine.** It is the honest "minimal viable forward" — the forward already exists and is gated.
-- **v2 — NATIVE fp16 Qwen forward in the engine (the heavy mile, only if v1 proves value).** A dedicated
-  `qwen2_forward` (separate path, §2) in **fp16 cublas** — no exact-integer islands (the bridge is float;
-  exactness is not required to transmit). 0.5B in fp16 ≈ 1 GB. Removes the Python dependency, gives
-  in-process latency. Divergences handled explicitly per §1.
-- **v3 — EXACT-INTEGER Qwen (optional, later).** Only if the *delegate's* output must be byte-exact /
-  auditable like the Gemma path: re-derive the SiLU + standard-RMSNorm islands on the dual-prime CRT-NTT.
-  Not needed for the capability; a sovereignty/auditability nicety.
+> **Correction.** The original v1/v2 below assumed the engine had no Qwen forward and reached for an HF
+> sidecar. That was wrong (asserted without grepping the C core). **The engine already runs Qwen
+> natively** — verified: `qwen3_forward_cuda` / `qwen3_forward_cuda_ex` (`include/sp_engine/cuda_backend.h`),
+> `qwen3_generate_kv` (the shared decode, `core/forward/decode.c`), the **embedding-sequence inject**
+> `gemma4_kv_inject_seq(s, embs, n_frames, ph)` ("the GENERIC residual-frame channel, already in the
+> engine"), and **`qwen25-coder-0.5b-memory.sp-model` is transcoded and already loaded/run in the MeMo
+> path** (`sp_memo_m1_smoke`). `qwen3_model` is the *unified* model type (Gemma + Qwen). So the native
+> path is the v1.
+
+- **v1 — NATIVE in-engine transmit (no sidecar, no new forward).** Assemble existing verbs: load
+  `qwen25-coder-0.5b-memory.sp-model` → `qwen3_model`; `gemma4_kv_open` on it; the `LatentBridge` maps the
+  Gemma latent → Qwen embedding space (the `W_emb` adapter, saved `telepathy_adapter_g2q_emb.npz`);
+  inject the mapped prefix via **`gemma4_kv_inject_seq`**; decode with `qwen3_generate_kv` / the
+  `gemma4_kv_decode*` verbs; stream back. **Pure glue over proven engine primitives — no HF, no new
+  kernel, Gemma path untouched.** Footprint: the 0.5B sp-model (~0.5 GB Q-packed). This is the real
+  minimal-viable forward; the §1 divergences are already handled by the engine's qwen3 path.
+- **v0 — HF sidecar (`telepathy_sidecar.py`): DEMOTED to optional prototype/fallback.** Kept for
+  cross-checking the native forward against HF (a parity oracle), not for production. Superseded by v1.
+- **v2 — exactness (optional, later).** The native decode is the engine's standard path; if the delegate
+  must be byte-exact/auditable like the Gemma forward, that is the engine's existing exact-integer
+  machinery applied to the qwen3 path — a sovereignty nicety, not required to transmit.
 
 ## 4. Minimal-viable forward spec (v1 sidecar, and the v2 contract)
 
@@ -105,14 +113,18 @@ served Gemma-3-12B turn → draft-body latent → Route head (decide_route)
   is byte-identical to today. *Kill: any Gemma-path diff.*
 - Route safety is already gated (TELE-7: false-fire 0.000) — the gate won't fire spuriously.
 
-## 7. Recommendation
+## 7. Recommendation (CORRECTED)
 
-Take **v1 (the sidecar)** first: it closes the one true-live gap end-to-end in days with **zero risk to
-the byte-exact Gemma engine**, reusing the exact embedding-prefix path already proven in TELE-5. Promote
-to **v2 (native fp16)** only once a live routed transmit demonstrates the value and we want to drop the
-Python dependency. **v3 (exact)** stays in the drawer unless the delegate must be auditable. The whole
-point of the Latent-Interceptor governance work (TELE-7) is that we can now open this gate *safely* — the
-Route head decides, the bridge transfers, the sidecar unfolds, and `LOCAL` remains a strict null floor.
+Take **v1 — the NATIVE in-engine transmit** (§3 corrected): it reuses the engine's *existing* qwen3
+forward (`qwen3_forward_cuda` / `qwen3_generate_kv`), the *existing* embedding-sequence inject
+(`gemma4_kv_inject_seq`), the *already-transcoded* `qwen25-coder-0.5b-memory.sp-model`, and the
+`LatentBridge` + `W_emb` adapter we already built — pure glue, no HF, no new kernel, Gemma path
+untouched. The HF sidecar is kept only as a parity oracle. The governance work (TELE-7, false-fire
+0.000) is what lets us open this gate *safely*: the Route head decides, the bridge transfers, the engine's
+qwen3 decode unfolds the prefix, and `LOCAL` remains a strict null floor.
+
+**Lesson banked:** check the C core before declaring an engine capability missing — the native Qwen
+forward was already there; the operator caught the over-scope.
 
 ## 8. Open questions
 - Sidecar transport: subprocess stdout vs a local socket vs a tiny persistent HTTP runner? (latency vs simplicity)
