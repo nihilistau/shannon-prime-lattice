@@ -5,7 +5,7 @@ description: "A box-by-box ground-truth of the Shannon-Prime memory/recall organ
 tags: [project-state, status-map, recall, nightshift, kairos, pouw, diffusion-judge, wc-head, audit]
 timestamp: 2026-06-21T00:00:00Z
 resource: shannon-prime-lattice/papers/STATUS-MAP-2026-06-21.md
-sp_status: GREEN
+sp_status: SUPERSEDED
 sp_gate: "audit only — each row carries its own gate/commit"
 sp_commit: TBD
 sp_repro: "verified via: git -C shannon-prime-system-engine log --oneline; grep SP_B3_WC|SP_B4_NIGHTSHIFT|kairos|ledger routes.rs; ls tools/sp_daemon/src/{recall,kairos,kairos_runner,pouw_ledger,memo_routing}.rs; find tests/fixtures -iname 'G-*.log'"

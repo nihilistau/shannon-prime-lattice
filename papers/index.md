@@ -21,22 +21,23 @@ Validate with gate **G-OKF-CONFORM**: `python tools/okf_validate.py papers` (run
 
 ## 0. Start here (the bootstrap, in order)
 
-1. [PPT-LAT-STATE.md](PPT-LAT-STATE.md) — the PROVEN ledger. *Trust it; re-prove only with concrete cause.* (20th rewrite.)
-2. [PPT-LAT-Roadmap.md](PPT-LAT-Roadmap.md) — the forward plan; read the top AGENT-NAVIGATION box (live NEXT = two strikes), not the historical body.
-3. [STATUS-MAP-2026-06-21.md](STATUS-MAP-2026-06-21.md) — box-by-box ground-truth (GREEN-LIVE / default-off / design-only). Read when "two memories disagree."
-4. [DESIGN-FLEET-OVERHAUL-BRIEF.md](DESIGN-FLEET-OVERHAUL-BRIEF.md) — the honest-tier vocabulary + anti-overclaim rules every doc obeys.
-5. [RFC-ORGANISM-unified.md](RFC-ORGANISM-unified.md) — the current synthesis of the whole recall organism.
+1. [START-HERE.md](START-HERE.md) — **the navigable map (read first, 2026-07-01).** What it is, the 5 repos, the doc set in order, the anti-rebuild law, the roadmap.
+2. [VERIFIED-SCOREBOARD.md](VERIFIED-SCOREBOARD.md) — **what is built (commit+gate per claim) and what is open.** Receipts-checked 2026-07-01.
+3. [PPT-LAT-STATE.md](PPT-LAT-STATE.md) — the PROVEN ledger (full detail). *Trust it; re-prove only with concrete cause.* (20th rewrite.)
+4. [PPT-LAT-KEYSTONE.md](PPT-LAT-KEYSTONE.md) — the detailed current-state map of the organism.
+5. [PPT-LAT-Roadmap.md](PPT-LAT-Roadmap.md) — the forward plan (the 4 axes).
+6. [DESIGN-FLEET-OVERHAUL-BRIEF.md](DESIGN-FLEET-OVERHAUL-BRIEF.md) — the honest-tier vocabulary + anti-overclaim rules every doc obeys.
 
 ## 1. Living docs (read these first)
 
 **Project state & plan**
 - [PPT-LAT-STATE.md](PPT-LAT-STATE.md) — the proven living record (`project-state`).
 - [PPT-LAT-Roadmap.md](PPT-LAT-Roadmap.md) — the forward plan (live NEXT = Strike 1 NIGHTSHIFT criterion-5 → Strike 2 OOD diffusion kill-test) (`roadmap`).
-- [STATUS-MAP-2026-06-21.md](STATUS-MAP-2026-06-21.md) — box-by-box honest-tier ground-truth of the recall organism (`project-state`).
+- [STATUS-MAP-2026-06-21.md](STATUS-MAP-2026-06-21.md) — *(SUPERSEDED by [VERIFIED-SCOREBOARD.md](VERIFIED-SCOREBOARD.md); dated snapshot kept for diffusion-judge-era provenance)* (`project-state`).
 - [DESIGN-FLEET-OVERHAUL-BRIEF.md](DESIGN-FLEET-OVERHAUL-BRIEF.md) — canonical grounding + honest-tier vocabulary + anti-overclaim checklist (`design`).
 - [DESIGN-COLA-DLM-MAPPING.md](DESIGN-COLA-DLM-MAPPING.md) -- Cola DLM (block-causal continuous-latent diffusion) mapped onto PPT/ARM/LAT/XBAR/NIGHTSHIFT: the GOLD = block-causal attention EXPLAINS the prefix-KV refutation; the honest correction = it is a TRAIN-TIME property, not an inference mask flip; falsifiable E1-E4; north-star not a tonight-edit (`design`, 2026-06-24).
 - [ROADMAP-KAIROS.md](ROADMAP-KAIROS.md) — the KAIROS roadmap (`roadmap`).
-- [gate-receipts.md](gate-receipts.md) — claim → receipt registry (`index`).
+- gate registry → **[PPT-LAT-FRAMEWORK-INDEX.md](PPT-LAT-FRAMEWORK-INDEX.md) §G** (canonical). *(old [gate-receipts.md](Archived/superseded/gate-receipts.md) archived.)*
 
 **Knowledge system (auditability discipline)** (`convention`)
 - [SP-OKF-PROFILE.md](SP-OKF-PROFILE.md) — the format (Shannon-Prime profile of Google's Open Knowledge Format v0.1 + receipts-first frontmatter); gate `G-OKF-CONFORM` (`tools/okf_validate.py`).
@@ -52,16 +53,20 @@ Validate with gate **G-OKF-CONFORM**: `python tools/okf_validate.py papers` (run
 - [CONTRACT-KAIROS-K0-K1.md](CONTRACT-KAIROS-K0-K1.md), [CONTRACT-SPEED-wire-tok-s.md](CONTRACT-SPEED-wire-tok-s.md)
 - XBAR campaign: [P1](CONTRACT-XBAR-P1-inception-probe.md), [P2](CONTRACT-XBAR-P2-pseudo-token.md), [P2b](CONTRACT-XBAR-P2b-adapter.md), [P3](CONTRACT-XBAR-P3-ring-on-exec.md), [R3](CONTRACT-XBAR-R3-consolidation.md), [C1-lite](CONTRACT-XBAR-C1-lite-curator.md), [C2 memo loop](CONTRACT-XBAR-C2-memo-curator-loop.md)
 
+**Reference** (`reference`)
+- [PPT-LAT-FRAMEWORK-API.md](PPT-LAT-FRAMEWORK-API.md) — the whole-framework call surface (**canonical**; supersedes [PPT-LAT-KEYSTONE-API.md](PPT-LAT-KEYSTONE-API.md)).
+- [PPT-LAT-FRAMEWORK-INDEX.md](PPT-LAT-FRAMEWORK-INDEX.md) — grep index: keyword→location, flags, gates §G, SHAs, aliases.
+
 **Interface** (`abi`)
 - [PPT-LAT-L1-ABI-v0.md](PPT-LAT-L1-ABI-v0.md) — the frozen L1 ABI (incl. §6b `sp_session_register_kvdecode_backend`).
 - [PPT-LAT-SP-MODEL-v0.md](PPT-LAT-SP-MODEL-v0.md) — the `.sp-model` container format (OK_Q4B).
 
 **Design / RFC / theory / spec** (`design`)
 - RFCs: [RFC-ORGANISM-unified.md](RFC-ORGANISM-unified.md) — **CURRENT** synthesis (served 12B chat + live W_c RECALL + ablation ADMISSION oracle + NIGHTSHIFT curator + MEM-OKF + PoUW; boundary thesis; diffusion judge = open fork); [RFC-XBAR-auditable-latent-crossbar.md](RFC-XBAR-auditable-latent-crossbar.md) — the predecessor (Exec + Memo sharing Ring 2); [PPT-LAT-RFC-001-Universal-Discrete-Architecture.md](PPT-LAT-RFC-001-Universal-Discrete-Architecture.md) — the north-star preamble.
-- Theory/systems: [PPT-LAT-Theory.md](PPT-LAT-Theory.md) (READ FIRST before math work), [PPT-LAT-Systems-v1.md](PPT-LAT-Systems-v1.md) (current synthesis), [PPT-LAT-Systems.md](PPT-LAT-Systems.md) (superseded).
+- Theory/systems: [PPT-LAT-Theory.md](PPT-LAT-Theory.md) (READ FIRST before math work), [PPT-LAT-Systems-v1.md](PPT-LAT-Systems-v1.md) (current synthesis), [PPT-LAT-Systems.md](Archived/superseded/PPT-LAT-Systems.md) (v0, archived).
 - Diffusion-judge lane (UNPROVEN / in the drawer — gated on **Strike 2**): [DESIGN-diffusion-lane.md](DESIGN-diffusion-lane.md), [DESIGN-diffgemma-native-port.md](DESIGN-diffgemma-native-port.md), [DESIGN-diffgemma-sampler.md](DESIGN-diffgemma-sampler.md), [DESIGN-diffgemma-n5b-reservoir.md](DESIGN-diffgemma-n5b-reservoir.md).
-- Other design notes: [DESIGN-tiered-crossbar-latent-terminal.md](DESIGN-tiered-crossbar-latent-terminal.md), [DESIGN-VSA-ring3-holographic.md](DESIGN-VSA-ring3-holographic.md), [MODE_D_DESIGN_DRAFT.md](MODE_D_DESIGN_DRAFT.md).
-- Plans/specs/investigations: [PLAN-SPEED-WIRE-CPU-V3-memory-layout.md](PLAN-SPEED-WIRE-CPU-V3-memory-layout.md), [PHASE-4-MEMO-M0-CHOICE.md](PHASE-4-MEMO-M0-CHOICE.md), [GGUF-INVEST-qwen36-35B-A3B.md](GGUF-INVEST-qwen36-35B-A3B.md) (qwen35moe mislabel corrected in STATE §1; GGUF lane dead — safetensors-direct only).
+- Other design notes: [DESIGN-tiered-crossbar-latent-terminal.md](DESIGN-tiered-crossbar-latent-terminal.md), [DESIGN-VSA-ring3-holographic.md](DESIGN-VSA-ring3-holographic.md), [MODE_D_DESIGN_DRAFT.md](Archived/superseded/MODE_D_DESIGN_DRAFT.md) (archived).
+- Plans/specs/investigations: [PLAN-SPEED-WIRE-CPU-V3-memory-layout.md](PLAN-SPEED-WIRE-CPU-V3-memory-layout.md), [PHASE-4-MEMO-M0-CHOICE.md](PHASE-4-MEMO-M0-CHOICE.md), [GGUF-INVEST-qwen36-35B-A3B.md](Archived/superseded/GGUF-INVEST-qwen36-35B-A3B.md) (archived; GGUF lane dead — safetensors-direct only).
 
 **Operations** (`runbook`)
 - [RUNBOOK-cloud-compute.md](RUNBOOK-cloud-compute.md) — RunPod/Colab/HF cloud-run procedure.
@@ -77,7 +82,7 @@ Validate with gate **G-OKF-CONFORM**: `python tools/okf_validate.py papers` (run
 - `SESSION-STATE-lat-*` — captured mid-flight states.
 - `SESSION-PLAN-lat-*` — the plans that produced them.
 
-Superseded specs: [PPT-LAT-Systems.md](PPT-LAT-Systems.md) (→ Systems-v1); the GGUF lane (dead). Predecessor XBAR contracts (P1/P2/P2b/C1-lite/C4-C5-C6) sit under Contracts above for provenance.
+Superseded specs (moved to `Archived/superseded/`): [PPT-LAT-Systems.md](Archived/superseded/PPT-LAT-Systems.md) (→ Systems-v1); [gate-receipts.md](Archived/superseded/gate-receipts.md) (→ FRAMEWORK-INDEX §G); the GGUF lane (dead). Predecessor XBAR contracts (P1/P2/P2b/C1-lite/C4-C5-C6) sit under Contracts above for provenance.
 
 ## 3. Honest tiers (apply when reading any claim here)
 

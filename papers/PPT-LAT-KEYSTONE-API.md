@@ -5,7 +5,7 @@ description: "The integration surface of the KEYSTONE system: the daemon HTTP en
 tags: [keystone, api, reference, daemon, harness, l1-abi, knobs, okf]
 timestamp: 2026-06-25T00:00:00Z
 resource: shannon-prime-lattice
-sp_status: GREEN-LIVE
+sp_status: SUPERSEDED
 sp_gate: KEYSTONE-1
 sp_commit: keystone-1
 sp_repro: "see the gate names per surface; live: _e2e_seed_serve.bat + run_agency.bat"
