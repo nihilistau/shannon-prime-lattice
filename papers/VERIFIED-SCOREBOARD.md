@@ -27,7 +27,7 @@ Method: a read-only fleet checked each claim against (a) a commit that resolves 
 | Diffusion Judge OOD | PROVEN | lattice `dda7ffa` | `tests/fixtures/chat_fullstack/G-DIFFJUDGE-OOD-H2H.log` | VERIFIED — recall 94.4% / reject 98.0% |
 | CHAT-FULLSTACK (served 12B chat) | GREEN-LIVE | chat_fullstack arc | `CONTRACT-CHAT-FULLSTACK.md` + `G-CHAT-*.log` | VERIFIED — coherent + byte-exact + O(1) + single-entry |
 | Memory agency: forget / decide / merge | GREEN | chat arc | `G-FORGET.log`,`G-DECIDE.log`,`G-MERGE.log` | VERIFIED — all three GREEN, null-floor when off |
-| Telepathy TELE-1..14 (bridge + route + two-stage + native delegate) | PROVEN (1-3) / WIRED (4) / native CPU delegate | `2f57520` (+ TELE chain) | receipts in `tools/telepathy/*` + `tools/latent_interceptor/` | VERIFIED w/ caveat — receipts live in tool dirs, not `tests/fixtures/`; honest scope = gist/intent steering, NOT verbatim |
+| Telepathy TELE-1..15 (bridge + route + two-stage + native delegate + LIVE delegate) | PROVEN (1-3) / WIRED (4) / native CPU delegate / **LIVE two-stage delegate** | `2f57520` (TELE chain) + `c3c4b22`,`ef6c282` (TELE-15) | `tests/fixtures/telepathy/G-TELEPATHY-LIVE.log` + receipts in `tools/telepathy/*` | VERIFIED — TELE-15 `G-TELEPATHY-LIVE` GREEN: `decide_route(latent)` → `delegate_execute` runs the qwen coder on CLEAN TEXT (CPU L1, ~0.8 tok/s), coherent answer; never-fuse honored. Honest scope = gist/intent routing + clean-text execution, NOT latent verbatim |
 | MEM-OKF anti-rebuild store | ACTIVE | tooling | `tools/okf_mem.py` + `memory-okf/` (verify GREEN, 83 objects) | VERIFIED |
 | NIGHTSHIFT offline curator | **PARTIAL** | `6107f3e`,`9ad7ede`,`9ee4668` | `tests/fixtures/chat_fullstack/G-NIGHTSHIFT-CURATOR.log` | PARTIAL — synthetic gate GREEN; **criterion 5 (live B4 in-distribution) PENDING** |
 
@@ -35,7 +35,7 @@ Method: a read-only fleet checked each claim against (a) a commit that resolves 
 
 Grouped by the 4 roadmap axes:
 
-**Axis 1 — Sovereign Telepathy (next build).** Cross-family *live* forward is the one true-live gap. SNAG to respect: CUDA `qwen3_decode_cuda` is `SP_ARCH_QWEN3`-only (rejects the QWEN25 coder) and `qwen3_generate_kv` segfaults on the CUDA session — so the native delegate today runs only on host-CPU L1 (~0.8 tok/s). v1 = the working CPU path; GPU-speed transmit needs the qwen CUDA arch-gap fixed. Licensing/attestation = SPEC (fail-closed).
+**Axis 1 — Sovereign Telepathy.** v1 **DONE** (TELE-15, `G-TELEPATHY-LIVE` GREEN): the cemented two-stage delegate runs live — latent decides the route, the qwen coder executes the CLEAN-TEXT task on CPU L1 (~0.8 tok/s), never fusing (TELE-12). Remaining: (a) wire the route→delegate into the served `/v1/chat` path (routes.rs) so a real chat turn auto-delegates; (b) GPU-speed transmit, blocked by the arch gap — CUDA `qwen3_decode_cuda` is `SP_ARCH_QWEN3`-only (rejects the QWEN25 coder) and `qwen3_generate_kv` segfaults on the CUDA session, so the coder runs CPU-only by design. NOTE: a latent-prefix `inputs_embeds` seam is deliberately NOT built — fusing latent+text is the TELE-12 0.000 negative. Licensing/attestation = SPEC (fail-closed).
 
 **Axis 2 — CRT residue split / multi-device.** Garner 2-prime constants PROVEN; residue-exchange multi-device is `[DESIGN]`; QUIC residue transport proven on **loopback only**. The 2-physical-GPU byte-exact bit-identical check is the one remaining external byte-exact item.
 
