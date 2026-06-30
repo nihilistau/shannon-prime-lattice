@@ -16,6 +16,11 @@ sp_repro: "see §10 (Run it) + §9 (Gate index)"
 > **Read order for an agent or human:** this file is the map. Each section is self-contained.
 > Pull a subsystem's detail only when you need it (the §11 navigation table says where it lives).
 > Nothing here needs the whole tree in context — that is the point.
+>
+> **Newer entry points (2026-07-01):** for a faster orientation start at [`START-HERE.md`](START-HERE.md)
+> (navigable 2-minute map) and [`VERIFIED-SCOREBOARD.md`](VERIFIED-SCOREBOARD.md) (what is built —
+> commit+gate per claim — and what is open, receipts-checked). This KEYSTONE doc remains the detailed
+> current-state map.
 
 ## 0. What Shannon-Prime is (90 seconds)
 

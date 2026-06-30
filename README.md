@@ -12,10 +12,12 @@
 This repo is the **developer umbrella**: papers, contracts, the RFC, the roadmap, the OKFS/MEM-OKF
 tooling, integration receipts, and the session bootstrap. Code lives in the companion repos.
 
-**Read this first:** [`papers/PPT-LAT-KEYSTONE.md`](papers/PPT-LAT-KEYSTONE.md) — the canonical,
-current, complete description of the whole system at the **KEYSTONE** milestone (2026-06-25). It is
-the map; everything else is detail you pull only when you need it. Here for the results, not the
-source? Start at the public, receipts-first front door:
+**Read this first:** [`papers/START-HERE.md`](papers/START-HERE.md) — the 2-minute navigable map
+(the 5 repos, the doc set in reading order, the anti-rebuild law, the roadmap) +
+[`papers/VERIFIED-SCOREBOARD.md`](papers/VERIFIED-SCOREBOARD.md) (what is built, commit+gate per
+claim, and what is open — receipts-checked 2026-07-01). Then
+[`papers/PPT-LAT-KEYSTONE.md`](papers/PPT-LAT-KEYSTONE.md) is the detailed, complete description of
+the whole system. Here for the results, not the source? Start at the public, receipts-first front door:
 **[Position Is Arithmetic](https://github.com/nihilistau/Position_Is_Arithmetic)**
 (live: https://nihilistau.github.io/Position_Is_Arithmetic/).
 
@@ -153,20 +155,21 @@ Full subsystem-by-subsystem detail: [`papers/PPT-LAT-KEYSTONE.md`](papers/PPT-LA
 | **NIGHTSHIFT offline curator** (`SP_NIGHTSHIFT_OFFLINE`) | **gated-GREEN on the SYNTHETIC gate / default-off** | `G-NIGHTSHIFT-CURATOR` (criteria 1-4) |
 | Native **diffusion judge** (DiffusionGemma 26B selector) | **UNPROVEN / in the drawer** — superseded by the deterministic verifier above | `STATUS-MAP` §4 |
 
-The full box-by-box tier map is `papers/STATUS-MAP-2026-06-21.md`; the proven record is
+The full verified scoreboard is `papers/VERIFIED-SCOREBOARD.md`; the proven record is
 `papers/PPT-LAT-STATE.md`.
 
 ## Doc map — which file answers which question
 
 | Need | Read |
 |---|---|
-| **The whole system, current + complete** | **`papers/PPT-LAT-KEYSTONE.md`** (the foundation — read first) |
-| API reference | `papers/PPT-LAT-KEYSTONE-API.md` |
+| **Navigable entry + what's built/open** | **`papers/START-HERE.md`** + **`papers/VERIFIED-SCOREBOARD.md`** (read first) |
+| **The whole system, current + complete** | **`papers/PPT-LAT-KEYSTONE.md`** (the detailed map) |
+| API reference | `papers/PPT-LAT-FRAMEWORK-API.md` (+ grep index `papers/PPT-LAT-FRAMEWORK-INDEX.md`) |
 | Agent entry + navigation + the MEM-OKF pre-flight | `AGENTS.md` |
 | Session bootstrap (agents) | `prompt.md` |
 | The proven record / the math | `papers/PPT-LAT-STATE.md` / `papers/PPT-LAT-Theory.md` |
 | Human-readable synthesis of where things stand | `CURRENT-STATE-OF-PROJECT.md` |
-| The current architecture (rings, XBAR, NIGHTSHIFT) | `papers/RFC-XBAR-auditable-latent-crossbar.md` |
+| The architecture (north-star + rings/XBAR) | `papers/PPT-LAT-RFC-001-Universal-Discrete-Architecture.md` (north-star); `papers/RFC-XBAR-auditable-latent-crossbar.md` (predecessor) |
 | Forward specs + run records per lane | `papers/CONTRACT-*.md` |
 | Byte-exact / O_K | `papers/CONTRACT-BYTEEXACT-forward.md`; system `core/exact_islands/` |
 | Memory agency / tool calling / conversation memory | engine `routes.rs`; harness `CLAUDE.md`, `docs/SPEC-TOOL-CALLING.md` |
@@ -174,7 +177,7 @@ The full box-by-box tier map is `papers/STATUS-MAP-2026-06-21.md`; the proven re
 | Commit history (hashed Tier-0 LUT) | `HISTORY.md` (the git short-hash IS the address) |
 | Public claims + reproduce commands | `Position_Is_Arithmetic/LEDGER.md` + `METHODOLOGY.md` |
 
-Supersession order when documents disagree: **KEYSTONE > STATE > contract run records > Roadmap
+Supersession order when documents disagree: **VERIFIED-SCOREBOARD > KEYSTONE > STATE > contract run records > Roadmap
 amendments > Roadmap body**. The papers are scaffolding, amendable when reality contradicts them —
 except the L1 ABI and `.sp-model` specs, which are frozen.
 
