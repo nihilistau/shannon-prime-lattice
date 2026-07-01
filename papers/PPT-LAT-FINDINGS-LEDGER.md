@@ -95,6 +95,7 @@ All receipts under `shannon-prime-system-engine/tests/fixtures/chat_fullstack/` 
 | `G-SNE-ATTRGATE-ZEROINF` | SNE + zero-inference symbolic decline | 16/16 match+decline; **all declines "no gemma4 decode"** (hallucination-immune reject) | `fc2e846` |
 | `G-KSTE-MD` / `G-KSTE-MD-REALDATA` | magnitude-depth encoder + Dickson σ0⊕σ1 | 37.6× synthetic discrimination but **INPUT-GATED** (directional signal → magnitude-shape-blind on real global-Q) → honest negative | `104-109` (this session) |
 | `G-SWARM-REPLICATE-CONVERGE` | 2 divergent store-dir "nodes" over the real 113-object MEM-OKF | content-address round-trip + have/want convergence (113/113 byte-identical) + verify-on-arrival + idempotence + tamper-reject; SP-SWARM L1+L2 core, transport-agnostic | lattice (this session) |
+| `G-SWARM-PROVENANCE-ED25519` | Ed25519 (libsodium/PyNaCl) sign-on-write + verify-on-pull vs invite-only roster, over real MEM-OKF objects | signed content+episode commit; tampered-episode→sig-invalid, stripped→unsigned, forged→sig-invalid, unrostered→untrusted-signer, tampered-content→integrity-fail (all rejected pre-commit); C2 episodes now tamper-evident cross-node; SP-SWARM L3 | lattice (this session) |
 
 ## 6. Honest negatives (levers measured inert — kept attached by policy)
 

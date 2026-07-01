@@ -72,10 +72,13 @@ def _lut_row_for(root, addr):
             return r
     return None
 
-def pull(remote_root, local_root, addrs):
-    """Fetch `addrs` from remote into local, VERIFYING each by re-hash on arrival (git/IPFS
-    pattern). A byte that doesn't re-hash to its claimed address is REJECTED, never written.
-    Returns (pulled:list, rejected:list)."""
+def pull(remote_root, local_root, addrs, verifier=None):
+    """Fetch `addrs` from remote into local, VERIFYING each on arrival (git/IPFS pattern)
+    BEFORE writing. L2 check always: content objects must re-hash to addr, C2 episodes must be
+    self-consistent. If `verifier` is given (L3 Ed25519, a callable (full_path, addr)->(ok,
+    reason)), the object must ALSO pass provenance — this is what makes C2 episodes tamper-
+    evident cross-node. Anything failing either check is REJECTED, never written.
+    Returns (pulled:list, rejected:list of (addr, reason))."""
     okf_mem.ensure_root(local_root)
     pulled, rejected = [], []
     local_rows = {r[0]: r for r in okf_mem.lut_rows(local_root) if r}
@@ -83,12 +86,13 @@ def pull(remote_root, local_root, addrs):
         rfull = os.path.join(remote_root, FULL, addr + ".md")
         if not os.path.exists(rfull):
             rejected.append((addr, "missing-on-remote")); continue
-        # VERIFY BEFORE WRITE (git/IPFS pattern): content objects must re-hash to addr;
-        # C2 episodes must be self-consistent. A tampered content object is REJECTED, never
-        # written -> corruption/forgery cannot propagate.
         cls, ok = classify(rfull, addr)
         if not ok:
             rejected.append((addr, "integrity-fail")); continue
+        if verifier is not None:
+            vok, reason = verifier(rfull, addr)
+            if not vok:
+                rejected.append((addr, reason)); continue
         okf_mem.write(os.path.join(local_root, FULL, addr + ".md"), okf_mem.read(rfull))
         rsum = os.path.join(remote_root, SUM, addr + ".md")
         if os.path.exists(rsum):
@@ -101,13 +105,13 @@ def pull(remote_root, local_root, addrs):
         okf_mem.write_lut(local_root, list(local_rows.values()))
     return pulled, rejected
 
-def sync(a_root, b_root):
+def sync(a_root, b_root, verifier=None):
     """Bidirectional content-addressed convergence. Each side pulls what it's missing +
-    verifies on arrival. Idempotent. Returns a report dict."""
+    verifies on arrival (L2 always; L3 provenance when `verifier` given). Idempotent."""
     a, b = have(a_root), have(b_root)
     a_want, b_want = b - a, a - b
-    a_pulled, a_rej = pull(b_root, a_root, sorted(a_want))
-    b_pulled, b_rej = pull(a_root, b_root, sorted(b_want))
+    a_pulled, a_rej = pull(b_root, a_root, sorted(a_want), verifier=verifier)
+    b_pulled, b_rej = pull(a_root, b_root, sorted(b_want), verifier=verifier)
     a2, b2 = have(a_root), have(b_root)
     return {
         "a_before": len(a), "b_before": len(b),

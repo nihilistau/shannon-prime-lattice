@@ -1,0 +1,11 @@
+[setup] roster=['node-B', 'node-A']; content-obj=01014fe0bf06b8f1 c2-episode=019e513a74121a3a
+[+] signed content 01014fe0bf06b8f1: pulled=True present=True rejected=[] -> ACCEPT (good)
+[+] signed c2-episode 019e513a74121a3a: pulled=True present=True rejected=[] -> ACCEPT (good)
+[a] tampered C2 episode: rejected=[('019e513a74121a3a', 'sig-invalid')] present=False -> REJECT sig-invalid (good)
+[b] stripped signature: rejected=[('01014fe0bf06b8f1', 'unsigned')] -> REJECT unsigned (good)
+[c] forged signature: rejected=[('01014fe0bf06b8f1', 'sig-invalid')] -> REJECT sig-invalid (good)
+[d] unrostered signer: rejected=[('01014fe0bf06b8f1', 'untrusted-signer')] -> REJECT untrusted-signer (good)
+[e] tampered content: rejected=[('01014fe0bf06b8f1', 'integrity-fail')] -> REJECT (good)
+
+==== G-SWARM-PROVENANCE-ED25519 ====
+VERDICT: GREEN — Ed25519 (libsodium) sign-on-write + verify-on-pull: signed content AND C2 episodes commit; tampered-episode / stripped / forged / unrostered / tampered-content ALL rejected before write. C2 episodes are now tamper-evident cross-node.
