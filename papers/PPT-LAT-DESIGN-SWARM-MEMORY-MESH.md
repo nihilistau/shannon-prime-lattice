@@ -119,3 +119,23 @@ The mesh is now integrated into the served daemon, default-off.
 **Config:** `SP_SWARM=1 SP_SWARM_PORT=7777 SP_SWARM_KEY=swarm.key SP_SWARM_ROSTER=roster.txt SP_SWARM_PEERS=host2:7777,host3:7777 SP_SWARM_INTERVAL_S=30` (roster line: `node_id <ed25519_pubkey_hex>`).
 
 **Remaining (scale/discovery, none blocking):** multi-HOST test beyond loopback (real NICs/NAT); peer discovery only if the mesh grows past a static invite-list; L4 C2-SimHash similarity overlay.
+
+
+## 11. L4 — C2-SimHash similarity overlay (2026-07-01): index GREEN, semantic = HINT-only
+
+`sp_swarm::similarity` (pure std): a `C2Index` (addr→256-bit sig) + `find_similar(sig,k)` ranked by 256-bit Hamming (== `recall::agree`), built from `mem_c2` frontmatter; the engine computes the sigs via the proven `recall::Projection`. **Mechanics gate G-SWARM-C2-INDEX** GREEN (`tests/similarity.rs`): near ranks above far, exact match = Hamming 0, top-k monotone, hex round-trip.
+
+**Semantic gate G-SWARM-C2-SEMANTIC** (`g_c2_semantic.py`, receipt `tests/fixtures/swarm/G-SWARM-C2-SEMANTIC.log`) — the honest measurement of whether C2-Hamming discovery tracks the proven L5-cosine signal, on the faithful corpus (61 paraphrase queries → nearest episode):
+
+| index | recall@1 | recall@5 |
+|---|---|---|
+| L5-cosine (ground truth) | **0.885** | 0.984 |
+| **C2 SimHash-256 (the overlay)** | **0.607** | **0.885** |
+| SimHash-512 / 1024 / 2048 | 0.721 / 0.820 / 0.869 | 0.951 / 0.967 / 0.967 |
+
+**Verdict (honest):** C2-256 is a **weak top-1 retriever** (retains only 69% of cosine recall@1) but an **excellent shortlist/hint** — its recall@5 (0.885) equals cosine's recall@1. This is *exactly* the role §6 scopes C2 for ("a wrong hint costs nothing because the exact fetch verifies"). So:
+- **Expose `find_similar` as a top-k candidate SHORTLIST (default k≥5) that feeds L1/L2 exact-fetch confirmation — NOT as a standalone answer.** In that role the overlay is GREEN.
+- **Do NOT** use C2-256 as a top-1 discovery oracle (honest-negative, retention 0.69).
+- **Bit-count is the lever:** if top-1-grade discovery is ever needed, wider sigs recover it (2048-bit ≈ cosine). 256-bit stays the default (it's the frozen C2 width; the shortlist role doesn't need more).
+
+**NEXT:** wire the network `find_similar` gossip (advertise C2 sets, ask peers for low-Hamming candidates, exact-fetch confirm) over the have/want seam — calibrated to k≥5 shortlist semantics, gated on the shortlist recall above. Then multi-host bring-up.

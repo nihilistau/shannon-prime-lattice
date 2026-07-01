@@ -46,6 +46,7 @@ sp_repro: "each finding cites the launcher + harness + fixture that reproduces i
 | `SP_REPLAY_MTARGET` | **42** | KV-replay injection-mass clamp (recall replay winner) | `G-CHAT-B3-WC-DEPLOY` |
 | `SP_EOT_BIAS` | **4.0** | end-of-turn logit bias (clean turn-stop on the served chat) | chat_fullstack |
 | Diffusion Judge (OOD proxy) | recall **94.4%** / reject **98.0%** | won the OOD kill-test as a *proxy*; **NOT** the production path (native judge plateaus ~50%) | `G-DIFFJUDGE-OOD-H2H` |
+| C2 SimHash bit-count (similarity overlay) | **256** (frozen C2) → recall@1 0.607 / recall@5 0.885; 512/1024/2048 → @1 0.72/0.82/0.87 | wider sigs recover top-1 toward L5-cosine (0.885); 256 = the shortlist-hint default | `G-SWARM-C2-SEMANTIC` |
 
 ## 3. The boundary map (what works vs what is structurally impossible)
 
@@ -101,10 +102,13 @@ All receipts under `shannon-prime-system-engine/tests/fixtures/chat_fullstack/` 
 | `G-SWARM-TRANSPORT-QUIC` | 2-node localhost over quinn/rustls; Ed25519 mutual roster auth | A↔B bidirectional convergence (pull 3 / pull 2), tampered object rejected on arrival (integrity-fail), off-roster peer dropped (0 objects); SP-SWARM L0 (reused engine QUIC, not rust-libp2p) | engine (this session) |
 | `G-SWARM-NODE` | 2-node localhost, `run_node` autonomous periodic sync | converge 5/5 both directions; persistent identity stable across reloads; roster file parsed; SP-SWARM integration orchestration | engine (this session) |
 | `G-SWARM-DAEMON-WIRE` | `cargo build --features wire_cuda_backend,swarm` | sp-daemon builds+links with the mesh wired (19.33s); `SP_SWARM=1` spawns run_node, unset=no-op null floor; SP-SWARM daemon integration | engine (this session) |
+| `G-SWARM-C2-INDEX` | synthetic near/far 256-bit sigs | C2Index find_similar top-k Hamming: near>far, exact=0, monotone, hex round-trip; L4 index mechanics | engine (this session) |
+| `G-SWARM-C2-SEMANTIC` | 61 paraphrase L5 embeds → nearest episode; SimHash vs L5-cosine | C2-256 recall@1 **0.607** vs cosine 0.885 (retains 69% — weak top-1) BUT recall@5 **0.885** = cosine's top-1 (strong shortlist); bit-count lever (512/1024/2048 → 0.72/0.82/0.87 @1). L4 = hint/shortlist, not top-1 | engine (this session) |
 
 ## 6. Honest negatives (levers measured inert — kept attached by policy)
 
 - **KSTE-MD / Friedman magnitude-depth router**: 37.6× synthetic discrimination collapses on real global-Q (input-gated, directional-blind). Parked as a dedup/eviction primitive, OFF the recall path.
+- **C2-256 SimHash as a TOP-1 retriever**: 0.607 recall@1 (retains only 69% of L5-cosine 0.885) — honest-negative for standalone discovery. VIABLE only as a top-k shortlist→exact-fetch hint (recall@5 0.885, its designed §6 role). Boundary thesis again: the quantized structure-on-content signal is a hint, not the answer.
 - **Query-side foreign reject** (L5 / Jaccard / margin thresholds): ~90% false-accept on clean-v2 foreign — cheap query-side signals cannot reject; the model's robustness + τ do.
 - **Generative judge** (SP_B3_JUDGE): 0 benefit over L5-direct+τ on hard-foreign, PASSes 15/18 → PARKED.
 - **STRICT closed-book prompt**: over-declines valid matches (0/4) — dead lever.
