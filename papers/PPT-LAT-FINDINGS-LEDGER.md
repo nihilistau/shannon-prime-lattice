@@ -98,6 +98,7 @@ All receipts under `shannon-prime-system-engine/tests/fixtures/chat_fullstack/` 
 | `G-SWARM-REPLICATE-CONVERGE` | 2 divergent store-dir "nodes" over the real 113-object MEM-OKF | content-address round-trip + have/want convergence (113/113 byte-identical) + verify-on-arrival + idempotence + tamper-reject; SP-SWARM L1+L2 core, transport-agnostic | lattice (this session) |
 | `G-SWARM-PROVENANCE-ED25519` | Ed25519 (libsodium/PyNaCl) sign-on-write + verify-on-pull vs invite-only roster, over real MEM-OKF objects | signed content+episode commit; tampered-episode→sig-invalid, stripped→unsigned, forged→sig-invalid, unrostered→untrusted-signer, tampered-content→integrity-fail (all rejected pre-commit); C2 episodes now tamper-evident cross-node; SP-SWARM L3 | lattice (this session) |
 | `G-SWARM-RUST-PARITY` | Rust `tools/sp_swarm` (sha2 + ed25519-dalek) vs pynacl-signed fixture + real store | 6/6: Rust reproduces Python addresses (89 content), ed25519-dalek verifies the pynacl signature over addr‖body, tamper+roster reject; cross-lang byte-parity | engine (this session) |
+| `G-SWARM-TRANSPORT-QUIC` | 2-node localhost over quinn/rustls; Ed25519 mutual roster auth | A↔B bidirectional convergence (pull 3 / pull 2), tampered object rejected on arrival (integrity-fail), off-roster peer dropped (0 objects); SP-SWARM L0 (reused engine QUIC, not rust-libp2p) | engine (this session) |
 
 ## 6. Honest negatives (levers measured inert — kept attached by policy)
 
