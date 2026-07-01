@@ -106,6 +106,12 @@ Correct wiring, replacing "judge delivers":
 
 This preserves the 86.89% recall (L5-direct owns delivery) AND adds the reject (judge NULL), without the authority loss seen when the judge delivered. `SP_B3_JUDGE_L5` already does step 1+2's selection; the remaining build is the **reorder** so the judge is a veto *before* L5-direct commits, not a separate delivering branch.
 
+**Empirical K-sweep (2026-07-01, judge_test N=12, served 12B, authority fix 4ff75d1; receipt `tests/fixtures/chat_fullstack/G-JUDGE-KSWEEP-K2-2026-07-01.log`):**
+- **K=1 breaks the reject** — with a single shortlisted candidate the judge sees `[cand, NULL]` and degenerates to always-PICK (NULLs=0). Recall 50%, no reject. The judge needs **≥2 candidates** to engage its comparison/NULL behavior.
+- **K=2 is the minimal working reject config** — foreign spurious 2/12 = **17% (83% clean-reject)**, matching the K=8 baseline with a tighter/cheaper shortlist. Recall 50%.
+- **Delivery routed through the judge path costs recall** (~50% at both K=1 and K=2 vs L5-direct's 86.89% — e.g. japan: L5-direct obeys "won", judge-path misses "yen"). This is *independent* of K and is exactly why the judge must NOT deliver.
+- **Confirmed deploy shape:** L5-direct owns delivery (86.89%) + **judge@K=2 as reject-only veto** (83% clean-reject). Neither costs the other. (Earlier "K=1 residual-pollution" hypothesis was falsified — the reject break is candidate-count degeneracy, not cache state.)
+
 ## 7. Status reconciliation (proven / promoted / parked)
 
 - **CHANGED**: recall/reject is now **L5-select → judge-veto → L5-deliver**. Supersedes W_c-pure-KV-replay and raw-global-Q approaches (W_c demoted to a fallback pre-filter). L5 is the graduated recall selector (updates ADR-LATENT-NATIVE-UNIFICATION).
@@ -113,7 +119,7 @@ This preserves the 86.89% recall (L5-direct owns delivery) AND adds the reject (
 - **PARKED (no change)**: Friedman sieve / KSTE / kste_md (dedup primitives; kste_md is input-gated, directional-blind — see its receipts). CRT multi-device (resolved-negative). Poison-pill / field-crypto (rejected).
 
 ## 8. Consequences — the next builds (in order)
-1. **Unified path reorder** (§6): judge as veto before L5-direct delivery; gate para-obey (~86%) + foreign-reject in ONE served path; default-off → promote to default-on when green.
+1. **Unified path reorder** (§6): judge@**K=2** as reject-only veto (83% clean-reject, proven) *before* L5-direct delivery (86.89%, proven); make the judge-PICK branch hand off to the L5-direct executor instead of delivering itself, so ONE served path gives ~86% recall + reject. Default-off → promote to default-on when the combined path gates green. (The K-sweep already isolated both halves; this is the wiring that composes them.)
 2. **Refactor to the typestate boundary** (§4): extract the ad-hoc `routes.rs` decider/executor branches into `Tier1Decider`/`Tier2Executor` + `LatentDecision`. This is the "clean/hardened" the operator asked for — one seam, compiler-enforced.
 3. **Cleanup/harden**: consolidate the ~dozen `_*` gate harnesses into one recall/reject runner; prune the dead naive-binary-judge; every flag default-off with a byte-exact null floor; re-run G-CLEAN-BUILD + G-OKF-CONFORM; refresh STATE/KEYSTONE.
 4. **Scale-confirm** the recall+reject numbers beyond n=61/12.
