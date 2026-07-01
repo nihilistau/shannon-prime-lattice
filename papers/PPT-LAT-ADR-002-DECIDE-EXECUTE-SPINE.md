@@ -41,6 +41,7 @@ This ADR makes that pattern the governing architecture.
 |---|---|---|
 | **L5-cosine recall selector + tau** | WHICH memory (query-key cosine, global layer 5); tau=0.30 also does the REJECT (below-tau = no recall) | **GREEN-LIVE 86.89%; PROMOTED as the unified served recall path** — 0% spurious on the hard-foreign kill-test, cheap (G-L5-RECALL-LIVE, G-HARDFOREIGN-L5DIRECT) |
 | ~~Judge (SP_B3_JUDGE + SP_B3_JUDGE_L5)~~ | ~~PICK / [NULL] reject~~ | **PARKED (2026-07-01)** — hard-foreign kill-test: 0 benefit over L5-direct+tau (0/18==0/18), PASSed 15/18 hard-foreign (failed its own reject job). Reject = tau + native model robustness. Code kept default-off as an honest negative. |
+| **Attribute-grounding gate (SP_RECALL_ATTR_GATE + query-token guard)** | deliver vs DECLINE — is the queried attribute answerable from the selected fact? (deterministic, lexical, no model forward) | **GREEN (2026-07-01)** — fixes zero-prior confabulation. SNE: MATCH 100% recall + MISMATCH 100% decline (confab 80%→0%, leak 5%→0%); paraphrase 6/12=baseline, 0 over-decline (query-token guard keeps it off for general chat). Globally default-on-safe. Receipts G-SNE-ATTRGATE-GUARD / G-ATTRGATE-GUARD-PARA. The cheapest-lever win the SNE crucible mandated. |
 | **Interceptor heads** (action / tool / memory) | WHAT to do (near-miss-hardened) | proven, false-fire 0.000 |
 | **Route head** | LOCAL vs TELEPATHY delegate | proven (TELE-7) |
 | **EAGLE / MTP draft** | next-K token proposals (then verified) | wired; scale corpus pending (#40) |
