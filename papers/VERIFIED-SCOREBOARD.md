@@ -64,6 +64,7 @@ Grouped by the 4 roadmap axes:
 - **Generative recall judge** (`SP_B3_JUDGE`): PARKED (2026-07-01) — hard-foreign kill-test = 0 benefit over L5-direct+τ (0/18 == 0/18) and it PASSed 15/18 (failed its own reject job). Code kept default-off as an honest negative.
 - **STRICT closed-book prompt** (`SP_RECALL_STRICT`): over-declines even valid matches (0/4) — dead lever, replaced by the deterministic attribute-gate.
 - **Shared-token attribute guard** (query∩fact): broke SNE decline (2/6) on wrong-entity delivery → replaced by the query-token guard (gate on the QUERY carrying a private-entity token).
+- **T4 Frobenius π^k of the model WEIGHTS as a compression lever** (`G-T4-WEIGHTS`, 2026-07-01): REDUNDANT vs OK_Q4B — pre-registered kill-test on 3/3 real 12B tensors. OK_Q4B (per-32-block int4+f16, 4.5 eff bits/w) relL2 0.10–0.12; the Frobenius "free" per-tensor scale at 4 b/w is ~3.3–4× worse for 0.5 bits saved; matching fidelity needs the scale back at per-block (== OK_Q4B). The free-scale property that holds on Ring-2 episodes (`G-R2-FROB`) does NOT transfer to trained weights. Refutes T4-as-weight-compression, NOT the exact-cancellation property (needs Q8, buys auditability). Resolves the roadmap/CLAUDE.md tension → "convicted redundant." Scope `PPT-LAT-T4-WEIGHTS-SCOPE.md`; receipt engine `tests/fixtures/t4_weights/G-T4-WEIGHTS.log`.
 
 ## Contradictions reconciled (2026-07-01)
 

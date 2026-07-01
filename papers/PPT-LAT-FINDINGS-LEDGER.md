@@ -115,6 +115,7 @@ All receipts under `shannon-prime-system-engine/tests/fixtures/chat_fullstack/` 
 - **STRICT closed-book prompt**: over-declines valid matches (0/4) — dead lever.
 - **Shared-token attribute guard** (query∩fact): broke SNE decline (2/6) on wrong-entity delivery → replaced by the query-token guard.
 - **Fused latent+text** (Telepathy precise channel): 0.000. **CRT multi-device**: loopback-only (resolved-negative pending 2-GPU). **Möbius/entropy-coding on M / T2-Möbius embedding**: measured-inert (see STATE boundary thesis).
+- **T4 Frobenius π^k of the model WEIGHTS as a compression lever** (`G-T4-WEIGHTS`, 2026-07-01): REDUNDANT vs OK_Q4B. On 3/3 real 12B tensors, OK_Q4B (per-32-block int4+f16, **4.5 eff bits/w**) = relL2 0.10–0.12; the Frobenius "free" per-tensor scale at 4 b/w = 0.40 (**~3.3–4× worse to save 0.5 bits**), per-row 0.21–0.28; matching fidelity needs the scale back at per-block (== OK_Q4B). The free-scale property that holds on Ring-2 EPISODES (`G-R2-FROB`, sub-ULP@24b) does **not** transfer to trained weight tensors (per-block outliers). Refutes T4-as-weight-compression, NOT the T4 exact-*cancellation* property (needs Q8, buys auditability). Scope+receipt: `PPT-LAT-T4-WEIGHTS-SCOPE.md`, engine `tests/fixtures/t4_weights/G-T4-WEIGHTS.log`. Boundary thesis extended to the weights (as T2 was).
 
 ## Cross-links
 - Law + architecture: [PPT-LAT-ADR-002-DECIDE-EXECUTE-SPINE.md](PPT-LAT-ADR-002-DECIDE-EXECUTE-SPINE.md)
