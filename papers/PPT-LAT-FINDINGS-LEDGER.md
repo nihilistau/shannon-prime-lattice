@@ -99,6 +99,8 @@ All receipts under `shannon-prime-system-engine/tests/fixtures/chat_fullstack/` 
 | `G-SWARM-PROVENANCE-ED25519` | Ed25519 (libsodium/PyNaCl) sign-on-write + verify-on-pull vs invite-only roster, over real MEM-OKF objects | signed content+episode commit; tampered-episode→sig-invalid, stripped→unsigned, forged→sig-invalid, unrostered→untrusted-signer, tampered-content→integrity-fail (all rejected pre-commit); C2 episodes now tamper-evident cross-node; SP-SWARM L3 | lattice (this session) |
 | `G-SWARM-RUST-PARITY` | Rust `tools/sp_swarm` (sha2 + ed25519-dalek) vs pynacl-signed fixture + real store | 6/6: Rust reproduces Python addresses (89 content), ed25519-dalek verifies the pynacl signature over addr‖body, tamper+roster reject; cross-lang byte-parity | engine (this session) |
 | `G-SWARM-TRANSPORT-QUIC` | 2-node localhost over quinn/rustls; Ed25519 mutual roster auth | A↔B bidirectional convergence (pull 3 / pull 2), tampered object rejected on arrival (integrity-fail), off-roster peer dropped (0 objects); SP-SWARM L0 (reused engine QUIC, not rust-libp2p) | engine (this session) |
+| `G-SWARM-NODE` | 2-node localhost, `run_node` autonomous periodic sync | converge 5/5 both directions; persistent identity stable across reloads; roster file parsed; SP-SWARM integration orchestration | engine (this session) |
+| `G-SWARM-DAEMON-WIRE` | `cargo build --features wire_cuda_backend,swarm` | sp-daemon builds+links with the mesh wired (19.33s); `SP_SWARM=1` spawns run_node, unset=no-op null floor; SP-SWARM daemon integration | engine (this session) |
 
 ## 6. Honest negatives (levers measured inert — kept attached by policy)
 
