@@ -237,7 +237,7 @@ scoreboard is `papers/VERIFIED-SCOREBOARD.md`; the proven record is `papers/PPT-
 | **Faithful L5-cosine recall** + zero-inference attribute-gate decline | **GREEN-LIVE, default-off** | `G-L5-RECALL-LIVE` (86.89%), `G-SNE-ATTRGATE-ZEROINF` |
 | **Byte-exact exact-integer forward** (`SP_BYTEEXACT`) | **gated-GREEN / default-off** | `G-BYTEEXACT-FORWARD-12B` |
 | **Cross-family Telepathy** (two-stage delegate, wired into `/v1/chat`) | **gated-GREEN / default-off** | `G-TELEPATHY-LIVE`, `G-TELEPATHY-CHAT-LIVE` |
-| **NIGHTSHIFT offline curator** (`SP_NIGHTSHIFT_OFFLINE`) | **PARTIAL** — synthetic gate GREEN; live B4 in-distribution PENDING | `G-NIGHTSHIFT-CURATOR` (criteria 1-4) |
+| **NIGHTSHIFT offline curator** (`SP_NIGHTSHIFT_OFFLINE`) | **gated-GREEN / default-off** — criteria 1-4 synthetic + criterion-5 (B4 provenance/distributional fix) CLOSED live | `G-NIGHTSHIFT-CURATOR` + `G-CHAT-B4-NIGHTSHIFT-provenance` (live==curated 9.858; novel in-band + foreign-reject) |
 | **Generative judge** / native diffusion judge (26B selector) | **PARKED / in the drawer** — superseded by L5-direct+τ | `G-HARDFOREIGN-JUDGE`, FINDINGS-LEDGER §3 |
 | **SP-SWARM private memory mesh** (L0–L4: QUIC transport, content addressing, replication, Ed25519 provenance, C2 discovery) | **gated-GREEN / default-off** — L0–L4 complete, integrated; remaining = multi-host deploy | `G-SWARM-*` (9), `PPT-LAT-MESH-API.md` |
 

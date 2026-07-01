@@ -36,7 +36,7 @@ Validate with gate **G-OKF-CONFORM**: `python tools/okf_validate.py papers` (run
 
 **Project state & plan**
 - [PPT-LAT-STATE.md](PPT-LAT-STATE.md) — the proven living record (`project-state`).
-- [PPT-LAT-Roadmap.md](PPT-LAT-Roadmap.md) — the forward plan (live NEXT = Strike 1 NIGHTSHIFT criterion-5 → Strike 2 OOD diffusion kill-test) (`roadmap`).
+- [PPT-LAT-Roadmap.md](PPT-LAT-Roadmap.md) — the forward plan (NIGHTSHIFT criterion-5 CLOSED + judge PARKED; live NEXT = the open edges: SP-SWARM multi-host / Persistent-KV P3 / L5-on-live-episode gate) (`roadmap`).
 - [STATUS-MAP-2026-06-21.md](STATUS-MAP-2026-06-21.md) — *(SUPERSEDED by [VERIFIED-SCOREBOARD.md](VERIFIED-SCOREBOARD.md); dated snapshot kept for diffusion-judge-era provenance)* (`project-state`).
 - [DESIGN-FLEET-OVERHAUL-BRIEF.md](DESIGN-FLEET-OVERHAUL-BRIEF.md) — canonical grounding + honest-tier vocabulary + anti-overclaim checklist (`design`).
 - [DESIGN-COLA-DLM-MAPPING.md](DESIGN-COLA-DLM-MAPPING.md) -- Cola DLM (block-causal continuous-latent diffusion) mapped onto PPT/ARM/LAT/XBAR/NIGHTSHIFT: the GOLD = block-causal attention EXPLAINS the prefix-KV refutation; the honest correction = it is a TRAIN-TIME property, not an inference mask flip; falsifiable E1-E4; north-star not a tonight-edit (`design`, 2026-06-24).
@@ -49,7 +49,7 @@ Validate with gate **G-OKF-CONFORM**: `python tools/okf_validate.py papers` (run
 
 **Contracts** (`contract`) — the build/gate contracts:
 - [CONTRACT-CHAT-FULLSTACK.md](CONTRACT-CHAT-FULLSTACK.md) — the served 12B chat on the full substrate (GREEN: coherent + byte-exact + O(1) + single-entry + **B3-WC autonomous learned-head recall LIVE**).
-- [CONTRACT-NIGHTSHIFT-CURATOR.md](CONTRACT-NIGHTSHIFT-CURATOR.md) — the offline curator (PoUW ledger → ablation oracle → MEM-OKF); gated-GREEN-on-synthetic, criterion-5 live PENDING = **Strike 1**.
+- [CONTRACT-NIGHTSHIFT-CURATOR.md](CONTRACT-NIGHTSHIFT-CURATOR.md) — the offline curator (PoUW ledger → ablation oracle → MEM-OKF); criteria 1-4 GREEN-on-synthetic + **criterion-5 (B4 distributional/provenance fix) CLOSED live** (live==curated 9.858; novel in-band + foreign-reject; commit `3ccba61`). Residual = general-relevance novel recall, now on the L5-cosine hot path.
 - [CONTRACT-BYTEEXACT-forward.md](CONTRACT-BYTEEXACT-forward.md) — the exact-integer byte-exact forward (`SP_BYTEEXACT`, gated-GREEN; external 2-GPU check carried forward).
 - [CONTRACT-PPT-LAT-PHASE-5.md](CONTRACT-PPT-LAT-PHASE-5.md) — Phase 5 (the diffusion-judge lane) — settled by **Strike 2**'s OOD kill-test.
 - [CONTRACT-PPT-ARM-LAT-INTEGRATION.md](CONTRACT-PPT-ARM-LAT-INTEGRATION.md) — the organism-assembly integration matrix (Built/Theory/Refuted).

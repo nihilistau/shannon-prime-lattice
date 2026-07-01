@@ -1,7 +1,7 @@
 ---
 type: project-state
 title: "Verified Scoreboard — what is built, what is open (receipts-checked)"
-description: "The proven-capability scoreboard, re-verified 2026-07-01 against actual commits + gate fixtures by the Phase 0 ground-truth fleet (not transcribed from prior docs). 9 VERIFIED, 1 PARTIAL, 0 false-greens. Plus the open frontier, the honest negatives kept attached, and the contradictions reconciled."
+description: "The proven-capability scoreboard, re-verified 2026-07-01 against actual commits + gate fixtures by the Phase 0 ground-truth fleet (not transcribed from prior docs); NIGHTSHIFT graduated PARTIAL→VERIFIED 2026-07-02 (criterion-5 provenance fix closed). 10 VERIFIED, 0 PARTIAL, 0 false-greens. Plus the open frontier, the honest negatives kept attached, and the contradictions reconciled."
 tags: [project-state, scoreboard, receipts, verification]
 timestamp: 2026-07-01T00:00:00Z
 resource: shannon-prime-lattice/papers/VERIFIED-SCOREBOARD.md
@@ -38,7 +38,7 @@ Method: a read-only fleet checked each claim against (a) a commit that resolves 
 | SP-SWARM L3 Ed25519 provenance (`swarm_provenance.py`) | GREEN (local, libsodium/PyNaCl) | lattice (this session) | `tests/fixtures/swarm/G-SWARM-PROVENANCE-ED25519.log` | VERIFIED — sign-on-write + verify-on-pull against invite-only roster; tampered-episode/stripped/forged/unrostered/tampered-content ALL rejected pre-commit; C2 episodes tamper-evident cross-node; L0 libp2p transport still DESIGN |
 | SP-SWARM L1+L2 replication core (`swarm_sync.py`) | GREEN (local, transport-agnostic) | lattice (this session) | `tests/fixtures/swarm/G-SWARM-REPLICATE-CONVERGE.log` | VERIFIED — content-address round-trip + have/want convergence (113/113 byte-identical) + verify-on-arrival + idempotence + tamper-reject over the real MEM-OKF store; L0 libp2p transport still DESIGN |
 | Attribute-grounding gate (`SP_RECALL_ATTR_GATE` + query-token guard, zero-inference decline) | GREEN, default-off | `fc2e846` | `G-SNE-ATTRGATE-ZEROINF` / `G-ATTRGATE-GUARD-PARA` | VERIFIED — SNE confab 80→0, leak 5→0, recall 100%; paraphrase 6/12 baseline, 0 over-decline; decline runs NO gemma4 forward |
-| NIGHTSHIFT offline curator | **PARTIAL** | `6107f3e`,`9ad7ede`,`9ee4668` | `tests/fixtures/chat_fullstack/G-NIGHTSHIFT-CURATOR.log` | PARTIAL — synthetic gate GREEN; **criterion 5 (live B4 in-distribution) PENDING** |
+| NIGHTSHIFT offline curator | **GREEN (default-off)** | `6107f3e`,`9ad7ede`,`9ee4668`,`3ccba61` | `G-NIGHTSHIFT-CURATOR.log` + `G-CHAT-B4-NIGHTSHIFT-provenance.log` | VERIFIED — synthetic gate GREEN (criteria 1-4); **criterion 5 (B4 distributional/provenance fix) CLOSED live**: live episode == curated (9.858 byte-perfect; the 0.084 collapse gone), novel fact in-band (6.295) + clean foreign-reject (−15.498). Residual (pre-scoped, not a miss): novel-instance out-ranking under the closed-set W_c head → superseded on the hot path by the shipped L5-cosine selector; the one follow-on = gate L5 recall on a nightshift-captured episode |
 
 ## The open frontier (what we actually skipped)
 
@@ -52,7 +52,7 @@ Grouped by the 4 roadmap axes:
 
 **Axis 4 — Native consolidation.** Port host-Python XBAR tooling (C2 signatures, Frobenius episode codec) to C/Rust; T4 Frobenius of model **weights** (validated lever, unbuilt); single-binary deployment. Wire the proven P3 eviction slab from the test-bin into the live daemon (PORT, not rebuild — `lsh_R_r32_raw.bin` is already trained).
 
-**Also open:** WIRE-CPU integer-pipe speed (~23× behind llama.cpp on 0.6B CPU — the RFC north-star P1); NIGHTSHIFT live B4 (criterion 5); P3.4 larger-N multi-chunk PPL hardening.
+**Also open:** WIRE-CPU integer-pipe speed (~23× behind llama.cpp on 0.6B CPU — the RFC north-star P1); the one NIGHTSHIFT follow-on = gate L5-cosine recall on a nightshift-*captured* live episode (criterion-5's provenance/distributional fix is CLOSED); P3.4 larger-N multi-chunk PPL hardening; P3 global-eviction live win-gate (needs GPU headroom past the 2060's ~20K resident ceiling).
 
 ## Honest negatives (kept attached, by policy)
 
