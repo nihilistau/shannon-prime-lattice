@@ -1,11 +1,22 @@
 # AGENTS.md — how an agent enters and navigates shannon-prime-lattice
 
-This is the **umbrella / front-door** repo for Shannon-Prime. It holds the
-papers, the proven-state ledger, the contracts, and the **OKFS knowledge
-tooling** (`okf_validate.py`, `okf_mem.py`, `okf_history.py`). The code lives
-in the companion repos (`shannon-prime-system` = math core,
-`shannon-prime-system-engine` = inference engine). This file tells a coding
-agent how to come up to speed and what is binding.
+This is the **umbrella / docs / OKFS** repo for Shannon-Prime. It holds the
+entire canonical doc set (`papers/`), the proven-state ledger, the contracts,
+and the two **knowledge stores** (`okf_validate.py` / SP-OKF, `okf_mem.py` /
+MEM-OKF, `okf_history.py`). The code lives in the companion repos
+(`shannon-prime-system` = math core, `shannon-prime-system-engine` = inference
+engine, `shannon-prime-harness` = Python agent harness). This file tells a
+coding agent how to come up to speed and what is binding.
+
+**State one-liner (2026-07-01).** Faithfulness axis **CLOSED end-to-end** —
+L5-cosine recall (`SP_RECALL_L5`, τ=0.30, **86.89%** live, `G-L5-RECALL-LIVE`)
++ a **zero-inference attribute-gate decline** that closes the zero-prior /
+private-data hole (`G-SNE-ATTRGATE-ZEROINF`: confab→0, leak→0, no gemma4
+forward). The generative **judge is PARKED** (hard-foreign kill-test: 0 benefit
+over L5-direct+τ). **SWARM/DHT is re-elevated to a PRIMARY forward axis**
+alongside the governing law, **ADR-002 (the Decide→Execute spine)**. New doc:
+`papers/PPT-LAT-FINDINGS-LEDGER.md` (measured constants / layers / levers /
+boundaries + per-test ledger).
 
 ---
 
@@ -13,20 +24,25 @@ agent how to come up to speed and what is binding.
 
 1. **`prompt.md`** — the canonical session bootstrap. What the project is, the
    current campaign, the methodology, the machine. Start here, every session.
-2. **`papers/PPT-LAT-STATE.md`** — the PROVEN record (the "20th rewrite"
+2. **`papers/START-HERE.md`** — the 2-minute navigable map (5 repos, the doc
+   set in reading order, the anti-rebuild law, the roadmap).
+3. **`papers/VERIFIED-SCOREBOARD.md`** — what is actually built (commit + gate
+   per claim) and what is open; receipts-checked 2026-07-01 (9 VERIFIED · 1
+   PARTIAL · 0 false-greens). Read this for status when memories disagree.
+4. **`papers/PPT-LAT-STATE.md`** — the PROVEN record (the "20th rewrite"
    ledger). Each line cites its evidence (commit / gate / closure). **Your
    default is TRUST.** Re-proving the whole stack from scratch is the failure
    mode this project has hit 20 times — don't.
-3. **`papers/STATUS-MAP-2026-06-21.md`** — the verified box-by-box tier map
-   (GREEN-LIVE / BUILT-DEFAULT-OFF / DESIGN-ONLY), written specifically to
-   settle "two memories disagree." Read it when you're unsure what is actually
-   live vs gated-off.
-4. **`memory-okf/LUT.md`** — the MEM-OKF Tier-0 lookup table. Skim it; then run
+5. **`papers/PPT-LAT-KEYSTONE.md`** → **`papers/PPT-LAT-Roadmap.md`** →
+   **`papers/PPT-LAT-FINDINGS-LEDGER.md`** (which layer / what τ / what K /
+   where the lever is, without re-deriving) →
+   **`papers/PPT-LAT-ADR-002-DECIDE-EXECUTE-SPINE.md`** (the governing law).
+6. **`memory-okf/LUT.md`** — the MEM-OKF Tier-0 lookup table. Skim it; then run
    the lookup pre-flight below before building anything.
-5. **`HISTORY.md`** — the hashed Tier-0 commit LUT (the short-hash IS the
+7. **`HISTORY.md`** — the hashed Tier-0 commit LUT (the short-hash IS the
    content address; `git show <hash>` for the full commit). Use it to place a
    claim in time.
-6. **The active contract** — `papers/CONTRACT-*.md` for the lane you're
+8. **The active contract** — `papers/CONTRACT-*.md` for the lane you're
    touching (e.g. `CONTRACT-CHAT-FULLSTACK`, `CONTRACT-NIGHTSHIFT-CURATOR`,
    `CONTRACT-BYTEEXACT-forward`, `CONTRACT-C2`). Contracts carry the gates and
    the run records.
@@ -114,10 +130,11 @@ of truth). Before committing changes to a bundle, run the validator:
 python tools/okf_validate.py papers     # gate G-OKF-CONFORM, must be GREEN
 ```
 
-`README.md` and this `AGENTS.md` are plain top-level orientation docs (they are
-not `papers/` concepts), so they intentionally do **not** carry frontmatter.
-`HISTORY.md` carries `type: log` frontmatter because it is a generated MEM-OKF
-artifact.
+`README.md` carries SP-OKF frontmatter (`type: reference`) so the umbrella
+front-door is itself a validated concept. This `AGENTS.md` is a plain top-level
+orientation doc (not a `papers/` concept) and intentionally does **not** carry
+frontmatter. `HISTORY.md` carries `type: log` frontmatter because it is a
+generated MEM-OKF artifact.
 
 ---
 
@@ -132,6 +149,7 @@ artifact.
   — `git fetch` + behind-check before building or committing.
 - **Worktrees per concurrent agent.** Two agents on one repo → each in its own
   `git worktree add`.
-- **Supersession order when documents disagree:** STATE > contract run records >
-  Roadmap amendments > Roadmap body. The L1 ABI and `.sp-model` specs are
-  frozen; everything else is amendable when reality contradicts it.
+- **Supersession order when documents disagree:** VERIFIED-SCOREBOARD >
+  KEYSTONE > STATE > contract run records > Roadmap amendments > Roadmap body.
+  The L1 ABI and `.sp-model` specs are frozen; everything else is amendable when
+  reality contradicts it.

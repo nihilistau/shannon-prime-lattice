@@ -13,6 +13,8 @@ sp_repro: "n/a (design). Reuses proven: byte-exact G-BYTEEXACT-FORWARD-12B (engi
 
 # SP-SWARM — the honest distributed memory layer
 
+> **STATUS (2026-07-01): RE-ELEVATED to a PRIMARY forward axis** alongside ADR-002 (the Decide→Execute spine). The single-node faithfulness axis is now closed end-to-end, so the distributed memory mesh becomes a primary goal. Still `DESIGN` (unbuilt) — this is the blueprint; the build gates are in the frontmatter.
+
 ## Context — what this fixes
 
 The distributed half of PPT-ARM-LAT (the swarm / DHT) was deferred to harden the single-node organism (Telepathy, local memory, byte-exact forward, agency). A proposal arrived to resurrect it as **C2-Kademlia routing + a CRT "poison-pill" payload + Diffie-Hellman over the arithmetic primes + a 3-Proth-prime fork + latent-geometry broadcast**. That proposal was pulled apart: two kernels are sound, the security core is broken, and it silently re-commits the *CRT-shards-numbers-not-experts* category error corrected in [STATE](PPT-LAT-STATE.md) §4 (line 121). This doc keeps the sound kernels, replaces every rolled primitive with audited crypto, reuses proven Shannon-Prime assets, respects our own proven negatives, and scopes the threat model honestly. The rejected mechanics are banked in §7 so they cannot creep back a second time.

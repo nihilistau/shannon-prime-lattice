@@ -50,6 +50,8 @@ reproducing command and a gate.** This roadmap supersedes the "current state" of
 | **Telepathy — cross-family LatentBridge** | Tokenizer-free latent→latent transfer between model *families* via a ridge affine adapter + adapter registry: gemma-3n-E2B ↔ qwen2.5-coder-0.5b — alignment + foreign-reject + generation steering. The cemented architecture is **two-stage `decide_route`(latent) → `delegate_execute`(clean text)** (latent fusion degrades — honest negative). **TELE-14: standalone SOVEREIGN native delegate** — the coder runs fully in-engine (`SP_TELEPATHY_NATIVE`, L1 `prefill_chunk`/`decode_step`, zero Python); CPU L1 ⇒ **free live co-residency with the 12B, no `g_w` refactor**. **Honest scope: gist/intent steering, NOT verbatim symbolic forcing. Licensing (SPEC): proprietary component on the MIT substrate, fail-closed license-key + attestation, no host-external effects.** **PARKED.** [spec](PPT-LAT-TELEPATHY-LatentBridge-spec.md) | G-TELEPATHY-ROUNDTRIP (retr@1 1.000/rt 0.891), -REJECT (AUC 0.999), -GEN-TRIGGER (steer-acc 1.000), -TWOSTAGE, **-NATIVE** (engine `2f57520`) | GREEN (repr+steer+native delegate) |
 | **Persistent O(1) conversation KV** | A follow-up turn appends to the resident 12B cache instead of re-prefilling the whole conversation (`SP_PERSIST_KV`, **default-ON**): longest-common-prefix reuse of the committed sequence + suffix-only prefill + bounded-tail rewind. Excludes cache-mutating paths (replay/inject/agency-writers/speculative-recall); `=0` forces the O(n) null floor. | **G-PERSIST-KV** (engine `d211fd2`): 6-turn byte-identical on==off; TTFT off 7.47× growth vs on flat (~1s); default-run == baseline | GREEN-LIVE |
 
+| **L5-cosine recall + attribute-grounding (faithfulness closed)** | The recall selector is the layer-5 fact signal (`SP_RECALL_L5` τ=0.30, 86.89% paraphrase). Faithfulness on zero-prior/private data = a deterministic attribute-gate + query-token guard with a **ZERO-INFERENCE symbolic decline** (no gemma4 forward on reject). The generative judge is PARKED (earned nothing vs τ + native robustness). Law: ADR-002; levers: FINDINGS-LEDGER. | G-L5-RECALL-LIVE, G-SNE-ATTRGATE-ZEROINF, G-HARDFOREIGN-* | GREEN(-LIVE) |
+
 Foundation context (the substrate these ride on): the two-ring ARM KV memory, the XBAR auditable
 latent crossbar (C2 256-bit sigs, native integer Ring-3 VSA bind, Frobenius Ring-2 store), NIGHTSHIFT
 the offline curator, KAIROS the resident kernel, the GNA "EAR" audio sense. All closed; see
@@ -64,6 +66,8 @@ carriers, Möbius-on-M, entropy-on-codes, T2/T4-on-weights). The win is the cont
 ## 2. NEXT — the four open edges (from [PPT-LAT-KEYSTONE.md §12](PPT-LAT-KEYSTONE.md))
 
 These are the honest open edges, in no forced order — pick by the day's leverage.
+
+> **PRIMARY (re-elevated 2026-07-01): SP-SWARM / DHT memory mesh** — private, content-addressed, signed replication of MEM-OKF across the operator's nodes is now a primary forward goal **alongside the ADR-002 Decide→Execute spine**. It rides the proven byte-exact content addressing (`G-BYTEEXACT-FORWARD-12B`) + the receipt ledger; it is NOT the rejected C2-Kademlia/poison-pill/field-crypto proposal (banked negative). Blueprint: [PPT-LAT-DESIGN-SWARM-MEMORY-MESH.md](PPT-LAT-DESIGN-SWARM-MEMORY-MESH.md).
 
 1. **Persistent O(1) conversation KV — P1 DONE (now a DONE pillar above), P2/P3 open.** The append is
    live and default-ON: **G-PERSIST-KV GREEN** (engine `d211fd2`) proved 6-turn byte-identity (on==off)

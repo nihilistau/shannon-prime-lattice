@@ -21,7 +21,7 @@ SP_TYPES = {
     "research-paper", "paper-bite", "paper-provenance", "contract", "gate-receipt",
     "roadmap", "project-state", "session-handoff", "abi", "design", "runbook",
     "lesson", "convention", "memory", "index", "log",
-    "foundation", "reference",
+    "foundation", "reference", "findings-ledger",
 }
 # memory-dialect subtypes: the agent-memory harness tags concepts with one of these as `type`
 # (the OKF `type` slot), with `node_type: memory` as the OKF concept type. Older memory files

@@ -59,6 +59,7 @@ OKF leaves `type` to the producer; we fix a controlled vocabulary so consumers c
 | `convention` | a standard (this doc) | `SP-OKF-PROFILE.md` |
 | `foundation` | the canonical current-state map of the whole system (the Rosetta stone an agent reads first) | `lattice/papers/PPT-LAT-KEYSTONE.md` |
 | `reference` | a call-surface / API reference (the "how do I call it" tier paired with a `foundation`) | `lattice/papers/PPT-LAT-KEYSTONE-API.md` |
+| `findings-ledger` | the empirical discoveries ledger — measured constants, layer localizations, thresholds/levers, boundaries, and per-test outcomes+conditions (one lookup table for "which layer / what tau / what K / where the lever is") | `lattice/papers/PPT-LAT-FINDINGS-LEDGER.md` |
 | `memory` | a persistent-memory fact | `memory/*.md` |
 | `index` | a bundle's progressive-disclosure map (reserved `index.md`) | `<bundle>/index.md` |
 | `log` | a bundle's chronological history (reserved `log.md`) | `<bundle>/log.md`, `LEDGER.md` |

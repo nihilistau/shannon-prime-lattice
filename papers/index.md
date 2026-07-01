@@ -27,6 +27,9 @@ Validate with gate **G-OKF-CONFORM**: `python tools/okf_validate.py papers` (run
 4. [PPT-LAT-KEYSTONE.md](PPT-LAT-KEYSTONE.md) — the detailed current-state map of the organism.
 5. [PPT-LAT-Roadmap.md](PPT-LAT-Roadmap.md) — the forward plan (the 4 axes).
 6. [DESIGN-FLEET-OVERHAUL-BRIEF.md](DESIGN-FLEET-OVERHAUL-BRIEF.md) — the honest-tier vocabulary + anti-overclaim rules every doc obeys.
+7. [PPT-LAT-ADR-002-DECIDE-EXECUTE-SPINE.md](PPT-LAT-ADR-002-DECIDE-EXECUTE-SPINE.md) — **the governing architecture law** (decide in latent, execute in clean text, never fuse; deciders don't execute).
+8. [PPT-LAT-FINDINGS-LEDGER.md](PPT-LAT-FINDINGS-LEDGER.md) — **the measured constants/layers/levers/boundaries + per-test ledger** (which layer / what tau / what K / where the lever is).
+9. [PPT-LAT-DESIGN-SWARM-MEMORY-MESH.md](PPT-LAT-DESIGN-SWARM-MEMORY-MESH.md) — **SP-SWARM / DHT (PRIMARY forward axis)** — the private, content-addressed, signed memory mesh over MEM-OKF.
 
 ## 1. Living docs (read these first)
 
