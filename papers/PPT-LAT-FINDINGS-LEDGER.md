@@ -74,6 +74,7 @@ The governing law (ADR-002): **DECIDE in latent, EXECUTE in clean symbol/text, N
 | Ring-3 VSA dimension | `D = 1024` (two 512-blocks); superposition CAP = **32** |
 | byte-exact forward | `SP_BYTEEXACT` (default-off = byte-identical null floor); 4 nonlinear islands (RMSNorm/softmax/GELU/RoPE) on the same CRT-NTT | `G-BYTEEXACT-FORWARD-12B`, `69c0588` |
 | MEM-OKF address classes | **content-addressed** = sha256(norm(body))[:16] (agent facts, tamper-evident by re-hash); **C2-addressed** = 256-bit C2 SimHash via `--addr` (episodes, not body-re-hashable; L3 Ed25519 for cross-node authenticity). Store split: 87 content / 26 c2 | `G-SWARM-REPLICATE-CONVERGE` |
+| CRLF cross-platform interop | Python-on-Windows WRITES MEM-OKF as CRLF but computes addr over the LF-normalized body (text-mode read translates CRLF→LF). A Rust/other node MUST normalize line endings on read (`parse_fm` normalizes first) or every cross-node address mismatches. | `G-SWARM-RUST-PARITY` |
 
 ## 5. Test ledger (this campaign — corpus · config · outcome · receipt)
 
@@ -96,6 +97,7 @@ All receipts under `shannon-prime-system-engine/tests/fixtures/chat_fullstack/` 
 | `G-KSTE-MD` / `G-KSTE-MD-REALDATA` | magnitude-depth encoder + Dickson σ0⊕σ1 | 37.6× synthetic discrimination but **INPUT-GATED** (directional signal → magnitude-shape-blind on real global-Q) → honest negative | `104-109` (this session) |
 | `G-SWARM-REPLICATE-CONVERGE` | 2 divergent store-dir "nodes" over the real 113-object MEM-OKF | content-address round-trip + have/want convergence (113/113 byte-identical) + verify-on-arrival + idempotence + tamper-reject; SP-SWARM L1+L2 core, transport-agnostic | lattice (this session) |
 | `G-SWARM-PROVENANCE-ED25519` | Ed25519 (libsodium/PyNaCl) sign-on-write + verify-on-pull vs invite-only roster, over real MEM-OKF objects | signed content+episode commit; tampered-episode→sig-invalid, stripped→unsigned, forged→sig-invalid, unrostered→untrusted-signer, tampered-content→integrity-fail (all rejected pre-commit); C2 episodes now tamper-evident cross-node; SP-SWARM L3 | lattice (this session) |
+| `G-SWARM-RUST-PARITY` | Rust `tools/sp_swarm` (sha2 + ed25519-dalek) vs pynacl-signed fixture + real store | 6/6: Rust reproduces Python addresses (89 content), ed25519-dalek verifies the pynacl signature over addr‖body, tamper+roster reject; cross-lang byte-parity | engine (this session) |
 
 ## 6. Honest negatives (levers measured inert — kept attached by policy)
 
