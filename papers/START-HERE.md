@@ -15,7 +15,7 @@ sp_repro: "doc map; verified against code+commits+gates by the Phase 0 fleet aud
 
 **What it is.** A fully-local, byte-exact Gemma-4-12B (OK_Q4B) served on a single 12 GB RTX 2060 by `sp-daemon`, with an exact-integer discrete-algebra substrate (the PPT-ARM architecture), O(1) persistent conversation memory, autonomous memory agency, and a cross-family latent transport (Telepathy). Bit-exact is the invariant floor; the value is the envelope (compression · long context · multi-device · speed). See `PPT-LAT-RFC-001-Universal-Discrete-Architecture.md` for the why.
 
-**State in one line (2026-07-01).** The organism is built and live: byte-exact 12B forward, O(1) persistent KV, learned recall (B3-WC + diffusion judge), memory agency (forget/decide/merge), and a parked-but-proven Telepathy bridge — all gated GREEN with receipts. The frontier is cross-family *live* execution, multi-device CRT, speed (WIRE-CPU), and native consolidation. Verified receipts: `VERIFIED-SCOREBOARD.md`. Faithfulness is now closed end-to-end (L5-cosine recall 86.89% + a zero-inference attribute-gate that closes the zero-prior/private-data hole); the generative judge is parked; SWARM/DHT is re-elevated to a primary axis (2026-07-01).
+**State in one line (2026-07-01).** The organism is built and live: byte-exact 12B forward, O(1) persistent KV, learned recall (B3-WC + diffusion judge), memory agency (forget/decide/merge), and a parked-but-proven Telepathy bridge — all gated GREEN with receipts. The frontier is cross-family *live* execution, multi-device CRT, speed (WIRE-CPU), and native consolidation. Verified receipts: `VERIFIED-SCOREBOARD.md`. Faithfulness is now closed end-to-end (L5-cosine recall 86.89% + a zero-inference attribute-gate that closes the zero-prior/private-data hole); the generative judge is parked; SWARM/DHT is re-elevated to a primary axis AND now **built end-to-end** — the SP-SWARM mesh (L0 QUIC transport, L1 content addressing, L2 have/want replication, L3 Ed25519 provenance, L4 C2-SimHash discovery) is GREEN across 9 gates, cross-language byte-parity with the Python prototype, and integrated into `sp-daemon` behind a default-off `swarm` feature; remaining work is multi-host deployment only (2026-07-01).
 
 ## The 5 repos
 
@@ -64,7 +64,7 @@ If a lookup returns a "DO NOT REBUILD" entry, trust it and **wire/port the exist
 2. **CRT residue split** — run a model across discrete devices by shipping CRT residues, not float tensors (RFC-001 Trick #1).
 3. **Absolute faithfulness** — force the model to obey episodic memory over parametric priors.
 4. **Native consolidation** — port the host-Python XBAR tooling + T4 Frobenius of weights down to C/Rust; single-binary deployment.
-5. **SP-SWARM / DHT memory mesh (PRIMARY, re-elevated 2026-07-01)** — private, content-addressed, signed replication of MEM-OKF across the operator's nodes (rides byte-exact content addressing + the receipt ledger). Blueprint: `PPT-LAT-DESIGN-SWARM-MEMORY-MESH.md`.
+5. **SP-SWARM / DHT memory mesh (PRIMARY, re-elevated 2026-07-01; L0–L4 BUILT + GREEN + integrated 2026-07-01)** — private, content-addressed, signed replication of MEM-OKF across the operator's nodes (rides byte-exact content addressing + the receipt ledger). Blueprint (*why* + rejected mechanics): `PPT-LAT-DESIGN-SWARM-MEMORY-MESH.md`. Call surface (*how*: `sp_swarm` crate, QUIC/Ed25519 wire, `SP_SWARM_*` flags, gates): `PPT-LAT-MESH-API.md`. **Remaining = multi-host deployment only.**
 
 Detail + open edges: `PPT-LAT-Roadmap.md` and `PPT-LAT-KEYSTONE.md §12`.
 

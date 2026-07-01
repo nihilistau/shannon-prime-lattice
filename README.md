@@ -54,6 +54,12 @@ decline** (`G-SNE-ATTRGATE-ZEROINF`: confabulation 80→0, secret-leak 5→0, re
 untouched — the decline streams a fixed string with **no gemma4 forward**, so hallucination is
 mathematically impossible). Full lever/constant map: `papers/PPT-LAT-FINDINGS-LEDGER.md`.
 
+And the **SWARM axis is now BUILT end-to-end**: the SP-SWARM private memory mesh (L0 QUIC transport,
+L1 content addressing, L2 have/want replication, L3 Ed25519 provenance, L4 C2-SimHash discovery) is
+GREEN across 9 gates, cross-language byte-parity with the Python prototype, and integrated into
+`sp-daemon` behind a default-off `swarm` feature — remaining work is multi-host deployment only. Call
+surface: `papers/PPT-LAT-MESH-API.md`.
+
 ## The thesis
 
 *Position Is Arithmetic.* An LLM's container can be made **exact arithmetic**
@@ -164,7 +170,7 @@ contradicts them — except the L1 ABI and `.sp-model` specs, which are frozen.
 2. **CRT residue split** — run a model across discrete devices by shipping CRT residues, not float tensors (RFC-001 Trick #1); the 2-physical-GPU byte-exact check is the one remaining external item.
 3. **Absolute faithfulness** — **CLOSED (2026-07-01)** — L5-cosine recall + zero-inference attribute-gate decline (see State one-liner).
 4. **Native consolidation** — port the host-Python XBAR tooling + T4 Frobenius of weights down to C/Rust; single-binary deployment.
-5. **SP-SWARM / DHT memory mesh (PRIMARY, re-elevated 2026-07-01)** — private, content-addressed, signed replication of MEM-OKF across the operator's nodes (rides byte-exact content addressing + the receipt ledger; invite-only mesh, audited crypto). Blueprint: `papers/PPT-LAT-DESIGN-SWARM-MEMORY-MESH.md`.
+5. **SP-SWARM / DHT memory mesh (PRIMARY, re-elevated 2026-07-01) — NOW BUILT (L0–L4 GREEN, 2026-07-01)** — private, content-addressed, signed replication + discovery of MEM-OKF across the operator's nodes (rides byte-exact content addressing + the receipt ledger; invite-only mesh, audited crypto). The full stack is built + gated (9 `G-SWARM-*` gates), Rust↔Python byte-parity, integrated into `sp-daemon` behind a default-off `swarm` feature + a standalone `sp-swarm-node` bin; **remaining = multi-host deployment only.** Blueprint (*why*): `papers/PPT-LAT-DESIGN-SWARM-MEMORY-MESH.md`; call surface (*how*: `sp_swarm` crate, `SP_SWARM_*` flags, QUIC/Ed25519 wire, gates): `papers/PPT-LAT-MESH-API.md`.
 
 ## The knowledge system (this repo owns the OKFS tooling)
 
@@ -213,6 +219,12 @@ knowledge layer, and **this repo owns its tooling**.
 - **Ephemeral tool-calling harness** — the model emits `<tool name="…">{json}</tool>` in plain
   text; the harness parses, runs, and feeds the result back (ReAct, no native tool channel). Live:
   `calculate` → 4183, `run_python` → 5050. Harness gates `G-HARNESS-TOOLCALL-E2E` and up.
+- **SP-SWARM private memory mesh (L0–L4)** — replication + discovery over the content-addressed
+  MEM-OKF store (not a new store): L1 addressing, L2 have/want replication with verify-on-arrival,
+  L3 Ed25519 provenance vs an invite-only roster, L0 QUIC (quinn/rustls) + Ed25519 mutual handshake,
+  L4 C2-SimHash discovery gossip (`SIM` shortlist → exact-fetch). The `sp_swarm` Rust crate (in the
+  engine repo) is byte-parity-proven vs the Python prototype and integrated into `sp-daemon` behind a
+  default-off `swarm` feature. Gates `G-SWARM-*` (9). Call surface: `papers/PPT-LAT-MESH-API.md`.
 
 ## Honest tier summary (the served system vs the gated experiments)
 
@@ -227,6 +239,7 @@ scoreboard is `papers/VERIFIED-SCOREBOARD.md`; the proven record is `papers/PPT-
 | **Cross-family Telepathy** (two-stage delegate, wired into `/v1/chat`) | **gated-GREEN / default-off** | `G-TELEPATHY-LIVE`, `G-TELEPATHY-CHAT-LIVE` |
 | **NIGHTSHIFT offline curator** (`SP_NIGHTSHIFT_OFFLINE`) | **PARTIAL** — synthetic gate GREEN; live B4 in-distribution PENDING | `G-NIGHTSHIFT-CURATOR` (criteria 1-4) |
 | **Generative judge** / native diffusion judge (26B selector) | **PARKED / in the drawer** — superseded by L5-direct+τ | `G-HARDFOREIGN-JUDGE`, FINDINGS-LEDGER §3 |
+| **SP-SWARM private memory mesh** (L0–L4: QUIC transport, content addressing, replication, Ed25519 provenance, C2 discovery) | **gated-GREEN / default-off** — L0–L4 complete, integrated; remaining = multi-host deploy | `G-SWARM-*` (9), `PPT-LAT-MESH-API.md` |
 
 ## Methodology (why the numbers are believable)
 

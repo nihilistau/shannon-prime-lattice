@@ -29,7 +29,8 @@ Validate with gate **G-OKF-CONFORM**: `python tools/okf_validate.py papers` (run
 6. [DESIGN-FLEET-OVERHAUL-BRIEF.md](DESIGN-FLEET-OVERHAUL-BRIEF.md) — the honest-tier vocabulary + anti-overclaim rules every doc obeys.
 7. [PPT-LAT-ADR-002-DECIDE-EXECUTE-SPINE.md](PPT-LAT-ADR-002-DECIDE-EXECUTE-SPINE.md) — **the governing architecture law** (decide in latent, execute in clean text, never fuse; deciders don't execute).
 8. [PPT-LAT-FINDINGS-LEDGER.md](PPT-LAT-FINDINGS-LEDGER.md) — **the measured constants/layers/levers/boundaries + per-test ledger** (which layer / what tau / what K / where the lever is).
-9. [PPT-LAT-DESIGN-SWARM-MEMORY-MESH.md](PPT-LAT-DESIGN-SWARM-MEMORY-MESH.md) — **SP-SWARM / DHT (PRIMARY forward axis)** — the private, content-addressed, signed memory mesh over MEM-OKF.
+9. [PPT-LAT-DESIGN-SWARM-MEMORY-MESH.md](PPT-LAT-DESIGN-SWARM-MEMORY-MESH.md) — **SP-SWARM / DHT (PRIMARY forward axis)** — the private, content-addressed, signed memory mesh over MEM-OKF (the *why* + rejected mechanics).
+10. [PPT-LAT-MESH-API.md](PPT-LAT-MESH-API.md) — **SP-SWARM Mesh API (the *how-do-I-call-it*)** — the `sp_swarm` Rust crate surface, the QUIC + Ed25519 wire protocol, every `SP_SWARM_*` flag, the daemon `swarm` feature + `sp-swarm-node` bin, and the gate index. **L0–L4 complete + integrated, GREEN, default-off.**
 
 ## 1. Living docs (read these first)
 
@@ -59,6 +60,7 @@ Validate with gate **G-OKF-CONFORM**: `python tools/okf_validate.py papers` (run
 **Reference** (`reference`)
 - [PPT-LAT-FRAMEWORK-API.md](PPT-LAT-FRAMEWORK-API.md) — the whole-framework call surface (**canonical**; supersedes [PPT-LAT-KEYSTONE-API.md](PPT-LAT-KEYSTONE-API.md)).
 - [PPT-LAT-FRAMEWORK-INDEX.md](PPT-LAT-FRAMEWORK-INDEX.md) — grep index: keyword→location, flags, gates §G, SHAs, aliases.
+- [PPT-LAT-MESH-API.md](PPT-LAT-MESH-API.md) — **SP-SWARM Mesh API** — the `sp_swarm` crate call surface + QUIC/Ed25519 wire protocol + `SP_SWARM_*` flags + daemon `swarm` feature/`sp-swarm-node` bin + the 9 swarm gates (pairs with the SWARM design doc).
 
 **Interface** (`abi`)
 - [PPT-LAT-L1-ABI-v0.md](PPT-LAT-L1-ABI-v0.md) — the frozen L1 ABI (incl. §6b `sp_session_register_kvdecode_backend`).

@@ -309,6 +309,22 @@ proprietary component layered on the MIT substrate* — fail-closed license-key 
 gating that only ever disables the bridge's own operation (no host-external effects). Spec:
 [PPT-LAT-TELEPATHY-LatentBridge-spec.md](PPT-LAT-TELEPATHY-LatentBridge-spec.md).
 
+**Post-KEYSTONE addition (2026-07-01) — the SP-SWARM private memory mesh [PROVEN, L0–L4 GREEN, default-off]:**
+the tiered MEM-OKF store now has a *private, invite-only* replication + discovery mesh across the operator's
+own nodes — the same content addressing that makes memory portable makes it content-addressed replicable.
+Five gated layers, each reusing a proven asset: **L1** content addressing (`addr=sha256(norm(body))[:16]` +
+the C2-SimHash episode address class), **L2** have/want replication with verify-on-arrival (`G-SWARM-REPLICATE-CONVERGE`),
+**L3** Ed25519 sign-on-write / verify-vs-roster provenance (audited ed25519-dalek ↔ pynacl parity;
+`G-SWARM-PROVENANCE-ED25519`), **L0** QUIC transport (quinn/rustls 1.3, reused from `network::quic_shard`) +
+Ed25519 mutual roster handshake (`G-SWARM-TRANSPORT-QUIC`), **L4** C2-SimHash discovery gossip (`SIM` shortlist →
+exact-fetch verify; `G-SWARM-GOSSIP-DISCOVERY`). The `sp_swarm` Rust crate is byte-parity-proven vs the Python
+prototype (`G-SWARM-RUST-PARITY`) and integrated into `sp-daemon` behind an optional default-off `swarm` feature
+(`SP_SWARM=1`) plus a standalone `sp-swarm-node` bin (`G-SWARM-NODE`/`G-SWARM-DAEMON-WIRE`). **Honest-negative:**
+C2-256 is a *shortlist* (recall@5 0.885 == L5-cosine top-1), not a top-1 oracle (0.607) — a hint confirmed by
+exact-fetch. It ships curated records, never raw latent (ADR-002). **Remaining = multi-host deployment only.**
+Design: [PPT-LAT-DESIGN-SWARM-MEMORY-MESH.md](PPT-LAT-DESIGN-SWARM-MEMORY-MESH.md); call surface:
+[PPT-LAT-MESH-API.md](PPT-LAT-MESH-API.md).
+
 **Open edges (next):** (1) **persistent O(1) conversation KV** — the daemon re-prefills the whole
 conversation each turn (correct but O(n)); the L1 stateful kvdecode verb can make "continue the
 cache" true O(1). (2) The external **two-physical-GPU** bit-identical check for byte-exact.
