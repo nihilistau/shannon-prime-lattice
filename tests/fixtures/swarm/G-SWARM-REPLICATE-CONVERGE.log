@@ -1,0 +1,11 @@
+[1] real store: 113 objects | content-addressed=87 c2-episode=26 invalid=0
+[2] node_a=58 node_b=58 overlap=3 union=113 (divergent=True)
+[3] sync: a_pulled=55 b_pulled=55 a_after=113 b_after=113 converged=True rejected(a=0,b=0)
+[4] post-sync integrity: node_a fail=0 node_b fail=0
+[4b] byte-identical across nodes: 113/113 (diffs=0)
+[5] idempotent re-sync: a_pulled=0 b_pulled=0 (want 0/0)
+[6] tamper-reject: pulled=[] rejected=[('01014fe0bf06b8f1', 'integrity-fail')] -> REJECTED (good)
+[7] node_a LUT duplicate addrs=0
+
+==== G-SWARM-REPLICATE-CONVERGE ====
+VERDICT: GREEN — L1 content-address round-trip + L2 have/want convergence + verify-on-arrival + idempotence + tamper-reject, over 113 real MEM-OKF objects
