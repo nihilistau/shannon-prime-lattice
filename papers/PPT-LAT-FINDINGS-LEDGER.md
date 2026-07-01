@@ -104,6 +104,7 @@ All receipts under `shannon-prime-system-engine/tests/fixtures/chat_fullstack/` 
 | `G-SWARM-DAEMON-WIRE` | `cargo build --features wire_cuda_backend,swarm` | sp-daemon builds+links with the mesh wired (19.33s); `SP_SWARM=1` spawns run_node, unset=no-op null floor; SP-SWARM daemon integration | engine (this session) |
 | `G-SWARM-C2-INDEX` | synthetic near/far 256-bit sigs | C2Index find_similar top-k Hamming: near>far, exact=0, monotone, hex round-trip; L4 index mechanics | engine (this session) |
 | `G-SWARM-C2-SEMANTIC` | 61 paraphrase L5 embeds → nearest episode; SimHash vs L5-cosine | C2-256 recall@1 **0.607** vs cosine 0.885 (retains 69% — weak top-1) BUT recall@5 **0.885** = cosine's top-1 (strong shortlist); bit-count lever (512/1024/2048 → 0.72/0.82/0.87 @1). L4 = hint/shortlist, not top-1 | engine (this session) |
+| `G-SWARM-GOSSIP-DISCOVERY` | 2-node localhost QUIC; SIM shortlist gossip + exact-fetch verify | A discovers a B-only object via C2 shortlist → exact-fetch (accept L1+L2+L3) → converge; decoys A holds skipped; off-roster rejected; k≥5. SP-SWARM L4 network discovery | engine (this session) |
 
 ## 6. Honest negatives (levers measured inert — kept attached by policy)
 
