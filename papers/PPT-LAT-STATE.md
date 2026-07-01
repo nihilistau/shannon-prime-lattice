@@ -66,7 +66,7 @@ qwen35moe is a **Gated DeltaNet (Qwen3-Next) + 256-expert MoE + IMRoPE hybrid**,
 | **Q4_K + Q6_K k-quant dequant** (ggml-exact) | weight_dtype; qwen35moe conv fingerprint matched | core `25809d8` | [PROVEN] this session |
 | NTT-CRT host, dual-prime, byte-exact (negacyclic, N≤512) | ntt_crt tests | [PROVEN] |
 | NTT N≤512 frozen-prime cap (2N\|q−1) + Bluestein arbitrary-N≤512 | NTT.0–5 closures | [PROVEN constraint] |
-| KSTE encoder + Friedman sieve | E_CPU_6, sieve tests | [PROVEN] |
+| KSTE encoder + Friedman sieve | E_CPU_6, sieve tests | [PROVEN — re-gated fresh 2026-07-01, `system tests/fixtures/G-KSTE-SIEVE-REVERIFY-2026-07-01.log` @ `15698b0`: T_KSTE 22/22 + T_SIEVE/T_POUW 37/37, gcc -O2. NB: core primitives only; the archived Paper III §11.6 application-perf numbers (720× / 93.86% / T4_RES_PROBE AUC) remain paper-claimed, no on-disk log] |
 | Spinor block: KV encode/decode + 64-byte receipt ABI | vht2 / spinor tests; silicon-confirmed | [PROVEN] |
 | Garner 2-prime recombination constants | ntt_crt.c | [PROVEN] |
 | **OK_Q4 reducing codec** — `SP_DT_OK_Q4=11`, transcoder `add_q4`/use_q4, Frobenius Q4 pack/unpack, arena Q4 path (`row_prec[]` 8/4 + `q4_unpack`) | gate `E_PARITY_2` | [PROVEN/WIRED] |
