@@ -1,0 +1,21 @@
+# Pass->block RESOLVED: L5-shortlist -> validated judge rejects foreign (spurious 90%->17%), recall ~100%
+
+The operator's sequential pass->block idea is VALIDATED (not fused; TELE-12 pattern). L5 PASSES a shortlist, the validated generative judge PICKs the answerer or [NULL] (the block/reject). Receipt: `shannon-prime-system-engine/tests/fixtures/G-L5-JUDGE-PASSBLOCK-2026-07-01.log`.
+
+## Wiring (engine main 5d336c7)
+NEW `SP_B3_JUDGE_L5` Stage-1 pre-filter in routes.rs: ranks the cold pool by L5 query-key cosine (`recall::l5_query_embed` + `cos512` on `ep.l5key`), shortlists top-(K-R) for the validated SP_B3_JUDGE. Serve: `_faithful_serve_judgeL5.bat` (SP_B3_JUDGE=1 SP_B3_JUDGE_K=8 SP_B3_JUDGE_L5=1). ep.l5 keys staged per episode (write_ep_l5.py). Release build 0 errors.
+
+## Result (judge_test.py N=12 in-mem para + 12 clean-v2 foreign, served 12B, K=8)
+- **Recall ~100%**: the judge PICKed the correct fact for every in-mem paraphrase via the L5 shortlist (fct_001 tallest, fct_002 planet, fct_006 japan, fct_007 closest_planet, fct_008 telephone, ...).
+- **Reject WORKS**: judge explicitly NULLed 4/12 foreign (33%); END-TO-END foreign spurious-delivery = 2/12 = **17%** (83% clean) vs the query-side gate's ~90% false-accept. This is the reject the cheap query-side signals (L5/Jaccard/margin) COULD NOT do.
+- **Model robustness** cleans up most judge false-accepts: foreign answered correct-parametric ("Swiss franc", "Augustus", "5") even when a spurious fact was picked.
+- **REAL BUG**: the judge path's answer-synthesis ("synthesis recites natively") is degenerate — emits "<image|>" garbage / topic echoes for in-mem picks -> para OBEY reads 0/12 despite correct PICKs. This is a delivery defect in the judge path, NOT recall. The SP_RECALL_L5 direct delivery is clean (86.89%).
+
+## Deployable shape + next
+- **Deploy**: use the judge for the NULL/reject DECISION only; deliver the chosen fact via the CLEAN SP_RECALL_L5 text-in-context path (not the judge's broken synthesis).
+- NEXT: (1) fix/replace the judge synthesis with L5-direct delivery; (2) tune the judge NULL prompt to raise explicit reject above 33%; (3) scale beyond N=12.
+
+## Comparison (paraphrase recall + foreign reject)
+- L5-direct (SP_RECALL_L5): 86.89% clean para obey; NO reject.
+- query-side multi-signal gate: ~90% foreign false-accept @85% para-accept (cannot reject).
+- L5-shortlist -> judge: recall picks ~100%; foreign spurious-delivery 17%; judge synthesis buggy.
