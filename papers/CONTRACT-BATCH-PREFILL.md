@@ -5,11 +5,21 @@ description: "Task #41. Kills the per-token launch storm on cold/large prefills 
 tags: [contract, batch-prefill, 12b, serve-speed, cuda, gemma4_kv]
 timestamp: 2026-07-03T00:00:00Z
 resource: shannon-prime-lattice/papers/CONTRACT-BATCH-PREFILL.md
-sp_status: DESIGN
-sp_gate: "G-BATCH-PREFILL (spec §4, pending)"
-sp_commit: "recon on engine d9ee34b"
-sp_repro: "gemma4_cuda_probe = the batched forward; gemma4_kv_prefill = the per-token loop to replace"
+sp_status: HONEST-NEGATIVE
+sp_gate: "G-BATCH-PREFILL: correctness GREEN, performance honest-negative (engine 11df1f1)"
+sp_commit: "engine 11df1f1 (kernel built + gated default-off)"
+sp_repro: "_bp_launch.bat + curl _t_bp1.json (Apollo n=102) -> correct answer + BATCH-PREFILL log; G-BATCH-PREFILL.log"
 ---
+
+> ★ **BUILT + RESOLVED 2026-07-03 (engine `11df1f1`).** The kernel is written and **CORRECT**
+> — the K/V-sink-into-resident-cache design is PROVEN: a cold 102-token batched prefill gives
+> the exact right answer + a clean decode-after (no corruption). But the performance is an
+> **honest negative on the 12GB card**: `gemm_w_lift` dequants each packed weight to f32 →
+> dequant-dominated at small n (39s@102, slower than per-token) and VRAM-thrashing at n≥~400.
+> **THE REAL FIX = a batched dp4a GEMM** (weights stay int4, no f32 materialization — the
+> single-column `k_gemv_q4b_dp4a_v2` generalized to N activation columns); the shipped
+> correct-but-slow kernel is its validated K/V-sink harness. Default-off + precondition-gated,
+> so the shipped daemon is byte-untouched. Full result: `tests/fixtures/chat_fullstack/G-BATCH-PREFILL.log`.
 
 # CONTRACT — batched prefill
 

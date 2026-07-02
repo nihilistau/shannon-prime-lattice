@@ -129,3 +129,27 @@ This preserves the 86.89% recall (L5-direct owns delivery) AND adds the reject (
 3. **Cleanup/harden**: consolidate the ~dozen `_*` gate harnesses into one recall/reject runner; prune the dead naive-binary-judge; every flag default-off with a byte-exact null floor; re-run G-CLEAN-BUILD + G-OKF-CONFORM; refresh STATE/KEYSTONE.
 4. **Scale-confirm** the recall+reject numbers beyond n=61/12.
 5. Standing: special-token ban in the sampler (belt-and-suspenders vs any future degeneration).
+
+## 9. Conformance check — the 2026-07-03 serve-speed campaign (exercising the law)
+
+The ADR system has no automated gate; the law is enforced by applying its invariants to
+each change. This is that review for the 12B/qwen36 serve-speed work (engine `d9ee34b`→
+`11df1f1`). Invariants checked: (I1) latent computes DECISIONS, clean symbol/text computes
+CONTENT; (I2) only a discrete intent crosses Tier1→Tier2 — never a tensor/logit; (I3)
+deciders don't execute, executors don't inspect tensors; (I4) Tier-3 = exact-integer +
+auditability.
+
+| change | tier | verdict | note |
+|---|---|---|---|
+| `gemma4_kv_prefill_batched` (#41) | Tier-3 substrate (the forward that BUILDS the latent) | **CONFORM** | ingests clean prompt symbols into K/V; makes no decision, emits no token, fuses no latent content. **Caveat (I4):** the batched path is FLOAT, trading the exact-integer/auditability property for speed — so it is a *gated Tier-3 exception* that MUST stay off the auditable config (default-off, precondition-gated; the byte-exact per-token path remains the audit mode). |
+| dead-scan skip (#39) | Tier-1 decider hygiene | **CONFORM** | elides a decider's (B3-v2 q·K) dead telemetry scan that could never fire (τ=+∞). The decide/execute boundary is untouched; `best=None` == the prior REJECT. |
+| PMAX→4096 / launch-fail telemetry / bx chunked-fold | Tier-3 substrate | **CONFORM** | exact-integer arithmetic bit-identical (G-BX-ATTN-FAST parity 2/2); pure serving-config + kernel-launch mechanics. |
+| qwen36 served lane / console 404 fix / launcher split | Tier-2 executor + infra | **CONFORM** | a new EXECUTE-side decode lane + static-file serving; no decider touches it, no latent crosses a boundary. |
+
+**Verdict: GREEN — no Decide→Execute spine violations this session.** Two honest notes:
+(a) the batched-float prefill is a deliberate gated Tier-3 auditability exception (speed
+mode), correctly kept OFF the audit config; (b) the §8.2 typestate encoding of the boundary
+(the `LatentDecision`/`Tier1Decider`/`Tier2Executor` refactor) remains UNBUILT — this
+session neither advanced nor regressed it; the heads stay ad-hoc in `routes.rs`. ADR set
+consistency: ADR-002 (this) + ADR-LATENT-NATIVE-UNIFICATION agree (L5 = the graduated
+recall selector in both); both are SP-OKF conformant (`G-OKF-CONFORM` GREEN, 160/160).
