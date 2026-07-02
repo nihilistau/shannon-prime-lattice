@@ -1,3 +1,19 @@
+---
+type: memory
+title: Explicit store verb SHIPPED (SP_MEM_STORE); selection gap triple-confirmed = question-space keys is THE build
+description: LAYER-2 STORE shipped (engine 3e92b02): SP_MEM_STORE=1 detects store-intent prefixes deterministically, captures the ATTRIBUTED payload via capture_live_episode (K+C2+L5+persist), confirms symbolically at the zero-decode seam - the confirmation cannot be confabulated and the model never denies its own memory again. Live-verified. SELECTION VERDICT TRIPLE-CONFIRMED: fresh-stored cat fact lost top-1 by cos 0.0101 to the dog record; with the my-name 0.0002 coin-flip and V3 pin-2, three independent misses trace to statement-space ep.l5 keys. THE build: question-space key minting at capture + multi-key episodes + margin-aware NULL on near-ties; then re-run V3 unchanged + replay the live transcript. Cosmetic: rename the shared symbolic seam log (says ATTR-DECLINE for store confirms).
+timestamp: 2026-07-02T23:58:30Z
+resource: engine 3e92b02
+sp_status: GREEN
+sp_gate: live round-2: store verb GREEN; recall pending question-space keys
+sp_commit: engine 3e92b02
+sp_repro: run_console_everything.bat; python _v3_corpus/_live_cat_test.py
+mem_kind: agent
+mem_addr: a5fe3b039cd9edf9
+tags: [LAYER-2 STORE, SP_MEM_STORE, store verb, symbolic confirm, unconfabulatable, selection triple-confirmed, question-space keys, 0.0101 margin, do not rebuild store verb, agent, tier-2]
+mem_tier: full
+---
+
 -
 > ★ **2026-07-03 LAYER-2 STORE SHIPPED + THE SELECTION VERDICT IS TRIPLE-CONFIRMED (engine `3e92b02`) — where the story picks up, now with proof.** Operator round-2 live testing: identity/name/dog/door/knowledge all correct, honest declines, zero Hodor — and "store in your memory X" exposed the last UX gap (the system stored silently while the MODEL denied being able to store). **Shipped: `SP_MEM_STORE=1` — deterministic store-verb intent → `capture_live_episode` on the attributed payload (K + C2 + L5 key + persist) → SYMBOLIC confirm at the zero-decode seam ("Stored to memory: …") — un-confabulatable by construction.** Live-verified working. Then the freshly-stored cat fact lost top-1 recall to the dog record by **cos 0.0101** — the THIRD independent live miss tracing to statement-space `ep.l5` keys (my-name margin 0.0002; V3 pin-2). **THE ONE BUILD THAT FIXES ALL THREE: question-space key minting at capture (mint from a question-form of the assertion; consider multi-key episodes + margin-aware NULL on near-ties). Then: re-run G-SPECTEST-V3 unchanged (pin 2), replay the live cat/name transcript (should go GREEN), and the promotion path opens.** Cosmetic: the symbolic-confirm reuses the decline seam so it logs "ATTR-DECLINE" — rename the seam log to SYMBOLIC-EXECUTE when next in routes.rs.
 
