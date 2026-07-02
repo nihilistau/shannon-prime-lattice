@@ -5,7 +5,7 @@ description: "The productization contract for SPEED_NORTHSTAR: serve the qwen36 
 tags: [contract, qwen36, northstar, serve, daemon, gpu-residency]
 timestamp: 2026-07-02T00:00:00Z
 resource: shannon-prime-lattice/papers/CONTRACT-QWEN36-SERVE.md
-sp_status: VERIFIED
+sp_status: GREEN-LIVE
 sp_gate: "G-QWEN36-SERVE GREEN 2026-07-02 (engine tests/fixtures/chat_fullstack/G-QWEN36-SERVE.log)"
 sp_commit: "engine c12d1ea (S1) + c0ec86b (S2/S3 + gate); submodule branch qwen36-gen-coherence 5d1fdaa"
 sp_repro: "run_console_qwen36.bat -> the three curls in the receipt; 5.33-5.55 tok/s served, greedy-deterministic"
