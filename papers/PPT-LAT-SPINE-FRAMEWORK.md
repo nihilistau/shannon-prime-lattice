@@ -98,11 +98,18 @@ read on a forward pass you are already computing*: it rides the captured global-
 `capture_feat`, so N heads cost N little matmuls, not N forwards. A monolithic runtime must
 *generate* to decide; these heads *decide from the latent* before a token is emitted.
 
-The spine is the home that makes them worth it: **a head is a `Decider`.** It reads
-`LatentView` (the latent it needs is already there), applies its weights, returns a
-`LatentDecision`. Adding a head = adding one `impl Decider` to the pipeline; the compiler
-guarantees it cannot fuse or execute. This realizes ADR-LATENT-NATIVE-UNIFICATION: every
-symbolic gate graduates to a latent head, and they *all compose in one typed seam*.
+The spine is the home that makes them worth it: **a head is a `Decider`.** This is now
+BUILT (G-SPINE-HEADS GREEN): the `LatentHead` trait (`score(view, ep) -> f32` +
+`reject_floor`) captures "a trainable head that scores an episode from the latent," and the
+`HeadSelector<H>` adapter turns ANY `LatentHead` into a selecting `Decider` in one line
+(argmax over the reject floor). The learned **W_c recall head** is ported as the exemplar
+(`WcRecallHead`): it reads `view.global_q` against each episode's stored `ep.gk`, scores via
+logsumexp-mean, and its `s0` is the NULL slot. `build_pipeline` runs a fired head first, then
+the cosine selector, then the veto — and re-gating with the head added (W_c off in the
+one-config) reproduced P 54/61 byte-for-byte: the abstraction is behavior-preserving. Adding a
+head is now: `impl LatentHead` + drop into the pipeline; the compiler guarantees it cannot
+fuse or execute. This realizes ADR-LATENT-NATIVE-UNIFICATION: every symbolic gate graduates to
+a latent head, and they *all compose in one typed seam*.
 
 The payoff this unlocks: a committee of heads on every turn — route + recall + reject +
 tool-detect + safety + self-draft — each cheap, each independently trainable against its own
