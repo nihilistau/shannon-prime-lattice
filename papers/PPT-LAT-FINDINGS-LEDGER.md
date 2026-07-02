@@ -65,6 +65,7 @@ The governing law (ADR-002): **DECIDE in latent, EXECUTE in clean symbol/text, N
 | **Zero-inference decline** | on attribute-absence the reject streams a fixed string with NO gemma4 forward → confabulation/leak *mathematically impossible* + microsecond latency | `G-SNE-ATTRGATE-ZEROINF` (16/16 "no gemma4 decode") |
 | **Byte-exact ENVELOPE GAP on the served path (2026-07-02)** | served chat already runs byte-exact islands+decode-attention per request (`byteexact` default-true → `gemma4_kv_byteexact_set`); `SP_BYTEEXACT` env = no-op there (61/61 byte-identical A/B). The residual float surface = **prefill cuBLAS GEMMs** — the un-pinned surface behind the para-obey receipt divergence. Name the envelope in every byte-exact claim. | `G-BX-OBEY-AB` |
 | **Blunt closed-book prompt over-declines** | `SP_RECALL_STRICT` made the model refuse even valid matches (0/4) — dead lever | `G-SNE-STRICT-OVERDECLINE` |
+| **A speed ladder lives in COMPILE FLAGS, not just code (2026-07-02)** | the engine's standard `build-cpu` math-core libs compile WITHOUT `/openmp /arch:AVX2` → any binary linking them silently loses the brick-4/5/6 qwen36 ladder (served 35B ran 3×-slow; CPU-only A/B = 0.17 tok/s = exactly the pre-OMP rung). Perf-critical exes must link `build-cpu-perf` (+ LLVM `libomp.lib` — MSVC 14.29's lacks `__kmpc_dispatch_deinit`). Two enums trap in the same campaign: L1 wire `arch_id` (QWEN36=**8**) ≠ internal `sp_arch_t` (QWEN36=4). | `G-QWEN36-SERVE` |
 
 ## 4. Substrate constants (the exact-integer container)
 

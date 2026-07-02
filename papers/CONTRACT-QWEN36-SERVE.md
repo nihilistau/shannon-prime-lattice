@@ -5,11 +5,25 @@ description: "The productization contract for SPEED_NORTHSTAR: serve the qwen36 
 tags: [contract, qwen36, northstar, serve, daemon, gpu-residency]
 timestamp: 2026-07-02T00:00:00Z
 resource: shannon-prime-lattice/papers/CONTRACT-QWEN36-SERVE.md
-sp_status: ACTIVE
-sp_gate: "G-QWEN36-SERVE (spec §4, pending)"
-sp_commit: "engine (S1 in the post-d9c4417 backend lib); submodule branch qwen36-gen-coherence"
-sp_repro: "S1: sp_q36gpu_boot in src/backends/cuda/cuda_forward.cu; ladder receipts G-MOE-* in engine tests/fixtures/chat_fullstack/"
+sp_status: VERIFIED
+sp_gate: "G-QWEN36-SERVE GREEN 2026-07-02 (engine tests/fixtures/chat_fullstack/G-QWEN36-SERVE.log)"
+sp_commit: "engine c12d1ea (S1) + c0ec86b (S2/S3 + gate); submodule branch qwen36-gen-coherence 5d1fdaa"
+sp_repro: "run_console_qwen36.bat -> the three curls in the receipt; 5.33-5.55 tok/s served, greedy-deterministic"
 ---
+
+> ★ **CLOSED GREEN 2026-07-02 (same session, S2+S3).** The 35B serves `/v1/chat` at
+> **5.33–5.55 tok/s** (receipt `G-QWEN36-SERVE.log`): coherent, multi-turn, greedy-
+> deterministic. Two contract corrections learned in the build: (a) the L1 wire
+> **arch_id is 8** (`SP_ARCH_ID_QWEN36`), not the internal `sp_arch_t` 4 — two enums;
+> (b) `sp_session_create` hard-fails on the hybrid, so the daemon runs **sessionless**
+> on arch 8 (`AppState.session` is now `Option`). **THE BIG FINDING:** the daemon's
+> `build-cpu` math-core libs compile WITHOUT `/openmp /arch:AVX2` — the served 35B ran
+> 3× slow (CPU-only A/B = 0.17 tok/s = the pre-OMP rung) until the launcher was pointed
+> at a **second daemon exe (`target-wirecuda-perf`) linking the `build-cpu-perf` libs**
+> (+ LLVM libomp at link; MSVC 14.29's libomp lacks `__kmpc_dispatch_deinit`). The 12B
+> one-config launcher keeps the proven standard exe — re-gate G-ONECONFIG-LIVE before
+> ever switching it. Follow-ups pre-scoped in the receipt: batch prefill, sampling,
+> concurrency. This note supersedes stale details below (S2 §1-4 as-planned deltas).
 
 # CONTRACT — qwen36 served chat
 
