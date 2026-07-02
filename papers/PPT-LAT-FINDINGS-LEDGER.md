@@ -26,7 +26,7 @@ sp_repro: "each finding cites the launcher + harness + fixture that reproduces i
 |---|---|---|---|
 | **The fact signal lives in global layer 5** | L5 exact→paraphrase recall@1 = **85.2%**; all-8-global-layer average = **11.5%** (averaging *dilutes* the signal ~7×) | per-layer sweep of the global-Q representation vs a Jaccard oracle | `G-REP-LAYER-L5` |
 | L5-cosine query-key recall (offline) | **100% exact / 88.5% paraphrase** (vs Jaccard 100% / 8.2%) | cosine of L5 query-embed vs stored L5 key | `G-REP-LAYER-L5` |
-| **L5-cosine recall LIVE (served 12B)** | **86.89%** paraphrase obey | live `/v1/chat`, `SP_RECALL_L5` | `G-L5-RECALL-LIVE`, engine `d9099cd` |
+| **L5-cosine recall LIVE (served 12B)** | ~~86.89%~~ **⚠ NOT REPRODUCIBLE (2026-07-02)** — receipt-exact rerun 40.98%; scaled prompt 63.93% (its 85.2% receipt also unreproduced). Selection intact (88.5% top-1); obedience is build/float-fragile. Re-baseline law: every obey receipt must carry build SHA + same-day canary | live `/v1/chat`, `SP_RECALL_L5`; repro matrix `G-L5-OBEY-REPRO` | `G-L5-RECALL-LIVE` `d9099cd`; downgrade `ad27b1b` |
 | gemma4 global layers | period **6** → global layers `{5, 11, 17, 23, 29, 35, 41, 47}`; `n_global = NL/PERIOD = 8` | arch (content-hash period rebased 8→6 to the true global layers at G-PERIOD6-REBASE) | `d2d7ceb` |
 | L5 query-embed construction | mean over `G_NH=16` heads of global layer 5 (last token), L2-normalized → **512-d** (`HD=512`) | `recall::l5_query_embed`; `L5_LAYER=5` | engine `recall.rs` |
 | observed L5 cosine range (private entities) | exact-match query ≈ **1.000**; same-entity *different-attribute* query ≈ **0.93–0.95** (the shared entity token dominates the embedding) | SNE serve log | `G-SNE-CRUCIBLE-L5DIRECT` |
