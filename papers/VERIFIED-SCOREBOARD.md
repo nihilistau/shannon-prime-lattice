@@ -13,7 +13,7 @@ sp_repro: "Phase 0 fleet audit 2026-07-01: every commit confirmed an ancestor of
 
 # Verified Scoreboard (2026-07-01)
 
-Method: a read-only fleet checked each claim against (a) a commit that resolves and is an ancestor of engine HEAD, and (b) a gate fixture/receipt file that exists and contains a GREEN verdict. A claim with no commit+gate was to be downgraded. Result: **9 VERIFIED · 1 PARTIAL · 0 UNVERIFIED · 0 false-greens.**
+Method: a read-only fleet checked each claim against (a) a commit that resolves and is an ancestor of engine HEAD, and (b) a gate fixture/receipt file that exists and contains a GREEN verdict. A claim with no commit+gate was to be downgraded. Result at the 2026-07-01 audit: 9 VERIFIED · 1 PARTIAL · 0 UNVERIFIED · 0 false-greens; **current (2026-07-02, NIGHTSHIFT criterion-5 closed): 10 VERIFIED · 0 PARTIAL · 0 false-greens** (re-spot-checked 2026-07-02, AUDIT-2026-07-02.md).
 
 ## Built + verified
 

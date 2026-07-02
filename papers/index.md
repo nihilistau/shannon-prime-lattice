@@ -36,6 +36,7 @@ Validate with gate **G-OKF-CONFORM**: `python tools/okf_validate.py papers` (run
 
 **Project state & plan**
 - [PPT-LAT-STATE.md](PPT-LAT-STATE.md) — the proven living record (`project-state`).
+- [AUDIT-2026-07-02.md](AUDIT-2026-07-02.md) — the 2026-07-02 five-repo audit: launcher-vs-verified-edge gap, untracked-artifact reproducibility hole, doc-drift fixes, prioritized plan (`project-state`).
 - [PPT-LAT-Roadmap.md](PPT-LAT-Roadmap.md) — the forward plan (NIGHTSHIFT criterion-5 CLOSED + judge PARKED; live NEXT = the open edges: SP-SWARM multi-host / Persistent-KV P3 / L5-on-live-episode gate) (`roadmap`).
 - [STATUS-MAP-2026-06-21.md](STATUS-MAP-2026-06-21.md) — *(SUPERSEDED by [VERIFIED-SCOREBOARD.md](VERIFIED-SCOREBOARD.md); dated snapshot kept for diffusion-judge-era provenance)* (`project-state`).
 - [DESIGN-FLEET-OVERHAUL-BRIEF.md](DESIGN-FLEET-OVERHAUL-BRIEF.md) — canonical grounding + honest-tier vocabulary + anti-overclaim checklist (`design`).
@@ -74,6 +75,7 @@ Validate with gate **G-OKF-CONFORM**: `python tools/okf_validate.py papers` (run
 - Plans/specs/investigations: [PPT-LAT-T4-WEIGHTS-SCOPE.md](PPT-LAT-T4-WEIGHTS-SCOPE.md) (**HONEST-NEGATIVE** — the pre-registered `G-T4-WEIGHTS` kill-test: T4 Frobenius π^k of the weights is redundant vs OK_Q4B), [PLAN-SPEED-WIRE-CPU-V3-memory-layout.md](PLAN-SPEED-WIRE-CPU-V3-memory-layout.md), [PHASE-4-MEMO-M0-CHOICE.md](PHASE-4-MEMO-M0-CHOICE.md), [GGUF-INVEST-qwen36-35B-A3B.md](Archived/superseded/GGUF-INVEST-qwen36-35B-A3B.md) (archived; GGUF lane dead — safetensors-direct only).
 
 **Operations** (`runbook`)
+- [RUNBOOK-ONE-CONFIG.md](RUNBOOK-ONE-CONFIG.md) — **the ONE canonical end-to-end run config** (what loads, flag tiers, launcher map, OFF list; DRAFT pending `G-ONECONFIG-LIVE`).
 - [RUNBOOK-cloud-compute.md](RUNBOOK-cloud-compute.md) — RunPod/Colab/HF cloud-run procedure.
 
 **Release** (`session-handoff`)
