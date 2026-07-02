@@ -61,6 +61,7 @@ The governing law (ADR-002): **DECIDE in latent, EXECUTE in clean symbol/text, N
 | **tau + robustness ≥ the generative judge on reject** | judge = 0 benefit over L5-direct+τ (0/18 == 0/18) AND PASSed 15/18 hard-foreign (failed its own reject job) → PARKED | `G-HARDFOREIGN-JUDGE` |
 | **Attribute grounding is a query property, not a query∩fact property** | gate on whether the QUERY carries a private-entity token (a wrong retrieval must NOT lower the shield); a shared-token guard broke SNE decline to 2/6 when L5 delivered a wrong same-structure entity | `G-SNE-ATTRGATE-GUARD` |
 | **Zero-inference decline** | on attribute-absence the reject streams a fixed string with NO gemma4 forward → confabulation/leak *mathematically impossible* + microsecond latency | `G-SNE-ATTRGATE-ZEROINF` (16/16 "no gemma4 decode") |
+| **Byte-exact ENVELOPE GAP on the served path (2026-07-02)** | served chat already runs byte-exact islands+decode-attention per request (`byteexact` default-true → `gemma4_kv_byteexact_set`); `SP_BYTEEXACT` env = no-op there (61/61 byte-identical A/B). The residual float surface = **prefill cuBLAS GEMMs** — the un-pinned surface behind the para-obey receipt divergence. Name the envelope in every byte-exact claim. | `G-BX-OBEY-AB` |
 | **Blunt closed-book prompt over-declines** | `SP_RECALL_STRICT` made the model refuse even valid matches (0/4) — dead lever | `G-SNE-STRICT-OVERDECLINE` |
 
 ## 4. Substrate constants (the exact-integer container)
