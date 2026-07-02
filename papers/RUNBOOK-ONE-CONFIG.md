@@ -5,15 +5,15 @@ description: "The single operator answer to 'what do I run and which flags are o
 tags: [runbook, config, flags, launcher, one-config, operations]
 timestamp: 2026-07-02T00:00:00Z
 resource: shannon-prime-lattice/papers/RUNBOOK-ONE-CONFIG.md
-sp_status: DRAFT
-sp_gate: "G-ONECONFIG-LIVE (PENDING — each flag individually gated GREEN; the combined stack is not yet gated as a whole)"
-sp_commit: TBD
-sp_repro: "run_console_faithful.bat (engine root, added 2026-07-02) then the §5 checklist"
+sp_status: GREEN-LIVE
+sp_gate: "G-ONECONFIG-LIVE v2 GREEN (2026-07-02 run-4): P 54/61 · S 3/3 zero-inference · F 2/2 · C 1 · Q 2/2 · X byte-identical"
+sp_commit: "engine 8ae343b"
+sp_repro: "run_console_faithful.bat then python _faithful_corpus/oneconfig_run.py; receipt engine tests/fixtures/chat_fullstack/G-ONECONFIG-LIVE.log (+G-DELIVERY-SWEEP.log)"
 ---
 
 # RUNBOOK — the ONE canonical configuration
 
-**Status: DRAFT by policy.** Every flag below is individually gated GREEN (receipts cited). The *combined* stack has never been gated in one run — that is `G-ONECONFIG-LIVE` (§5), the first action of the audit plan. Until it's GREEN, this doc is the *intended* one-config, receipts-first honest.
+**Status: GREEN-LIVE (2026-07-02, engine `8ae343b`).** The combined stack passed `G-ONECONFIG-LIVE` v2 whole (§12): paraphrase recall 54/61 (== the selector ceiling, **0 parametric leaks** under the `systemecho` delivery), SNE zero-inference declines 3/3, hard-foreign 2/2 clean, multi-turn coherent (the recall-drops-history bug found+fixed), QONLY 2/2, byte-identical determinism. `run_console_faithful.bat` boots this exact config. Tier-1 additions since §3 was written: `SP_RECALL_QONLY=1`, `SP_RECALL_L5_PROMPT=systemecho`, `CUBLAS_WORKSPACE_CONFIG=:16:8`.
 
 ## 1. What loads (the chain)
 
@@ -125,3 +125,11 @@ Levers from §8 executed receipts-first:
 Canary matrix (`G-CUBLAS-PIN-CANARY`): baseline / `CUBLAS_WORKSPACE_CONFIG=:16:8` / 768MiB VRAM ballast (free 11.7G→0.08G at load) / `SP_ENGINE_FP16=1` — **all four arms answer identically** ("The Pacific Ocean."), on top of the earlier no-flip arms (BX env 61/61, three rebuilds incl. exact `a14fee4` src+lock). Toolkit drift ruled out (machine PATH pins v13.2; all 5 toolkits + driver predate July). **Today's stack is deterministic under every tested perturbation; the 07-01 obey state is unreachable** — cause bounded-unidentified, un-testable residue = that session's process env + allocator state (no env dump in the receipt; the new law prevents recurrence). cuBLAS pin kept in the launcher as free insurance.
 
 **Forward path (pre-scoped, next session): delivery-format sweep** — the composition's obey ceiling is now a prompt-engineering problem on the honest baseline (plain 40.98% / scaled 63.93%): sandwich fact+instruction, fact-echo framing, system-message delivery, one-shot exemplar; 12-item slice → best → full 61 → ≥80% ⇒ rerun `G-ONECONFIG-LIVE` v2. Each format = one `SP_RECALL_L5_PROMPT` value. **N1** (exact-integer prefill GEMM) after — it buys cross-environment determinism, not obey rate.
+
+## 12. Delivery sweep executed + G-ONECONFIG-LIVE v2 GREEN (2026-07-02, engine `8ae343b`)
+
+Sweep (`G-DELIVERY-SWEEP`, slice-16 → full-61): plain 40.98% < scaled 63.93% < sandwich (10/16) < factecho / system (11/16) < **`systemecho`** (fact as SYSTEM authority + verbatim-echo priming) = **88.52% OBEY, 0 LEAK on the full 61** — beats the unreproducible 07-01 receipt on today's stack. The structure of the win: 54/61 == the L5 selector's top-1 accuracy — **every correctly-selected episode was obeyed**; all 7 misses are selection cross-picks answered faithfully from the wrong fact. **Delivery obedience is solved; the obey ceiling is now the SELECTOR (88.5%).**
+
+Run-3 of the combined gate then exposed a real bug the per-flag gates never could: **recall delivery discarded conversation history** (rebuilt the prompt from the last user message only) — turn-2 questions about turn-1 content were unanswerable on any recall turn, in any prompt variant. Fixed (plumb `orig_msgs`; `systemecho` preserves the conversation). Run-4: **GREEN across all six phases** (P 54/61 · S 3/3 zero-inference declines, 0 spurious · F 2/2 clean even under system-authority delivery of a mismatched fact · C multi-turn coherent · Q 2/2 QONLY-skips · X byte-identical). Receipts (with full env dump per the re-baseline law): engine `tests/fixtures/chat_fullstack/G-DELIVERY-SWEEP.log` + `G-ONECONFIG-LIVE.log`.
+
+**The next ceiling (pre-scoped): the selector.** 7/61 cross-picks; margin lever convicted (§9); candidates = Jaccard+L5 fusion (exact+para in one selector, the original G-L5-RECALL-LIVE follow-up) or a cheap rerank over the L5 top-k shortlist.
