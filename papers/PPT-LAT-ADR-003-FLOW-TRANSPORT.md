@@ -5,7 +5,7 @@ description: "Rectified Flow / Flow Matching is the deterministic, exact-transpo
 tags: [design, adr, geodesic, flow-matching, rectified-flow, latent-transport, faithfulness, spec-decode, recall, spine, decide-execute, capture_feat, straightness]
 timestamp: 2026-07-03T00:00:00Z
 resource: shannon-prime-lattice/papers/PPT-LAT-ADR-003-FLOW-TRANSPORT.md
-sp_status: MEASURED-TIER-A
+sp_status: GREEN
 sp_gate: "pre-flight chain COMPLETE: G-F3-CAPTURE GREEN (6c03996) → G-FLOW-STRAIGHTNESS GREEN = TIER A (1b3c234): constant field, topPC 0.731 / cos-to-mean 0.839. Route = single steering vector; NEXT gate G-FM-STEER-OBEY vs systemecho 88.52%/0-leak. FM head in reserve (Tier-B legs also passed: S2 0.796 / S3 0.204)"
 sp_commit: "engine 6c03996 (capture rail) + 1b3c234 (straightness harness+receipt); doc v2 supersedes 9fbf0f2"
 sp_repro: "engine: run_f3_capture_A.bat + python _faithful_corpus/f3_capture_run.py A (then B); loader python _faithful_corpus/f3_loader_check.py; receipt tests/fixtures/chat_fullstack/G-F3-CAPTURE.log; data _faithful_corpus/f3/{A,B}"
