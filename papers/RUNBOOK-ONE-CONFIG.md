@@ -140,6 +140,16 @@ The full honest ledger on the 7/61 same-template periphrasis cross-picks: **marg
 
 **Accepted state: L5-cosine top-1 = 54/61 (88.5%) on a deliberately-adversarial periphrasis corpus, composition GREEN with 0 leaks.** Diminishing returns declared — the residual idea (multi-phrasing ep.l5 keys accumulated per episode in live use) is design-noted but CANNOT be gated on this corpus (adding its paras as keys = training on the test set). The audit plan's bigger items outrank further selector work: **#2 artifact hole** (track small load-bearing files + `G-EP-REBUILD-BYTEEXACT`), **N1 exact prefill GEMM** (cross-env determinism), **SWARM multi-host**, **prefix-KV values call**.
 
+## 15. SPEED_NORTHSTAR phase 2 — the operator backlog (2026-07-02, post-GPU-4)
+
+The 35B ladder closed at **337× / 6.073 tok/s** (`G-MOE-GPU4-PINNED`; locality 32.6% killed the LRU). Phase-2 queue, operator-ordered:
+
+1. **Serve it** (in progress): wire the qwen36 hybrid (state decode + GPU dense/experts/streaming) into `sp-daemon` — `/v1/chat` on `qwen36_step`, launcher, serve gate. The SPTB tokenizer parse in the daemon is already generic.
+2. **MoE expert-count selection**: runtime top-k override (`SP_MOE_TOPK` / per-request) as a quality↔speed dial; gate = obey/PPL ladder at each k ∈ 1..8.
+3. **MoE deliberate GPU/CPU split**: run resident-GPU and CPU expert lanes CONCURRENTLY per layer (host compute is idle while the GPU lane runs today); split policy from measured per-lane throughput.
+4. **Redo the 26B diffusion GPU path with the 36B learnings** — it predates the view-DevTensor experts, pinned one-blob staging, one-sync-per-layer flow, and locality telemetry; operator reports it underperforming.
+5. **Redo gemma4-12B CPU/GPU serve speed — INVESTIGATE THE DISCREPANCY FIRST**: the operator experiences **~1 tok/s** on the served chat vs the 26.1 tok/s receipt. Suspect #1: the served path's `byteexact` per-request default-ON (exact islands + exact decode attention, CUDA graph declined per B1) — auditability chosen over speed as the *default*; the 26.1 receipt likely measured the graph/float config. Re-baseline the SERVED path with an env dump (the re-baseline law), decide the default with data (e.g. byteexact on the *audit* flag, speed as default, or per-request), then apply any 36B-ladder learnings that transfer.
+
 ## 14. The four audit-plan items executed (2026-07-02, engine `8738be7`)
 
 1. **Artifact hole — CLOSED (both halves).** Small load-bearing files tracked (162 files: registries, facts, 81 `ep.l5`, 61 `ep.mf`, harnesses, `wc_deploy.bin`) with verified `.gitignore` exceptions — including `!tests/fixtures/**/*.log`, which structurally fixes the discovered silent receipt-drop (`*.log` blanket rule had been eating every gate receipt; all rescued). The heavy 437MB `ep.k/ep.v` proved **byte-identically regenerable** (`G-EP-REBUILD-BYTEEXACT` GREEN: 12/12 SHA match vs the 07-01 originals across two serve restarts, via `/v1/capture` = `kv::capture_batched`) — disaster recovery = clone + model + one serve + `_seed_faithful.py`.
