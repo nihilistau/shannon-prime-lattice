@@ -5,8 +5,8 @@ description: "Elevates MEM-OKF to a governing layer CO-EQUAL with ADR-002's Deci
 tags: [design, adr, memory, mem-okf, governance, decide-execute, spine, delivery, decline, faithfulness, okf, karpathy-llm-wiki]
 timestamp: 2026-07-03T00:00:00Z
 resource: shannon-prime-lattice/papers/PPT-LAT-ADR-004-MEMORY-GOVERNANCE.md
-sp_status: DESIGN
-sp_gate: "G-MEMPOLICY-V3 (pending): the V3 corpus tagged per-entry with its class policy, delivered policy-driven — each class hits its proven number (secret 0-leak decline, counterfact systemecho 0-leak, same-template two-stage)"
+sp_status: GREEN
+sp_gate: "G-MEMPOLICY-V3 (harness) + G-MEMPOLICY-SERVED (metal, GREEN): served A/B — global SP_RECALL_L5_PROMPT=plain, SP_MEM_POLICY=0 gives OBEY 11/30·17-leak; SP_MEM_POLICY=1 gives 21/30·0-leak (the entry's counterfact policy overrode plain->systemecho on the served spine)"
 sp_commit: "opens after engine 88b0280 + the E1/E2/E8 delivery receipts; builds on ADR-002 (PPT-LAT-ADR-002-DECIDE-EXECUTE-SPINE) + MEM-OKF v1 (MEMORY-OKF-PROFILE)"
 sp_repro: "per MEM-OKF-V2-SPEC + the policy harness (pending)"
 ---
@@ -132,7 +132,17 @@ edges. See MEM-OKF v2 §5.
   policy block; `verify` validates it (G-MEM-OKF-CONFORM v2).
 
 ## 7. Status / honesty
-DESIGN, composition DEMONSTRATED at the harness level (`G-MEMPOLICY-V3`): one store, per-entry
+GREEN — realized ON THE METAL (`G-MEMPOLICY-SERVED`): the served spine (`routes.rs` L5 block)
+reads each recalled entry's `recall::MemPolicy` (loaded per registry row: `mem_class`/
+`mem_delivery`/`mem_decline_*`) and resolves an effective `delivery_mode` + `attr_gate` from
+it, OVERRIDING the global env flags, behind `SP_MEM_POLICY=1`. Served A/B (same daemon, global
+`SP_RECALL_L5_PROMPT=plain`, registry tagged `counterfact`): SP_MEM_POLICY=0 → OBEY 11/30·17-leak
+(plain); SP_MEM_POLICY=1 → **21/30·0-leak** (the entry's policy forced systemecho per-entry).
+Default-off = the ADR-002 env path, byte-identical. Follow-on: NIGHTSHIFT assigns `mem_class`
+at capture (live episodes currently load `policy=None`→env); a served private-secret episode to
+re-prove the decline arm on the metal; point the served registry at the `memory-okf/` store.
+
+Composition also DEMONSTRATED at the harness level (`G-MEMPOLICY-V3`): one store, per-entry
 dispatch — counterfact→systemecho **30/30 @ 0 leak** (delivery is perfect given the right
 entry), private-secret→recall **5/5** + 0 confab, secret-decline via the proven attr-gate, and
 the `okf_mem.py` v2 verify REDs a secret with a leaky delivery (safety monotone enforced). E8
