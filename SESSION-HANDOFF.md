@@ -248,3 +248,4 @@ Previously closed (all on record, nothing in flight):
 ## 4. Standing watch procedure
 
 No pods, no RunPod balance to check. Before any new cloud run: `check_pods.py` (any pods?) → verify `papers/RUNBOOK-cloud-compute.md` pattern → per-unit upload in the loop → verify-then-terminate. ⬢
+
