@@ -5,13 +5,22 @@ description: "The phased build plan for turning the LM-B2 telemetry flywheel int
 tags: [contract, datagen, finetune, cosysim, telemetry, flywheel, adr-005]
 timestamp: 2026-07-03T00:00:00Z
 resource: shannon-prime-lattice/papers/CONTRACT-DATAGEN-FINETUNE.md
-sp_status: ACTIVE
-sp_gate: "each brick names its gate"
-sp_commit: "planning doc — no code yet"
-sp_repro: "n/a (plan); recon = MEM-OKF 6e70a998 (CosySim/Nexus anti-rebuild map)"
+sp_status: GREEN-LIVE
+sp_gate: "G-DF-CONVERT · G-DF-SEED · G-DF-TRAIN-CLOUD · G-DF-EVAL · G-DF-DEPLOY · G-DF-LIVE · G-DF-PARITY · G-DF-AUTOTRAIN"
+sp_commit: "engine 6d418a4 / harness bfaa4eb"
+sp_repro: "each brick's tests/G-DF-*.log; recon = MEM-OKF 6e70a998"
 ---
 
 # CONTRACT — Data-Generation + Finetuning Framework
+
+> ★ **PHASE COMPLETE (2026-07-03).** All bricks GREEN. The self-improvement loop is CLOSED and
+> AUTONOMOUS: **DF-B1** convert · **DF-B2** seed · **DF-B3** train (Colab T4, adapter on HF) ·
+> **DF-B4** eval+promote (0.5B generalizes 20%→83.3%, promoted) · **DF-B6** deploy (harness curator,
+> CPU) · **DF-B5** auto-train trigger · plus **G-DF-LIVE** (curator corrects the served store live,
+> engine reconcile-on-edit) and **G-DF-PARITY** (the deployed 0.5B **BEATS** the 12B model_classify
+> it replaces, 0.83 vs 0.33 vs ground truth — the 12B was the weak classifier all along). Every
+> brick lifts a named CosySim module; nothing rebuilt. The active mem_class model is
+> `KnackAU/sp-mem-class-adapter` in `datagen/model_registry.json`.
 
 ## 0. Why now, and the governing rule
 
