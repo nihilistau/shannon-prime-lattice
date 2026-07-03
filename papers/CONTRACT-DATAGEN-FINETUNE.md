@@ -60,9 +60,20 @@ every telemetry record. Later targets: the L5 selector reranker, the delivery-mo
 
 - **Where it lives:** a new `datagen/` (or `training/`) tier in **shannon-prime-harness** (the harness
   IS cosysim-lineage; the lifted modules belong beside the sink they consume). NOT a new repo.
-- **Compute:** Windows local = HF+PEFT fp16 fallback (Unsloth needs Triton = Linux/Colab). Colab =
-  Unsloth 4-bit (proven notebook). **RunPod path does NOT exist in CosySim** — if we want it, it's
-  net-new (SSH/WSL2 launcher), scoped as a LATER add, not a lift.
+- **Compute (three lanes, all already in OUR toolbox — ENVIRONMENT.md §2):**
+  - **Local** (Beast Canyon, RTX 2060-12GB): HF+PEFT fp16 fallback (Unsloth needs Triton = Linux/
+    Colab, silently falls back on Windows). Good for smokes + the tiny mem_class classifier.
+  - **Colab (PROTOTYPE):** the `colab` CLI in WSL (`colab run --gpu T4 script.py`; secrets piped;
+    always `colab stop`). CU account = "nihilistau" (nihilistcod). CosySim's Unsloth notebook maps
+    straight onto this. ~8.5 A100-h cap — mechanism smokes + first real runs.
+  - **RunPod (BAKE):** for multi-hour runs — **this lane EXISTS in our toolbox** (correcting the
+    recon's "no RunPod in CosySim"): the HF-mediated SSH-free pattern in `papers/RUNBOOK-cloud-
+    compute.md` + `_xbar/p2b/` scripts (cheapest-card-that-fits ladder A6000→L40S→…; per-unit
+    receipt upload to the private HF dataset `KnackAU/xbar-p2b-run`; verify-then-terminate;
+    reconcile `get_pods` twice after any launch error). DF-B3's cloud path REUSES this — wrap the
+    generated `train.py` as a p2b unit; NOT net-new. Account = knack112358 (HF PRO + RunPod).
+  - Deps: `unsloth transformers peft trl torch datasets`; `COSYSIM_TRAIN_PYTHON` env for the train
+    interpreter. Receipts bus = HF (every cloud run streams receipts out per-unit).
 - **Deps:** `unsloth transformers peft trl torch datasets`; `COSYSIM_TRAIN_PYTHON` env to point at
   a training env. The lifted modules already `try/except` their `engine.*` imports (degrade cleanly).
 - **Privacy:** the redaction law from ADR-005 §3b is load-bearing here — the converter is the choke
