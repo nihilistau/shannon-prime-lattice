@@ -24,6 +24,19 @@ FULL_DIR = "full"
 LUT_HEADER = ("| addr | kind | keys | summary | status | sum |\n"
               "|---|---|---|---|---|---|\n")
 
+# MEM-OKF v2 policy vocabulary (see PPT-LAT-MEM-OKF-V2-SPEC + ADR-004).
+MEM_CLASSES    = {"private-secret", "counterfact", "same-template", "fact",
+                  "preference", "persona", "episodic-event"}
+MEM_DELIVERIES = {"attr-gate-strict", "systemecho", "two-stage", "recite",
+                  "system", "pass"}  # "route:<t>" also allowed (checked by prefix)
+MEM_DECLINES   = {"attribute-absent", "family-ambiguous", "low-margin", "zero-inference"}
+# class -> default delivery (the proven mapping; per-entry field overrides).
+CLASS_DEFAULT_DELIVERY = {
+    "private-secret": "attr-gate-strict", "counterfact": "systemecho",
+    "same-template": "systemecho",  # two-stage REFUTED (G-MEMPOLICY-V3); delivery is perfect
+    "fact": "recite", "preference": "system",  # given selection, so use systemecho + low-confidence
+    "persona": "system", "episodic-event": "recite"}
+
 def now_iso():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -123,6 +136,26 @@ def cmd_add(a):
               "timestamp": now_iso(), "resource": a.commit or "TBD", "sp_status": a.status,
               "sp_gate": a.gate, "sp_commit": a.commit or "TBD", "sp_repro": a.repro or "none",
               "mem_kind": a.kind, "mem_addr": addr}
+    # MEM-OKF v2 policy block (additive; OKF-permitted producer keys).
+    if a.mem_class:
+        delivery = a.delivery or CLASS_DEFAULT_DELIVERY.get(a.mem_class, "recite")
+        common["mem_class"] = a.mem_class
+        common["mem_delivery"] = delivery
+        common["mem_authority"] = a.authority or (
+            "private" if a.mem_class == "private-secret"
+            else "overrides-prior" if a.mem_class in ("counterfact", "same-template")
+            else "supplements")
+        if a.retrieval_key:
+            common["mem_retrieval_key"] = a.retrieval_key
+        elif a.mem_class == "private-secret":
+            common["mem_retrieval_key"] = "exact-token"
+        # class-default decline: a private-secret is zero-inference-safe by construction.
+        decl = a.decline_when or ("zero-inference,attribute-absent" if a.mem_class == "private-secret" else "")
+        if decl:
+            common["mem_decline_when"] = decl
+            common["mem_decline_message"] = a.decline_message or "I have a record for that entity, but it does not include that specific detail."
+        if a.confidence is not None:
+            common["mem_confidence"] = a.confidence
     full_fm = dict(common); full_fm["tags"] = a.keys.split(",") + [a.kind, "tier-2"]; full_fm["mem_tier"] = "full"
     write(os.path.join(a.root, FULL_DIR, addr + ".md"), fm_block(full_fm) + "\n" + norm(full_body))
     detail = a.detail if a.detail else (read(a.detail_file) if a.detail_file else a.summary)
@@ -132,7 +165,11 @@ def cmd_add(a):
           fm_block(sum_fm) + "\n# " + (a.title or a.summary) + "\n\n" + norm(detail) +
           "\nFull context: [full/" + addr + ".md](../full/" + addr + ".md)\n")
     rows = [r for r in lut_rows(a.root) if r[0] != addr]
-    rows.append([addr, a.kind, a.keys.replace("|", "/").strip(), a.summary.replace("|", "/").strip(),
+    # v2: surface the policy hint at Tier-0 (progressive disclosure of policy, not just content)
+    summ = a.summary.replace("|", "/").strip()
+    if a.mem_class:
+        summ = "[" + a.mem_class + "/" + common["mem_delivery"] + "] " + summ
+    rows.append([addr, a.kind, a.keys.replace("|", "/").strip(), summ,
                  a.status, "sum/" + addr + ".md"])
     write_lut(a.root, rows)
     print("added " + addr + "  [" + a.kind + "/" + a.status + "]  " + a.summary)
@@ -167,6 +204,26 @@ def cmd_verify(a):
                 errs.append("full/" + fn + ": mem_addr " + str(fm.get("mem_addr")) + " != " + addr)
             if fm.get("mem_kind") == "agent" and addr_of(body) != addr:
                 errs.append("full/" + fn + ": sha256(body)[:16]=" + addr_of(body) + " != " + addr + " (text tampered)")
+            # ---- MEM-OKF v2 policy conformance (only for policied entries) ----
+            mc = fm.get("mem_class")
+            if mc:
+                if mc not in MEM_CLASSES:
+                    errs.append("full/" + fn + ": mem_class '" + str(mc) + "' not in vocab")
+                dv = fm.get("mem_delivery", "")
+                if dv and dv not in MEM_DELIVERIES and not dv.startswith("route:"):
+                    errs.append("full/" + fn + ": mem_delivery '" + dv + "' not in vocab")
+                # safety monotonicity: a secret must never carry a leaky delivery.
+                if mc == "private-secret" and dv not in ("attr-gate-strict",):
+                    errs.append("full/" + fn + ": private-secret with unsafe delivery '" + dv + "' (must be attr-gate-strict)")
+                dw = fm.get("mem_decline_when", "")
+                if mc == "private-secret" and "zero-inference" not in dw:
+                    errs.append("full/" + fn + ": private-secret missing zero-inference decline")
+                if dw:
+                    for w in [x.strip() for x in dw.strip("[]").split(",") if x.strip()]:
+                        if w not in MEM_DECLINES:
+                            errs.append("full/" + fn + ": decline-when '" + w + "' not in vocab")
+                    if not fm.get("mem_decline_message"):
+                        warns.append("full/" + fn + ": decline-when set but no decline-message")
     sd = os.path.join(a.root, SUM_DIR)
     if os.path.isdir(sd):
         for fn in os.listdir(sd):
@@ -201,6 +258,15 @@ def main():
     p.add_argument("--full-file"); p.add_argument("--blob-ref"); p.add_argument("--addr")
     p.add_argument("--status", default="ACTIVE"); p.add_argument("--gate", default="none")
     p.add_argument("--commit"); p.add_argument("--repro")
+    # MEM-OKF v2 policy block
+    p.add_argument("--mem-class", dest="mem_class", choices=sorted(MEM_CLASSES),
+                   help="v2: sets the default retrieval/delivery/decline policy")
+    p.add_argument("--delivery", help="v2: override delivery (systemecho|attr-gate-strict|two-stage|recite|system|route:<t>)")
+    p.add_argument("--authority", help="v2: overrides-prior|supplements|private")
+    p.add_argument("--retrieval-key", dest="retrieval_key", help="v2: l5-question|exact-token|c2-sig")
+    p.add_argument("--decline-when", dest="decline_when", help="v2: comma list (attribute-absent,family-ambiguous,low-margin,zero-inference)")
+    p.add_argument("--decline-message", dest="decline_message", help="v2: fixed decline string")
+    p.add_argument("--confidence", type=float, default=None)
     p = sub.add_parser("lookup", parents=[parent]); p.set_defaults(fn=cmd_lookup); p.add_argument("query")
     p = sub.add_parser("expand", parents=[parent]); p.set_defaults(fn=cmd_expand)
     p.add_argument("addr"); p.add_argument("--full", action="store_true")

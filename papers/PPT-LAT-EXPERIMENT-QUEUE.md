@@ -5,7 +5,7 @@ description: "A prioritized, falsifiable experiment ledger opened after the sele
 tags: [design, experiment-queue, faithfulness, selection, same-template, representation, delivery, swarm, geodesic, roadmap]
 timestamp: 2026-07-03T00:00:00Z
 resource: shannon-prime-lattice/papers/PPT-LAT-EXPERIMENT-QUEUE.md
-sp_status: OPEN
+sp_status: ACTIVE
 sp_gate: "E1 DONE (obey 22->25 but leak 0->4, authority dilution) · E2 CONVICTED (yes/no can't separate same-template, both framings) · E8 two-stage = NEW recommended next · E3-E7 QUEUED (G-E1-E2-DELIVERY)"
 sp_commit: "opened after engine 933ea88 (G-WCHEAD-SAMETEMPLATE) + lattice 6d06b6b; E1/E2 run this session"
 sp_repro: "per-experiment repro lines below; layer-probe seed = _v3_corpus/layer_probe.py on _b3_wc/b3_data_v3.npz"
