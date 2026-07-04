@@ -111,7 +111,7 @@ files.** No behavioural change to the daily driver, which already defaults FP.
 | **Auditability + content-addressing (SWARM / PoUW)** | stable bytes → hashable, signable, replicable, third-party-verifiable | same input → different bytes → content-addressing breaks | **exact wins — FP structurally cannot** |
 | **Integer VSA memory-at-scale** | Ring-3 bind reduction-order-immune (M byte-identical vs float 4.44e-15 drift); retention **1.000 @ N=32** | drift accumulates; retention **0.969 @ N=32** (~3% shed) | **exact wins — offline organism only** |
 | **Faithfulness / obedience** | — | — | **tie — 0 benefit measured** (hard-foreign kill-test; selector is FP regardless) |
-| **Output quality** | 4.6665 PPL; echoes some short prompts (#47) | 4.6569 PPL; correct on those short prompts | **FP marginally ahead** |
+| **Output quality** | 4.6665 PPL | 4.6569 PPL | **tie** — the #47 short-prompt "echo" was RE-INVESTIGATED (`G-ECHO-HUNT-47`, 2026-07-04) and is **not** a byteexact artifact: exact and FP echo the *system prompt* on contentless prompts about equally. FP does not fix it; #47's "float is correct" premise is refuted. |
 | **Compression** | none (explicitly) | none | **n/a** |
 | **Forward speed** | CRT-NTT overhead on islands+attn | standard FP kernels | **FP wins** |
 | **Portability / build** | clang-cl + `__int128` | plain `cl.exe`, smaller binary | **FP wins** |
@@ -158,6 +158,15 @@ FP is marginally faster, and they are equally deterministic on a single pinned m
 measured advantage of byte-exact lives in the **cross-machine / auditability** column that this
 single-box test cannot show — exactly the SWARM/PoUW use case, not the daily driver. Nothing here
 argues for byte-exact as the default; it argues for FP-default + byte-exact-as-audit-mode.
+
+**#47 follow-up (`G-ECHO-HUNT-47`, 2026-07-04).** A dedicated hunt on the *plain chat* launcher
+(`run_console_chat.bat`, recall OFF — the daily-driver path where #47 was reported), 30
+short/adversarial prompts × both modes: the "echo" IS real but is **system-prompt recital on
+contentless prompts** (`Sure.`→"You are Shannon-Prime…", `Continue.`→ same, `What?`→ FP echoes), and
+it occurs in **exact AND FP about equally** (exact ~3, FP ~3; on `What?` FP is the one that echoes).
+**byteexact is exonerated as the cause; #47's "float is correct" premise is refuted.** The real fix
+is a prompting/decoding change for contentless turns, orthogonal to exact-vs-FP. Consequence: there
+is **no "quality fix" argument** for the FP profile — it stands on portability + speed alone.
 
 ## 5. Recommendation
 
