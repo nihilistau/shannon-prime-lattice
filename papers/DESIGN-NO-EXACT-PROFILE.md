@@ -196,6 +196,28 @@ The CUDA byte-exact kernels **stay in place** (default-off `d_bx_flag=0` = the F
 cost) — there is no reason to cut them. This is a smaller, safer profile than §2 implied, and it
 captures the entire measured portability value without touching `cuda_forward.cu`.
 
+## 4c. BUILD STATUS (2026-07-04) — foundation landed, one cluster remaining
+
+Lean host-side profile scaffolded (engine, this commit); the **default build stays GREEN** (verified
+`cargo build --release --features wire_cuda_backend` = Finished, exact-on = daily driver unchanged):
+
+- **`Cargo.toml`**: `exact` feature, **default-on**. FP profile = `--no-default-features --features wire_cuda_backend`.
+- **`build.rs`**: under `!exact`, the 4 ring archives (`ntt_crt`/`poly_ring`/`ok_arith`/`frobenius`) are
+  skipped from the link (footprint win).
+- **`lib.rs`**: `pub mod ntt_ffi` gated `#[cfg(feature = "exact")]`.
+
+**One cluster remains to make the FP profile LINK-GREEN (G-NOEXACT-BUILD):** `network/quic_shard.rs`
+(the QUIC garner NTT mesh) references `ntt_ffi::{ntt_crt_recombine,ntt_free,ntt_init}` at 3 sites
+inside recombine functions. These are genuinely ring-dependent (integer NTT recombination over the
+wire), so under `--no-exact` they must be cfg-gated (the mesh recombine path is unavailable in the FP
+profile — consistent, since the whole integer ring is gone). That is a contained `network`-module
+edit + a `--no-default-features` build to confirm the link. The `exact_islands.c`→`cl.exe` half of
+the CPU-core build is a separate `build-cpu`/CMake edit (independent of the daemon cargo build).
+
+Deliberately **not** grinding the `quic_shard` gating + FP-build-debug loop in-session at turn-end
+(RED risk against a portability-hygiene payoff); the foundation is safe and the daily driver is
+untouched. The remaining step is small, well-scoped, and compiler-enumerable.
+
 ## 5. Recommendation
 
 Do **not** spin up a sister repo. Build it as the `--no-exact` cargo feature. Sequence:
