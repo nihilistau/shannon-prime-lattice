@@ -5,10 +5,10 @@ description: "A modifiable, SELF-modifiable personality for Shannon-Prime: how i
 tags: [contract, personality, persona, self-model, decorators, tags, adr-004, mem-okf]
 timestamp: 2026-07-03T00:00:00Z
 resource: shannon-prime-lattice/papers/CONTRACT-PERSONALITY.md
-sp_status: ACTIVE
-sp_gate: "each brick names its gate (G-PF-*)"
-sp_commit: "planning doc"
-sp_repro: "recon = the personality anti-rebuild map (this session); MEM-OKF 6e70a998"
+sp_status: "GREEN — PF-B1..B5 built+gated (self-modifiable AND system-curatable); PF-B6 deferred"
+sp_gate: "G-PF-OWNERSHIP · G-PF-PERSONA · G-PF-TAGS · G-PF-DECORATORS · G-PF-CURATE (all GREEN)"
+sp_commit: "harness a1c59ea (B1) · 27c5c3b (B2) · b72ece1 (B3) · d35a723 (B4) · e35cfdf (B5)"
+sp_repro: "python tests/h_personality_{ownership,persona,tags,decorators,curate}.py; MEM-OKF 6e70a998"
 ---
 
 # CONTRACT — the self-modifiable Personality framework
@@ -52,7 +52,7 @@ fuse latent into generation (ADR-002). Self-fact vs user-fact is a mem_class/aut
 | **PF-B2** | **Structured persona.md.** A machine-parseable block (identity / traits / voice / mood / boundaries / self-model) alongside the free prose; live-editable; `load_agent_system()` parses it + injects the CURRENT state into the system prefix. | `persona.md` + `harness/agent.py:load_agent_system()` | `G-PF-PERSONA`: edit a field → next turn reflects it; malformed block = graceful fallback to prose |
 | **PF-B3** | **Tag persistence (self-modify via tags).** A `PersonalityStateInterceptor` (priority ~72, post-call) reads the `[MOOD]`/`[VOICE]`/`[TRAIT]` tags StreamProcessor already extracts, persists them to a `PersonalityState` node, and hydrates them back into the next turn's system prefix — the model self-modifies its mood/voice by emitting a tag. | `StreamProcessor` tags + `comms_framework.py InterceptorPipeline` + `MCPFramework` state | `G-PF-TAGS`: model emits `[VOICE:dry]` → persisted → next turn's prompt carries voice=dry |
 | **PF-B4** | **@personality decorators (model-controlled).** Mirror `@skill`: `@personality_decorator` + `PERSONALITY_REGISTRY`, advertised in `run_with_tools`, so the model can CALL `set_trait/adjust_mood/remember_self/forget_trait` to DURABLY self-modify (writes persona.md / PersonalityState). | `@skill` + `SKILL_REGISTRY` + `run_with_tools()` | `G-PF-DECORATORS`: model calls `set_trait(...)` → persona.md updated → persists across turns |
-| **PF-B5** | **Personality curation (NIGHTSHIFT + MEM-OKF).** `consolidate_conversation()`/the curator extracts personality shifts from transcripts and curates the personality state (drift-correct, prune stale traits) — personality is system-curatable, stored in a `memory-okf-personality/` tier. | `consolidate_conversation()` + the DF curator + MEM-OKF | `G-PF-CURATE`: a transcript with a stated trait → curator writes it to the personality tier |
+| **PF-B5 ✅ GREEN** | **Personality curation (NIGHTSHIFT + MEM-OKF).** `harness/personality/curator.py consolidate_personality()` extracts the shifts the model expressed in a transcript (reuses PF-B3 tag extraction on assistant turns), prunes/dedups stale traits, and snapshots the personality into a content-addressed `memory-okf-personality/` tier (mem_class persona / mem_owner self). Wired into `agency.py consolidate_current` gated SP_PERSONALITY. Personality is now system-curatable, not only self-modifiable. | `consolidate_conversation()` seam + MEM-OKF + PF-B3 tags | `G-PF-CURATE` GREEN (e35cfdf): transcript shifts extracted, duplicate trait pruned, OKF snapshot written |
 | **PF-B6** | **Personality head (DEFERRED, engine-native).** A purpose-built head — like the tool-call head but for personality — that detects in-forward when a turn should trigger a personality update/apply (SPINE `LatentHead` or a decorator-routed classifier). Parallels the mem_class LatentHead; deferred behind the tag/decorator path (PF-B3/B4) which covers it off the hot path first. | SPINE `LatentHead` / the tool-call head | `G-PF-HEAD` (deferred) |
 
 ## 3. Order & exit
