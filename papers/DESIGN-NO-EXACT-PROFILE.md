@@ -5,7 +5,7 @@ description: "Scoping for a standard floating-point sibling of the served system
 tags: [design, byte-exact, fp, build-profile, cargo-feature, ab-test, determinism, auditability, portability, honest-negative, anti-rebuild]
 timestamp: 2026-07-04T00:00:00Z
 resource: shannon-prime-lattice/papers/DESIGN-NO-EXACT-PROFILE.md
-sp_status: "DESIGN — behavioural A/B RUN 2026-07-04 (G-NOEXACT-OBEY-AB): FP ties faithfulness exactly, 1.06x faster, equal determinism on one box. Build profile still TBD."
+sp_status: "PARKED (operator decision 2026-07-04) — A/B answered the question (G-NOEXACT-OBEY-AB: FP ties faithfulness, 1.06x faster, equal same-box determinism) + FP-profile FOUNDATION landed (engine e58150d, default build GREEN). FP-link completion (G-NOEXACT-BUILD: quic_shard NTT-recombine gating) DEFERRED — value is portability-only, no urgency; revisit when a non-Windows/non-cl.exe target actually needs it."
 sp_gate: "G-NOEXACT-OBEY-AB GREEN (flag-flip A/B, no build): exact 54/61 == FP 54/61 obey (identical misses), FP 1.06x faster, DET 6/6==6/6 same-box. Build-profile gates still pending: G-NOEXACT-PARITY (FP binary reproduces obey when exact code physically gone) + G-NOEXACT-BUILD (cl.exe, no __int128, smaller binary)."
 sp_commit: "engine driver _faithful_corpus/noexact_ab.py; receipt tests/fixtures/chat_fullstack/G-NOEXACT-OBEY-AB.log"
 sp_repro: "serve run_console_faithful.bat then python _faithful_corpus/noexact_ab.py (flips per-request byteexact true/false on one live daemon). Recon: SP_BYTEEXACT gating in src/backends/cuda/cuda_forward.cu (10 if/else regions), tools/sp_daemon/build.rs MODULES, recall.rs (FP cosine), __int128 usage across lib/shannon-prime-system/core/. Reuses: G-BYTEEXACT-FORWARD-12B (69c0588), G-ONECONFIG-LIVE."
