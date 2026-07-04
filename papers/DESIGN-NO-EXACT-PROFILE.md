@@ -168,6 +168,34 @@ it occurs in **exact AND FP about equally** (exact ~3, FP ~3; on `What?` FP is t
 is a prompting/decoding change for contentless turns, orthogonal to exact-vs-FP. Consequence: there
 is **no "quality fix" argument** for the FP profile — it stands on portability + speed alone.
 
+## 4b. RECON CORRECTION (2026-07-04) — the CUDA #ifndef work is low-value; the win is host-side
+
+A closer read of `cuda_forward.cu` + `build.rs` + the `__int128` map revises §1–§2:
+
+- **The byte-exact CUDA code uses NO `__int128`.** It uses `__umul64hi` for wide products (the
+  dual-prime primes fit u64), per the kernel comments. So gating out the CUDA exact path removes **no
+  toolchain dependency**, and the branches are ~15 scattered `if (d_bx_flag) {...}` one-liners inside
+  many kernels (RMSNorm/RoPE/GELU/attention) — `#ifndef`-ing them cleanly is invasive and
+  breakage-prone, for ~zero benefit (they are already zero-cost at runtime when `d_bx_flag==0`).
+- **The `__int128` / clang-cl requirement comes ONLY from `core/exact_islands/exact_islands.c`**,
+  which is compiled by the **CPU/math-core build (`build-cpu`)**, and is **NOT in the daemon's
+  `build.rs` MODULES**. The four ring modules the daemon actually links
+  (`ntt_crt.c`/`poly_ring.c`/`ok_arith.c`/`frobenius.c`/`resdot.c`) contain **zero `__int128`**
+  (verified by grep). So the daemon's clang-cl dependency is `exact_islands.c` in the CPU-core step,
+  not the ring or the CUDA.
+
+**Revised profile = host-side only, two clean moves, no CUDA surgery:**
+1. A cargo feature that drops the 4 **dormant** ring modules (`ntt_crt`/`poly_ring`/`ok_arith`/
+   `frobenius`) + the 2 FFI files (`ntt_ffi.rs`/`ntt_hex_dispatch.rs`) from the daemon build →
+   footprint win; requires a link check (nothing in the served path calls them, but the organism
+   research does).
+2. Remove `exact_islands.c` from the `build-cpu` step under the feature → that step compiles with
+   `cl.exe` (no `__int128`) → removes the recurring clang-cl clean-build hazard.
+
+The CUDA byte-exact kernels **stay in place** (default-off `d_bx_flag=0` = the FP path, zero runtime
+cost) — there is no reason to cut them. This is a smaller, safer profile than §2 implied, and it
+captures the entire measured portability value without touching `cuda_forward.cu`.
+
 ## 5. Recommendation
 
 Do **not** spin up a sister repo. Build it as the `--no-exact` cargo feature. Sequence:
