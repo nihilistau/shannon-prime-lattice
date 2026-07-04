@@ -5,10 +5,10 @@ description: "Scoping for a standard floating-point sibling of the served system
 tags: [design, byte-exact, fp, build-profile, cargo-feature, ab-test, determinism, auditability, portability, honest-negative, anti-rebuild]
 timestamp: 2026-07-04T00:00:00Z
 resource: shannon-prime-lattice/papers/DESIGN-NO-EXACT-PROFILE.md
-sp_status: DESIGN
-sp_gate: "none yet — blueprint. If built: G-NOEXACT-PARITY (FP-profile binary reproduces G-ONECONFIG-LIVE obey within noise) + G-NOEXACT-BUILD (compiles with cl.exe, no __int128, smaller binary) + the A/B ledger (determinism / speed / short-prompt-echo)."
-sp_commit: TBD
-sp_repro: "recon this session: grep of SP_BYTEEXACT gating in src/backends/cuda/cuda_forward.cu (10 gated regions, all if/else), tools/sp_daemon/build.rs MODULES, tools/sp_daemon/src/recall.rs (FP cosine), __int128 usage across lib/shannon-prime-system/core/. Reuses proven: G-BYTEEXACT-FORWARD-12B (engine 69c0588), G-ONECONFIG-LIVE."
+sp_status: "DESIGN — behavioural A/B RUN 2026-07-04 (G-NOEXACT-OBEY-AB): FP ties faithfulness exactly, 1.06x faster, equal determinism on one box. Build profile still TBD."
+sp_gate: "G-NOEXACT-OBEY-AB GREEN (flag-flip A/B, no build): exact 54/61 == FP 54/61 obey (identical misses), FP 1.06x faster, DET 6/6==6/6 same-box. Build-profile gates still pending: G-NOEXACT-PARITY (FP binary reproduces obey when exact code physically gone) + G-NOEXACT-BUILD (cl.exe, no __int128, smaller binary)."
+sp_commit: "engine driver _faithful_corpus/noexact_ab.py; receipt tests/fixtures/chat_fullstack/G-NOEXACT-OBEY-AB.log"
+sp_repro: "serve run_console_faithful.bat then python _faithful_corpus/noexact_ab.py (flips per-request byteexact true/false on one live daemon). Recon: SP_BYTEEXACT gating in src/backends/cuda/cuda_forward.cu (10 if/else regions), tools/sp_daemon/build.rs MODULES, recall.rs (FP cosine), __int128 usage across lib/shannon-prime-system/core/. Reuses: G-BYTEEXACT-FORWARD-12B (69c0588), G-ONECONFIG-LIVE."
 ---
 
 # DESIGN — the `--no-exact` (standard-FP) build profile
@@ -138,6 +138,26 @@ binary reproduces `G-ONECONFIG-LIVE` obey within noise, proving parity holds whe
 
 **Memory-at-scale** is documented, not re-run: served recall is FP already (no change); the organism
 retention `1.000 → 0.969 @ N=32` is the recorded cost of the FP profile *dropping* the integer ring.
+
+## 4a. MEASURED — the flag-flip A/B on metal (2026-07-04, `G-NOEXACT-OBEY-AB`)
+
+Ran the behavioural A/B with **zero new build**: one live daemon under `run_console_faithful.bat`,
+per-request `byteexact` flipped `true` (exact) vs `false` (FP), on the RTX 2060.
+Receipt: `shannon-prime-system-engine/tests/fixtures/chat_fullstack/G-NOEXACT-OBEY-AB.log`.
+
+| Axis | Exact | FP | Read |
+|---|---|---|---|
+| **Faithfulness** (61 paraphrase obey) | **54/61** | **54/61** | **exact tie** — identical obey *and* identical 7 misses (`france_capital`, `telephone_inv`, `italy_capital`, `canada_capital`, `longest_river`, `statue_liberty`, `taj_mahal` — the known parametric-prior selection cross-picks). FP costs **nothing** on faithfulness. |
+| **Speed** (amortized tok/s, prefill+recall bound) | 1.10 | 1.16 | **FP 1.06× faster** end-to-end. This workload is prefill/recall-bound with short answers, so 6% is a conservative floor on the decode-only delta. |
+| **Determinism** (same prompt ×2, same box) | 6/6 identical | 6/6 identical | **equal on one pinned box** — `CUBLAS_WORKSPACE_CONFIG=:16:8` already makes FP run-to-run deterministic here. Exact's determinism win is **cross-MACHINE**, which this single-box run does not exercise. |
+| **Short-prompt echo** (#47 signal) | 0/12 | 0/12 | **did not reproduce** on this 12-prompt set; both clean, and replies were byte-identical on 10/12. Honest null — this run does not confirm FP *fixes* #47, only that echo was not a differentiator here. |
+
+**Interpretation.** The A/B confirms the thesis empirically: on the served daily-driver path,
+byte-exact and FP are behaviourally indistinguishable on quality (identical 54/61, identical misses),
+FP is marginally faster, and they are equally deterministic on a single pinned machine. Every
+measured advantage of byte-exact lives in the **cross-machine / auditability** column that this
+single-box test cannot show — exactly the SWARM/PoUW use case, not the daily driver. Nothing here
+argues for byte-exact as the default; it argues for FP-default + byte-exact-as-audit-mode.
 
 ## 5. Recommendation
 
