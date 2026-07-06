@@ -325,6 +325,23 @@ exact-fetch. It ships curated records, never raw latent (ADR-002). **Remaining =
 Design: [PPT-LAT-DESIGN-SWARM-MEMORY-MESH.md](PPT-LAT-DESIGN-SWARM-MEMORY-MESH.md); call surface:
 [PPT-LAT-MESH-API.md](PPT-LAT-MESH-API.md).
 
+**Post-KEYSTONE addition (2026-07-07) — PRODUCT KEYSTONE-2 [see CONTRACT-PRODUCT-KEYSTONE-2]:**
+the campaign that hardens the organism into a product. **T1 (LIVE GREEN):** the >~1000-token
+daemon **prefill "stall" is RESOLVED** — root cause was the SWA ring never arming in served
+daemons (Rust `std::env::set_var` is invisible to the CUDA lib's C `getenv` on Windows), so
+every served daemon silently ran ring-off full-cache at PMAX=20000 → VRAM oversubscription →
+WDDM paging thrash. Fix: `_putenv_s` CRT bridge in `daemon.rs` + chunked-sync/fail-fast/telemetry
+in `gemma4_kv_prefill`. Gate `SP_WORDS=1300 → got_DONE=True` 98.2s (was: forever). Receipt
+`engine/tests/perf/G-PK2-PREFILL.log`. **T2 (harness, offline GREEN + live finding):** a coding/
+agentic tool set (`edit_file`/`run_tests`/git), a bounded **resumable task loop** (`run_task`,
+work queue drained on the KAIROS tick), and tool-call robustness (malformed-recovery, no-progress
+break, **verify-before-accept** — a 12B will confabulate "DONE" without its edit landing; the
+harness now checks). `G-PK2-TOOLROBUST` 10/10. **T3 (offline GREEN):** MEM-OKF v2 — a
+**provenance lane** (`remember(source=…)` + `provenance()`), near-dup extraction guard, registry
+`verify`/`compact` hygiene. `G-PK2-MEMOKF-V2` 6/6. **T4 (offline GREEN):** operator-panel gateway
+surfaces (`/v1/memory`, `/v1/tasks`, `/v1/persona` editor), `operator.html`, self-knowledge
+refresh. `G-PK2-UI-ENDPOINTS` 5/5. Receipts: `harness/tests/G-PK2-TRANCHE-SUMMARY.md`.
+
 **Open edges (next):** (1) **persistent O(1) conversation KV** — the daemon re-prefills the whole
 conversation each turn (correct but O(n)); the L1 stateful kvdecode verb can make "continue the
 cache" true O(1). (2) The external **two-physical-GPU** bit-identical check for byte-exact.
