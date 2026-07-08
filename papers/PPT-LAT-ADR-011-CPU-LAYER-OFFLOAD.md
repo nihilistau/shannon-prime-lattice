@@ -5,8 +5,8 @@ description: "ADR-010 proved the model (~10.9 GB) fills the 12 GB card and PCIe 
 tags: [design, adr, cpu-offload, vram, layer-placement, pcie, avx2, crt, bit-exact, hybrid, whole-machine]
 timestamp: 2026-07-08T00:00:00Z
 resource: shannon-prime-lattice/papers/PPT-LAT-ADR-011-CPU-LAYER-OFFLOAD.md
-sp_status: "STAGE-2 REALIZED — CPU FFN offload live+coherent, ~0.96 GB freed @ K=8; speed pending the AVX2/OpenMP perf-lib link. VRAM lever + coherence PROVEN."
-sp_gate: "G-ADR11-MEASURE (VRAM curve) + G-ADR11-HYBRID (live: coherent 'Paris' + VRAM 11201→10221 MiB) — engine tests/perf"
+sp_status: "STAGE-2 REALIZED + PERF-GATED — CPU FFN offload live+coherent, ~0.96 GB freed @ K=8. Perf libs (AVX2/OpenMP) make it usable (K=4 ~6 tok/s / K=8 ~3.25 vs 23.84 baseline); curve is STEEP (per-FFN GPU↔CPU sync-bound, not compute)."
+sp_gate: "G-ADR11-MEASURE + G-ADR11-HYBRID (coherent+VRAM) + G-ADR11-HYBRID-PERF (tok/s curve: K0 23.84 / K4 5.99 / K8 3.25) — engine tests/perf"
 sp_commit: "builds on ADR-010 (the model fills the card) + core/forward/gemma4.c (CPU forward, reused)"
 sp_repro: "SP_G4_CPU_TAIL_MEASURE=1 in gemma4_kv_open → the per-layer + tail curve in the daemon log"
 ---
@@ -108,3 +108,28 @@ Remaining (next): (a) link the AVX2/OpenMP CPU libs into the daemon so the offlo
 (b) parallelize the tail FFNs across the 8 cores; (c) a `SP_BYTEEXACT` CRT bit-parity check
 (coherence is proven; bit-identity is the auditable stronger claim). The measurement instrument
 `SP_G4_CPU_TAIL_MEASURE` remains for sizing K.
+
+## 7. Perf re-gate (G-ADR11-HYBRID-PERF) — the AVX2/OpenMP libs, and the real slope
+
+Linked the `build-cpu-perf` math-core (clang-cl `/arch:AVX2` + OpenMP; `gemma4_ffn_block_cpu`
+vectorized) into the daemon via `SP_SYSTEM_BUILD_DIR=build-cpu-perf` + LLVM `libomp`, target
+`target-wirecuda-perf` — the same pattern the qwen36 lane uses. Measured curve (PMAX=4096, decode
+tok/s, coherent all K):
+
+| K (tail FFNs on CPU) | tok/s | VRAM | freed |
+|---|---|---|---|
+| 0 (all-GPU) | **23.84** | ~11201 MiB | — |
+| 4 | **5.99** | 10737 MiB | ~0.46 GB |
+| 8 | **3.25** | 10221 MiB | ~0.96 GB |
+
+**The perf-lib win is real:** K=8 went **0.5 → 3.25 tok/s (~6.5×)** vs the scalar `build-cpu` gate;
+K=4 is an interactive **~6 tok/s**. **But the curve is far steeper than the §3 memory-bound ideal**
+(K=8 predicted ~9.4, measured 3.25). Per-token: K0 42 ms → K4 167 ms → K8 308 ms = **~33 ms per
+offloaded FFN per token**, vs the ~4 ms memory-bound compute. The extra ~29 ms is the **per-FFN
+GPU↔CPU round-trip**: FFN-only offload *interleaves* with GPU attention, so each offloaded layer
+forces `D2H + 2× cudaStreamSynchronize + H2D` — ~2K stream syncs/token. **The sync, not the CPU
+compute, is the wall.** The honest revised verdict: a VRAM-for-latency lever with a *steep*
+sync-bound slope on this interleaved architecture — usable where VRAM is the hard constraint
+(K=4 frees ~0.5 GB at interactive ~6 tok/s). To flatten it: a cross-token decode pipeline (overlap
+token t's CPU FFN with token t's later GPU layers) or pinned-async copies — the next real speed
+project. Default-off = the 23.84 tok/s all-GPU null floor.
