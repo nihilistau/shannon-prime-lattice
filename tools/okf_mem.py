@@ -36,6 +36,18 @@ CLASS_DEFAULT_DELIVERY = {
     "same-template": "systemecho",  # two-stage REFUTED (G-MEMPOLICY-V3); delivery is perfect
     "fact": "recite", "preference": "system",  # given selection, so use systemecho + low-confidence
     "persona": "system", "episodic-event": "recite"}
+# A1: orthogonal trust x freshness axes (Icarus verified x lifecycle; 2606.01444 audit contract).
+MEM_VERIFIED  = {"unverified", "verified", "contradicted", "rolled_back"}
+MEM_LIFECYCLE = {"active", "superseded"}
+# Legal verified-status transitions (an audit-preserving state machine).
+LEGAL_VERIFIED = {
+    "unverified":   {"unverified", "verified", "contradicted"},
+    "verified":     {"verified", "contradicted", "rolled_back"},
+    "contradicted": {"contradicted", "rolled_back"},
+    "rolled_back":  {"rolled_back"},
+}
+def legal_transition(frm, to):
+    return to in LEGAL_VERIFIED.get(frm, set())
 
 def now_iso():
     return datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
@@ -156,6 +168,18 @@ def cmd_add(a):
             common["mem_decline_message"] = a.decline_message or "I have a record for that entity, but it does not include that specific detail."
         if a.confidence is not None:
             common["mem_confidence"] = a.confidence
+    # A1: trust x freshness axes. verified starts 'unverified' at capture (cannot be set verified here).
+    if getattr(a, "verified", None) == "verified":
+        print("add: cannot set verified='verified' at capture; promote via a verify action", file=sys.stderr)
+        return 2
+    common["mem_verified"] = getattr(a, "verified", None) or "unverified"
+    common["mem_lifecycle"] = getattr(a, "lifecycle", None) or "active"
+    for _k, _v in (("mem_supersedes", getattr(a, "supersedes", None)),
+                   ("mem_superseded_by", getattr(a, "superseded_by", None)),
+                   ("mem_contradicted_by", getattr(a, "contradicted_by", None)),
+                   ("mem_revises", getattr(a, "revises", None))):
+        if _v:
+            common[_k] = _v
     full_fm = dict(common); full_fm["tags"] = a.keys.split(",") + [a.kind, "tier-2"]; full_fm["mem_tier"] = "full"
     write(os.path.join(a.root, FULL_DIR, addr + ".md"), fm_block(full_fm) + "\n" + norm(full_body))
     detail = a.detail if a.detail else (read(a.detail_file) if a.detail_file else a.summary)
@@ -202,6 +226,16 @@ def cmd_verify(a):
             fm, body = parse_fm(read(os.path.join(fd, fn)))
             if fm.get("mem_addr") != addr:
                 errs.append("full/" + fn + ": mem_addr " + str(fm.get("mem_addr")) + " != " + addr)
+            # A1: trust x freshness axis conformance + link-presence for tainted/superseded rows.
+            mv, ml = fm.get("mem_verified"), fm.get("mem_lifecycle")
+            if mv and mv not in MEM_VERIFIED:
+                errs.append("full/" + fn + ": mem_verified '" + str(mv) + "' not in vocab")
+            if ml and ml not in MEM_LIFECYCLE:
+                errs.append("full/" + fn + ": mem_lifecycle '" + str(ml) + "' not in vocab")
+            if ml == "superseded" and not fm.get("mem_superseded_by"):
+                errs.append("full/" + fn + ": lifecycle=superseded but no mem_superseded_by link")
+            if mv == "contradicted" and not fm.get("mem_contradicted_by"):
+                errs.append("full/" + fn + ": verified=contradicted but no mem_contradicted_by link")
             if fm.get("mem_kind") == "agent" and addr_of(body) != addr:
                 errs.append("full/" + fn + ": sha256(body)[:16]=" + addr_of(body) + " != " + addr + " (text tampered)")
             # ---- MEM-OKF v2 policy conformance (only for policied entries) ----
@@ -246,6 +280,135 @@ def cmd_verify(a):
     print("VERDICT: " + verdict)
     return 0 if not errs else 1
 
+# ---- A4: anti-rebuild classifier (Retrieval / Search / Discovery + Kan-obstruction) ----
+# Formalizes the binding anti-rebuild pre-flight (MEMORY-OKF-PROFILE §0/§6): every incoming
+# knowledge write is classified against the live store. RETRIEVAL = already here (reject/dedup);
+# SEARCH = recombination of existing entries (allow, link parents); DISCOVERY = genuinely new
+# content or a new type (the Kan obstruction — transport supplies nothing). See
+# papers/PPT-LAT-COMPARE-EXTERNAL-SYSTEMS-2026-07.md §4/A4 (source: arXiv 2606.01444).
+STOP = set(("the a an of to in on and or is are be as it its for with by from that this than "
+            "then so we our you your i at not no can will would could into over under out up "
+            "if but which when where who what how all any each per via use used using").split())
+
+def toks(text):
+    return set(t for t in re.findall(r"[a-z0-9]{3,}", text.lower()) if t not in STOP)
+
+# SP type vocabulary (mirror of SP-OKF-PROFILE §2 / okf_validate.SP_TYPES). A declared type
+# outside this set is a Kan obstruction (a genuinely new kind of concept -> register it first).
+SP_TYPES = {"research-paper", "paper-bite", "paper-provenance", "contract", "gate-receipt",
+            "roadmap", "project-state", "session-handoff", "abi", "design", "runbook", "lesson",
+            "convention", "foundation", "reference", "findings-ledger", "memory", "index", "log"}
+
+def entry_tokens(root):
+    """addr -> content token set (frontmatter stripped) for every full/ entry in the store."""
+    out = {}
+    fd = os.path.join(root, FULL_DIR)
+    if os.path.isdir(fd):
+        for fn in os.listdir(fd):
+            if not fn.endswith(".md"):
+                continue
+            _, body = parse_fm(read(os.path.join(fd, fn)))
+            out[fn[:-3]] = toks(body)
+    return out
+
+def classify_body(root, raw, topk=3, hi_cov=0.55, disc_resid=0.5, declared_type=None):
+    """Deterministic RETRIEVAL/SEARCH/DISCOVERY verdict for a candidate write vs the store.
+    best_cov = max single-entry coverage of the candidate; residual = fraction of candidate
+    content tokens covered by NO top-k entry (the Kan-obstruction / new-evidence signal)."""
+    fm, body = parse_fm(raw)
+    cand = toks(body)
+    dtype = declared_type if declared_type is not None else fm.get("type")
+    if not cand:
+        return {"verdict": "UNKNOWN", "reason": "empty candidate (no content tokens)",
+                "exact": False, "best_addr": None, "best_cov": 0.0, "best_jaccard": 0.0,
+                "residual": 1.0, "n_entries": 0, "type_novel": False}
+    ents = entry_tokens(root)
+    exact = addr_of(raw) in ents or addr_of(body) in ents
+    scored = []
+    for addr, et in ents.items():
+        inter = len(cand & et)
+        cov = inter / len(cand)
+        jac = inter / len(cand | et) if (cand | et) else 0.0
+        scored.append((cov, jac, addr))
+    scored.sort(reverse=True)
+    best_cov, best_jac, best_addr = scored[0] if scored else (0.0, 0.0, None)
+    union = set()
+    for _cov, _jac, addr in scored[:topk]:
+        union |= ents[addr]
+    residual = 1.0 - (len(cand & union) / len(cand))
+    type_novel = bool(dtype) and dtype not in SP_TYPES
+    if exact:
+        verdict, reason = "RETRIEVAL", "exact content-address match (duplicate) -> reject"
+    elif best_cov >= hi_cov:
+        verdict, reason = "RETRIEVAL", ("single existing entry %s covers %.2f of candidate "
+                                        "(rebuild) -> reject/dedup" % (best_addr, best_cov))
+    elif residual >= disc_resid:
+        verdict, reason = "DISCOVERY", ("residual %.2f of candidate absent from store "
+                                        "(Kan obstruction) -> allow; needs fresh evidence/receipt" % residual)
+    else:
+        verdict, reason = "SEARCH", ("covered by union of top-%d entries (residual %.2f), no "
+                                     "single dominant source -> allow as derivation, link parents" % (topk, residual))
+    if type_novel and verdict != "RETRIEVAL":
+        verdict = "DISCOVERY"
+        reason = ("declared type '%s' not in SP vocabulary (Kan obstruction) — register in "
+                  "SP-OKF-PROFILE first. " % dtype) + reason
+    return {"verdict": verdict, "reason": reason, "exact": exact, "best_addr": best_addr,
+            "best_cov": round(best_cov, 3), "best_jaccard": round(best_jac, 3),
+            "residual": round(residual, 3), "n_entries": len(ents), "type_novel": type_novel}
+
+def cmd_classify(a):
+    if a.file:
+        raw = read(a.file)
+    elif not sys.stdin.isatty():
+        raw = sys.stdin.read()
+    else:
+        print("classify: need --file or piped stdin", file=sys.stderr)
+        return 2
+    r = classify_body(a.root, raw, topk=a.topk, declared_type=a.declared_type)
+    print("VERDICT: " + r["verdict"])
+    print("  " + r["reason"])
+    print("  best=%s cov=%s jaccard=%s residual(top%d)=%s entries=%d exact=%s type_novel=%s"
+          % (r["best_addr"], r["best_cov"], r["best_jaccard"], a.topk, r["residual"],
+             r["n_entries"], r["exact"], r["type_novel"]))
+    if a.claim and a.claim.upper() == "DISCOVERY" and r["verdict"] != "DISCOVERY":
+        print("  WARN: claimed DISCOVERY but classified %s (residual %s) — likely a rebuild/"
+              "derivation, not a discovery." % (r["verdict"], r["residual"]))
+    if a.strict and r["verdict"] == "RETRIEVAL":
+        return 1
+    return 0
+
+# ---- A5: human/agent co-edit markers (idempotent generated-block upsert) ----
+# An agent re-generating a section edits ONLY the region between its own markers, never
+# a human's hand edits. Source: Icarus wiki ICARUS_GENERATED:<key>:START/END pattern.
+def _markers(key):
+    safe = re.sub(r"[^A-Za-z0-9_.-]", "_", key)
+    return ("<!-- SP_GENERATED:%s:START -->" % safe, "<!-- SP_GENERATED:%s:END -->" % safe)
+
+def upsert_block(text, key, content):
+    """Replace the region between this key's markers with content (idempotent); append a
+    fresh marked block if absent. Everything outside the block is preserved byte-for-byte."""
+    start, end = _markers(key)
+    block = start + "\n" + content.rstrip("\n") + "\n" + end
+    i, j = text.find(start), text.find(end)
+    if i != -1 and j != -1 and j > i:
+        return text[:i] + block + text[j + len(end):]
+    if not text:
+        return block + "\n"
+    pad = "" if text.endswith("\n\n") else ("\n" if text.endswith("\n") else "\n\n")
+    return text + pad + block + "\n"
+
+def cmd_upsert(a):
+    content = a.content if a.content is not None else (read(a.content_file) if a.content_file else "")
+    text = read(a.file) if os.path.exists(a.file) else ""
+    write(a.file, upsert_block(text, a.key, content))
+    print("upserted block '%s' in %s" % (a.key, a.file))
+    return 0
+
+def cmd_transition(a):
+    ok = legal_transition(a.frm, a.to)
+    print(("LEGAL" if ok else "ILLEGAL") + ": " + a.frm + " -> " + a.to)
+    return 0 if ok else 1
+
 def main():
     ap = argparse.ArgumentParser(description="MEM-OKF content-addressed tiered memory")
     parent = argparse.ArgumentParser(add_help=False)
@@ -267,10 +430,26 @@ def main():
     p.add_argument("--decline-when", dest="decline_when", help="v2: comma list (attribute-absent,family-ambiguous,low-margin,zero-inference)")
     p.add_argument("--decline-message", dest="decline_message", help="v2: fixed decline string")
     p.add_argument("--confidence", type=float, default=None)
+    # A1: trust x freshness axes
+    p.add_argument("--verified", choices=sorted(MEM_VERIFIED))
+    p.add_argument("--lifecycle", choices=sorted(MEM_LIFECYCLE))
+    p.add_argument("--supersedes"); p.add_argument("--superseded-by", dest="superseded_by")
+    p.add_argument("--contradicted-by", dest="contradicted_by"); p.add_argument("--revises")
     p = sub.add_parser("lookup", parents=[parent]); p.set_defaults(fn=cmd_lookup); p.add_argument("query")
     p = sub.add_parser("expand", parents=[parent]); p.set_defaults(fn=cmd_expand)
     p.add_argument("addr"); p.add_argument("--full", action="store_true")
     p = sub.add_parser("verify", parents=[parent]); p.set_defaults(fn=cmd_verify)
+    p = sub.add_parser("classify", parents=[parent]); p.set_defaults(fn=cmd_classify)
+    p.add_argument("--file", help="candidate write to classify (else read stdin)")
+    p.add_argument("--topk", type=int, default=3, help="entries unioned for the residual signal")
+    p.add_argument("--strict", action="store_true", help="exit 1 on a RETRIEVAL (rebuild) verdict")
+    p.add_argument("--claim", help="the write's claimed class (e.g. discovery) — warns on mismatch")
+    p.add_argument("--declared-type", dest="declared_type", help="override the candidate's frontmatter type")
+    p = sub.add_parser("upsert-block", parents=[parent]); p.set_defaults(fn=cmd_upsert)
+    p.add_argument("--file", required=True); p.add_argument("--key", required=True)
+    p.add_argument("--content"); p.add_argument("--content-file", dest="content_file")
+    p = sub.add_parser("transition", parents=[parent]); p.set_defaults(fn=cmd_transition)
+    p.add_argument("frm"); p.add_argument("to")
     a = ap.parse_args(); sys.exit(a.fn(a))
 
 if __name__ == "__main__":
