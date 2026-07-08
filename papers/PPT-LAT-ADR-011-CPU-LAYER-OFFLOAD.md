@@ -5,8 +5,8 @@ description: "ADR-010 proved the model (~10.9 GB) fills the 12 GB card and PCIe 
 tags: [design, adr, cpu-offload, vram, layer-placement, pcie, avx2, crt, bit-exact, hybrid, whole-machine]
 timestamp: 2026-07-08T00:00:00Z
 resource: shannon-prime-lattice/papers/PPT-LAT-ADR-011-CPU-LAYER-OFFLOAD.md
-sp_status: "MEASURED + DESIGNED (VRAM curve real; latency analytical). Hybrid forward = the committed next brick (STAGE-2)."
-sp_gate: "G-ADR11-MEASURE (the VRAM curve) — engine tests/perf; STAGE-2 gate = coherence + VRAM-freed + tok/s"
+sp_status: "STAGE-2 REALIZED — CPU FFN offload live+coherent, ~0.96 GB freed @ K=8; speed pending the AVX2/OpenMP perf-lib link. VRAM lever + coherence PROVEN."
+sp_gate: "G-ADR11-MEASURE (VRAM curve) + G-ADR11-HYBRID (live: coherent 'Paris' + VRAM 11201→10221 MiB) — engine tests/perf"
 sp_commit: "builds on ADR-010 (the model fills the card) + core/forward/gemma4.c (CPU forward, reused)"
 sp_repro: "SP_G4_CPU_TAIL_MEASURE=1 in gemma4_kv_open → the per-layer + tail curve in the daemon log"
 ---
@@ -84,11 +84,27 @@ For plain chat on a dedicated card the 12B already fits — offload is off (defa
 instinct — "run the matmul on the CPU, balance the whole system" — is the correct lever, now
 measured and bounded.
 
-## 6. STAGE-2 (the committed next brick)
+## 6. STAGE-2 — REALIZED (FFN-only offload; a design pivot forced by shared-KV)
 
-Realize the hybrid: (a) extract a `gemma4_forward_layers(m, x, ipl, a, b, host_kv)` from
-`core/forward/gemma4.c` that runs layers `[a,b)` on a residual with a persistent host KV cache;
-(b) wire the boundary in `g4_kv_step` behind `SP_G4_CPU_TAIL=K` (D2H residual → CPU tail → H2D);
-(c) gate on **coherence** (byte-exact vs full-GPU under `SP_BYTEEXACT`, the CRT parity) + **VRAM
-freed** (nvidia-smi) + **tok/s** (the real curve). Default-off = the null floor. The measurement
-instrument (`SP_G4_CPU_TAIL_MEASURE`) shipped this session is its scaffolding.
+Building the full-layer tail hit a real obstacle: **shared-KV**. gemma4-12b's tail layers are
+mostly *sharers* whose K/V owners are the *early* layers (GPU-resident). A full-layer CPU tail
+would need those GPU owners' K/V window D2H'd every step — defeating the one-crossing design. The
+pivot: **offload only the FFN of the tail layers.** The FFN is ~90% of a layer's weight and
+**stateless** (touches no KV), so it severs cleanly — no shared-KV coupling, one E-float D2H+H2D
+per offloaded FFN.
+
+Realized: `gemma4_ffn_block_cpu` (math-core, reuses `sp_matmul` on the OK_Q4B arena) + `g4_kv_step`
+routing the last `SP_G4_CPU_TAIL` layers' FFN to the CPU + `build_weights` skipping those FFN
+weight uploads. Gate **G-ADR11-HYBRID**: `SP_G4_CPU_TAIL=8` → **VRAM 11201→10221 MiB (freed
+~0.96 GB)** + **coherent "Paris"** on the served 12B. Default-off = null floor.
+
+**Honest perf caveat (as §3 warned):** the daemon links the NON-perf `build-cpu` libs (no AVX2/
+OpenMP — the "0.17 rung"), so the CPU FFN is single-core scalar and slow (a 299-token prefill ×8
+FFNs ran minutes; a tiny prompt 46.7 s). The VRAM lever + coherence are **proven**; the **speed
+follow-on** is linking `build-cpu-perf` (AVX2/OpenMP), exactly as the qwen36 lane links
+`target-wirecuda-perf`. The §3 curve (K=8 ~9.4 tok/s) assumes the perf libs.
+
+Remaining (next): (a) link the AVX2/OpenMP CPU libs into the daemon so the offload is fast;
+(b) parallelize the tail FFNs across the 8 cores; (c) a `SP_BYTEEXACT` CRT bit-parity check
+(coherence is proven; bit-identity is the auditable stronger claim). The measurement instrument
+`SP_G4_CPU_TAIL_MEASURE` remains for sizing K.
